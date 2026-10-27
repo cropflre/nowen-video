@@ -1,12 +1,14 @@
 package service
 
 import (
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // 内容分级等级（从低到高）
@@ -24,6 +26,7 @@ type PermissionService struct {
 	ratingRepo  *repository.ContentRatingRepo
 	historyRepo *repository.WatchHistoryRepo
 	logger      *zap.SugaredLogger
+	db          *gorm.DB
 }
 
 // NewPermissionService 创建权限服务
@@ -32,8 +35,13 @@ func NewPermissionService(
 	ratingRepo *repository.ContentRatingRepo,
 	historyRepo *repository.WatchHistoryRepo,
 	logger *zap.SugaredLogger,
+	dbs ...*gorm.DB,
 ) *PermissionService {
-	return &PermissionService{
+	var db *gorm.DB
+	if len(dbs) > 0 {
+		db = dbs[0]
+	}
+	return &PermissionService{db: db,
 		permRepo:    permRepo,
 		ratingRepo:  ratingRepo,
 		historyRepo: historyRepo,
@@ -46,37 +54,59 @@ func NewPermissionService(
 // GetUserPermission 获取用户权限设置
 func (s *PermissionService) GetUserPermission(userID string) (*model.UserPermission, error) {
 	perm, err := s.permRepo.FindByUserID(userID)
-	if err != nil {
-		// 返回默认权限
-		return &model.UserPermission{
-			UserID:           userID,
-			AllowedLibraries: "",      // 空表示全部允许
-			MaxRatingLevel:   "NC-17", // 默认不限制
-			DailyTimeLimit:   0,       // 默认不限制
-		}, nil
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		perm = &model.UserPermission{UserID: userID, MaxRatingLevel: "NC-17"}
+	} else if err != nil {
+		return nil, err
+	}
+	if s.db != nil {
+		var user model.User
+		if err := s.db.Select("id", "child_mode").First(&user, "id = ?", userID).Error; err != nil {
+			return nil, err
+		}
+		perm.ChildMode = user.ChildMode
+		if perm.ChildMode && errors.Is(err, gorm.ErrRecordNotFound) {
+			perm.MaxRatingLevel = "G"
+		}
 	}
 	return perm, nil
 }
 
-// UpdateUserPermission 更新用户权限
-func (s *PermissionService) UpdateUserPermission(userID, allowedLibraries, maxRating string, dailyLimit int) error {
-	perm := &model.UserPermission{
-		UserID:           userID,
-		AllowedLibraries: allowedLibraries,
-		MaxRatingLevel:   maxRating,
-		DailyTimeLimit:   dailyLimit,
+// UpdateUserPermission preserves child mode when older clients omit the field.
+func (s *PermissionService) UpdateUserPermission(userID, allowedLibraries, maxRating string, dailyLimit int, childMode ...bool) error {
+	if _, ok := ratingLevels[maxRating]; !ok || dailyLimit < 0 || dailyLimit > 1440 {
+		return ErrInvalidPermission
+	}
+	current, err := s.GetUserPermission(userID)
+	if err != nil {
+		return err
+	}
+	mode := current.ChildMode
+	if len(childMode) > 0 {
+		mode = childMode[0]
+	}
+	if mode && ratingLevels[maxRating] > ratingLevels["PG-13"] {
+		return ErrInvalidPermission
+	}
+	perm := &model.UserPermission{UserID: userID, AllowedLibraries: allowedLibraries, MaxRatingLevel: maxRating, DailyTimeLimit: dailyLimit, ChildMode: mode}
+	if s.db != nil {
+		if err := s.permRepo.UpdateFamilyPolicy(perm); errors.Is(err, repository.ErrInvalidFamilyPolicy) {
+			return ErrInvalidPermission
+		} else {
+			return err
+		}
 	}
 	return s.permRepo.Upsert(perm)
 }
 
 // CheckLibraryAccess 检查用户是否有权限访问某个媒体库
 func (s *PermissionService) CheckLibraryAccess(userID, libraryID string) bool {
-	perm, err := s.permRepo.FindByUserID(userID)
+	perm, err := s.GetUserPermission(userID)
 	if err != nil {
-		return true // 无权限记录默认允许
+		return false // Permission lookup failures cannot grant access
 	}
 	if perm.AllowedLibraries == "" {
-		return true // 空表示全部允许
+		return !perm.ChildMode // Children must have explicitly selected libraries
 	}
 	allowed := strings.Split(perm.AllowedLibraries, ",")
 	for _, id := range allowed {
@@ -90,16 +120,19 @@ func (s *PermissionService) CheckLibraryAccess(userID, libraryID string) bool {
 // GetAllowedLibraryIDs 返回用户允许访问的库 ID 列表；
 // 第二个返回值 restricted=true 表示"有限制"（即非空），false 表示无限制（空=全部）
 func (s *PermissionService) GetAllowedLibraryIDs(userID string) (ids []string, restricted bool) {
-	perm, err := s.permRepo.FindByUserID(userID)
-	if err != nil || perm.AllowedLibraries == "" {
-		return nil, false
+	perm, err := s.GetUserPermission(userID)
+	if err != nil {
+		return nil, true
+	}
+	if perm.AllowedLibraries == "" {
+		return nil, perm.ChildMode
 	}
 	for _, id := range strings.Split(perm.AllowedLibraries, ",") {
 		if v := strings.TrimSpace(id); v != "" {
 			ids = append(ids, v)
 		}
 	}
-	restricted = len(ids) > 0
+	restricted = perm.ChildMode || len(ids) > 0
 	return
 }
 
@@ -127,6 +160,22 @@ func (s *PermissionService) FilterLibraries(userID string, libs []model.Library)
 type MediaLibraryLookup func(mediaID string) (libraryID string, err error)
 
 func (s *PermissionService) CheckMediaAccess(userID, mediaID string, lookup MediaLibraryLookup) error {
+	if s.db != nil {
+		catalog := NewChildCatalog(s.db)
+		policy, err := catalog.Policy(userID)
+		if err != nil {
+			return ErrForbidden
+		}
+		if policy.ChildMode {
+			if err := catalog.CheckMedia(policy, mediaID); err != nil {
+				return ErrContentRestricted
+			}
+			if ok, _, _ := s.CheckDailyTimeLimit(userID); !ok {
+				return ErrTimeLimitExceeded
+			}
+			return nil
+		}
+	}
 	if lookup != nil {
 		if libID, err := lookup(mediaID); err == nil && libID != "" {
 			if !s.CheckLibraryAccess(userID, libID) {
@@ -145,37 +194,40 @@ func (s *PermissionService) CheckMediaAccess(userID, mediaID string, lookup Medi
 
 // CheckContentRating 检查用户是否可以观看该分级内容
 func (s *PermissionService) CheckContentRating(userID, mediaID string) bool {
-	// 获取内容分级
+	perm, err := s.GetUserPermission(userID)
+	if err != nil {
+		return false
+	}
 	rating, err := s.ratingRepo.FindByMediaID(mediaID)
-	if err != nil {
-		return true // 无分级标记默认允许
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return !perm.ChildMode
 	}
-
-	// 获取用户最高允许分级
-	perm, err := s.permRepo.FindByUserID(userID)
 	if err != nil {
-		return true // 无权限记录默认允许
+		return false
 	}
-
 	userLevel, ok1 := ratingLevels[perm.MaxRatingLevel]
 	contentLevel, ok2 := ratingLevels[rating.Level]
-
 	if !ok1 || !ok2 {
-		return true
+		return !perm.ChildMode
 	}
-
 	return contentLevel <= userLevel
 }
 
 // CheckDailyTimeLimit 检查用户今日观看时长是否超限
 func (s *PermissionService) CheckDailyTimeLimit(userID string) (bool, int, int) {
-	perm, err := s.permRepo.FindByUserID(userID)
-	if err != nil || perm.DailyTimeLimit <= 0 {
-		return true, 0, 0 // 无限制
+	perm, err := s.GetUserPermission(userID)
+	if err != nil {
+		return false, 0, 0
+	}
+	if perm.DailyTimeLimit <= 0 {
+		return true, 0, 0
 	}
 
 	// 计算今日已观看时长
-	todayMinutes := s.getTodayWatchMinutes(userID)
+	todayMinutes, err := s.getTodayWatchMinutes(userID)
+	if err != nil {
+		return false, 0, 0
+	}
 	remaining := perm.DailyTimeLimit - todayMinutes
 	if remaining < 0 {
 		remaining = 0
@@ -185,20 +237,21 @@ func (s *PermissionService) CheckDailyTimeLimit(userID string) (bool, int, int) 
 }
 
 // getTodayWatchMinutes 获取今日已观看分钟数
-func (s *PermissionService) getTodayWatchMinutes(userID string) int {
+func (s *PermissionService) getTodayWatchMinutes(userID string) (int, error) {
 	histories, err := s.historyRepo.GetAllByUserID(userID)
 	if err != nil {
-		return 0
+		return 0, err
 	}
 
-	today := time.Now().Truncate(24 * time.Hour)
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	var totalSeconds float64
 	for _, h := range histories {
 		if h.UpdatedAt.After(today) {
 			totalSeconds += h.Position
 		}
 	}
-	return int(totalSeconds / 60)
+	return int(totalSeconds / 60), nil
 }
 
 // ==================== 内容分级管理 ====================

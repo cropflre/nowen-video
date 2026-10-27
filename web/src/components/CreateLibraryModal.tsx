@@ -167,7 +167,9 @@ function SettingRow({
 
 export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLibraryModalProps) {
   const [selectedType, setSelectedType] = useState<CreateLibraryRequest['type']>('movie')
-  const [name, setName] = useState('')
+  const [name, setName] = useState('电影')
+  const nameEdited = useRef(false)
+  const submittingRef = useRef(false)
   const [paths, setPaths] = useState<string[]>([''])
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [advanced, setAdvanced] = useState<LibraryAdvancedSettings>({ ...DEFAULT_ADVANCED })
@@ -183,7 +185,8 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
   useEffect(() => {
     if (!open) return
     setSelectedType('movie')
-    setName('')
+    setName('电影')
+    nameEdited.current = false
     setPaths([''])
     setShowAdvanced(false)
     setAdvanced({ ...DEFAULT_ADVANCED })
@@ -285,6 +288,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
   }
 
   const handleSubmit = async () => {
+    if (submittingRef.current) return
     if (!name.trim()) {
       setError('请输入媒体库名称')
       nameInputRef.current?.focus()
@@ -309,6 +313,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
     }
 
     setError('')
+    submittingRef.current = true
     setSubmitting(true)
     try {
       await onCreate({
@@ -321,6 +326,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
     } catch (err: any) {
       setError(err?.response?.data?.error || '创建媒体库失败，请检查路径是否正确')
     } finally {
+      submittingRef.current = false
       setSubmitting(false)
     }
   }
@@ -351,16 +357,16 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
 
   return (
     <>
-      <Modal open={open} onClose={onClose} size="lg" ariaLabel="创建媒体库">
+      <Modal open={open} onClose={onClose} size="lg" ariaLabel="添加影片文件夹">
         <ModalHeader
-          title="创建媒体库"
-          description="选择内容类型、添加一个或多个媒体目录，并按需配置扫描与整理策略。"
+          title="添加影片文件夹"
+          description="选择存放影片的文件夹，系统会查找影片并补全海报和简介。"
           icon={<FolderPlus size={18} />}
           onClose={onClose}
         />
 
         <ModalBody className="space-y-6">
-          <FieldBlock label="内容类型" description="类型只影响媒体识别策略，选中状态统一使用主品牌色。">
+          <FieldBlock label="内容类型" description="选择文件夹中的主要内容，方便自动补全影片信息。">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {LIBRARY_TYPES.map((type) => {
                 const Icon = type.icon
@@ -369,7 +375,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                   <button
                     key={type.value}
                     type="button"
-                    onClick={() => setSelectedType(type.value)}
+                    onClick={() => { setSelectedType(type.value); if (!nameEdited.current) setName(type.label) }}
                     className="rounded-[var(--nv-radius-card)] border p-3 text-left transition-[background-color,border-color,transform] duration-200 hover:-translate-y-0.5"
                     style={{
                       background: selected ? 'var(--nv-bg-active)' : 'var(--nv-bg-surface-soft)',
@@ -401,6 +407,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                 invalid={Boolean(error && !name.trim())}
                 onChange={(event) => {
                   if (event.target.value.length <= 32) {
+                    nameEdited.current = true
                     setName(event.target.value)
                     setError('')
                   }
@@ -433,11 +440,10 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
                   <Button
                     type="button"
                     variant="ghost"
-                    iconOnly
                     onClick={() => setBrowsingIndex(index)}
                     title="浏览服务器目录"
                   >
-                    <FolderPlus size={17} />
+                    <FolderPlus size={17} />选择文件夹
                   </Button>
                   <Input
                     value={path}
@@ -683,7 +689,7 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
             取消
           </Button>
           <Button type="button" variant="primary" onClick={handleSubmit} loading={submitting}>
-            {submitting ? '创建中...' : '确认创建'}
+            {submitting ? '添加中…' : '添加并查找影片'}
           </Button>
         </ModalFooter>
       </Modal>
@@ -694,6 +700,10 @@ export default function CreateLibraryModal({ open, onClose, onCreate }: CreateLi
         onSelect={(selectedPath) => {
           if (browsingIndex !== null) {
             setPaths((prev) => prev.map((path, index) => (index === browsingIndex ? selectedPath : path)))
+            if (!nameEdited.current && browsingIndex === 0) {
+              const folderName = selectedPath.replace(/[\\/]+$/, '').split(/[\\/]/).pop()
+              if (folderName) setName(folderName.slice(0, 32))
+            }
             setError('')
           }
         }}

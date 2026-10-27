@@ -56,6 +56,8 @@ func (h *AdminHandler) CreateUser(c *gin.Context) {
 	user, err := h.userService.CreateUser(&req)
 	if err != nil {
 		switch err {
+		case service.ErrInvalidPermission:
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		case service.ErrUserExists:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		default:

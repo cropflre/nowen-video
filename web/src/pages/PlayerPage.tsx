@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { mediaApi, streamApi, seriesApi } from '@/api'
+import { mediaApi, streamApi, seriesApi, userApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
-import AdaptiveWebVideoPlayer, { type BrowserPlaybackMode, type PlaybackTransition } from '@/components/AdaptiveWebVideoPlayer'
+import AdaptiveWebVideoPlayer, { type BrowserPlaybackMode } from '@/components/AdaptiveWebVideoPlayer'
 import WebCodecsPlayerShell from '@/components/WebCodecsPlayerShell'
 import STRMDiagnostics from '@/components/player/STRMDiagnostics'
 import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
+import { useAuthStore } from '@/stores/auth'
+import { episodeLabel, resumePosition } from '@/utils/viewing'
 import { Zap, Loader2, Cpu, Clapperboard } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
 import { DesktopPlayer, useDesktop } from '@/desktop'
@@ -43,11 +45,18 @@ export default function PlayerPage() {
     && Number.isFinite(requestedEnd)
     && requestedStart >= 0
     && requestedEnd > requestedStart
+  const explicitStart = !highlightMode && query.has('start') && Number.isFinite(requestedStart) && requestedStart >= 0 ? requestedStart : undefined
   const clipStart = highlightMode ? requestedStart : 0
   const clipEnd = highlightMode ? requestedEnd : 0
 
   const [media, setMedia] = useState<Media | null>(null)
   const [playInfo, setPlayInfo] = useState<MediaPlayInfo | null>(null)
+  const [accessRevoked, setAccessRevoked] = useState(false)
+  const childMode = useAuthStore((state) => state.user?.child_mode ?? false)
+  const [loadError, setLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
+  const preferredSubtitle = useAuthStore((state) => state.user?.viewing_preferences?.subtitle_language || 'auto')
   const [loading, setLoading] = useState(true)
   const [nextEpisode, setNextEpisode] = useState<Media | null>(null)
   const [switchPosition, setSwitchPosition] = useState<number | undefined>(() => highlightMode ? clipStart : undefined)
@@ -56,7 +65,7 @@ export default function PlayerPage() {
   const [webcodecsCap, setWebcodecsCap] = useState<WebCodecsCapability | null>(null)
   const currentTimeRef = useRef(0)
   const clipEndedRef = useRef(false)
-  const hasHistoryOnMountRef = useRef<boolean>(window.history.length > 1)
+  const hasHistoryOnMountRef = useRef<boolean>(Number(window.history.state?.idx) > 0)
   const { currentTime } = usePlayerStore()
 
   useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
@@ -96,29 +105,67 @@ export default function PlayerPage() {
 
   useEffect(() => {
     if (!id) return
+    let cancelled = false
     setLoading(true)
+    setLoadError(false)
+    setAccessRevoked(false)
+    setMedia(null)
+    setPlayInfo(null)
     setNextEpisode(null)
-    setSwitchPosition(highlightMode ? clipStart : undefined)
     setWebcodecsFailed(false)
     setRuntimeMode(null)
     clipEndedRef.current = false
-    Promise.all([mediaApi.detail(id), streamApi.getPlayInfo(id)])
-      .then(([mediaRes, playInfoRes]) => {
-        const mediaData = mediaRes.data.data
-        setMedia(mediaData)
-        setPlayInfo(playInfoRes.data.data)
-        if (mediaData.media_type === 'episode' && mediaData.series_id) {
-          seriesApi.nextEpisode(mediaData.series_id, mediaData.season_num, mediaData.episode_num)
-            .then((res) => { if (res.data.data) setNextEpisode(res.data.data) })
-            .catch(() => {})
-        }
+    const timeout = window.setTimeout(() => {
+      cancelled = true
+      setLoadError(true)
+      setLoading(false)
+    }, 30_000)
+    Promise.all([
+      mediaApi.detail(id), streamApi.getPlayInfo(id),
+      highlightMode || explicitStart !== undefined ? Promise.resolve(null) : userApi.getProgress(id),
+    ]).then(([mediaRes, playInfoRes, progressRes]) => {
+      if (cancelled) return
+      const mediaData = mediaRes.data.data
+      if (!mediaData || !playInfoRes.data.data) throw new Error('Missing playback information')
+      setMedia(mediaData)
+      setPlayInfo(playInfoRes.data.data)
+      setSwitchPosition(highlightMode ? clipStart : explicitStart ?? resumePosition(progressRes?.data.data))
+      if (mediaData.media_type === 'episode' && mediaData.series_id) {
+        seriesApi.nextEpisode(mediaData.series_id, mediaData.season_num, mediaData.episode_num)
+          .then((res) => { if (!cancelled) setNextEpisode(res.data.data || null) })
+          .catch(() => {})
+      }
+    }).catch(() => {
+      if (!cancelled) setLoadError(true)
+    }).finally(() => {
+      window.clearTimeout(timeout)
+      if (!cancelled) setLoading(false)
+    })
+    return () => { cancelled = true; window.clearTimeout(timeout) }
+  }, [clipStart, explicitStart, highlightMode, id, loadAttempt])
+
+  useEffect(() => {
+    if (!childMode || !id || loading || loadError) return
+    let disposed = false
+    const check = () => {
+      void mediaApi.detail(id).catch((error: { response?: { status?: number } }) => {
+        if (disposed || ![403, 404].includes(error.response?.status || 0)) return
+        document.querySelectorAll('video').forEach((video) => video.pause())
+        usePlayerStore.getState().setPlaying(false)
+        setAccessRevoked(true)
+        setLoadError(true)
       })
-      .catch(() => {
-        toast.error('加载播放信息失败')
-        navigate('/')
-      })
-      .finally(() => setLoading(false))
-  }, [clipStart, highlightMode, id, navigate, toast])
+    }
+    const timer = window.setInterval(check, 15_000)
+    window.addEventListener('focus', check)
+    return () => { disposed = true; window.clearInterval(timer); window.removeEventListener('focus', check) }
+  }, [childMode, id, loading, loadError])
+
+  const handleBack = useCallback(() => {
+    if (hasHistoryOnMountRef.current) navigate(-1)
+    else if (media?.media_type === 'episode' && media.series_id) navigate(`/series/${media.series_id}`, { replace: true })
+    else navigate(id ? `/media/${id}` : '/browse', { replace: true })
+  }, [id, media, navigate])
 
   const handleNext = useCallback(() => {
     if (nextEpisode) navigate(`/play/${nextEpisode.id}`, { replace: true })
@@ -139,25 +186,35 @@ export default function PlayerPage() {
   const handleWebCodecsFallback = useCallback(() => {
     setSwitchPosition(currentTimeRef.current)
     setRuntimeMode(null)
-    toast.info('WebCodecs 播放遇到问题，已切换到兼容模式')
+    toast.info('正在尝试另一种播放方式，请稍候')
     setWebcodecsFailed(true)
   }, [toast])
 
   const handleRuntimeModeChange = useCallback((mode: BrowserPlaybackMode) => setRuntimeMode(mode), [])
 
-  const handlePlaybackTransition = useCallback((transition: PlaybackTransition) => {
-    const target = transition.to === 'remux' ? 'Remux 兼容播放'
-      : transition.to === 'smart_remux' ? 'Smart Remux（音频转码）'
-      : 'HLS 转码播放'
-    toast.info(`当前播放方式不兼容，已自动切换到${target}`)
+  const handlePlaybackTransition = useCallback(() => {
+    toast.info('正在尝试另一种播放方式，请稍候')
   }, [toast])
 
-  if (loading || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || !playInfo || !id) {
+  if (loadError) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
+        <h1 className="text-lg font-semibold">{accessRevoked ? '这部影片暂未向儿童账号开放' : '暂时无法准备这部影片'}</h1>
+        <p className="text-sm text-[var(--nv-player-text-secondary)]">{accessRevoked ? '请返回选择其他影片，或请家长确认内容分级。' : '影片或观看记录暂时无法读取，请重试。'}</p>
+        <div className="flex gap-3">
+          <button type="button" className="nv-button" data-variant="primary" onClick={() => { setLoadError(false); setLoading(true); setLoadAttempt((value) => value + 1) }}>重试</button>
+          <button type="button" className="nv-button" data-variant="secondary" onClick={handleBack}>返回</button>
+        </div>
+      </div>
+    )
+  }
+
+  if (loading || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || media.id !== id || !playInfo || !id) {
     return (
       <div className="group/player flex h-screen items-center justify-center bg-[var(--nv-player-canvas)]">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
-          <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在加载播放信息...</p>
+          <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在准备播放…</p>
         </div>
       </div>
     )
@@ -167,9 +224,9 @@ export default function PlayerPage() {
     return (
       <div className="flex h-screen items-center justify-center bg-[var(--nv-player-canvas)] p-6">
         <div className="max-w-lg rounded-[var(--nv-radius-lg)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] p-6 text-center">
-          <h2 className="text-lg font-semibold text-[var(--nv-player-text-primary)]">原生播放器不可用</h2>
-          <p className="mt-2 text-sm leading-6 text-[var(--nv-player-text-secondary)]">Desktop 2.0 只使用原生 Player Core，不会回退到浏览器播放器。请检查 libmpv 运行资源后重新启动客户端。</p>
-          <button type="button" onClick={() => navigate(-1)} className="mt-5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm text-[var(--nv-player-text-primary)] hover:bg-[var(--nv-player-surface-hover)]">返回</button>
+          <h2 className="text-lg font-semibold text-[var(--nv-player-text-primary)]">播放器暂时不可用</h2>
+          <p className="mt-2 text-sm leading-6 text-[var(--nv-player-text-secondary)]">请重新启动客户端后再试。如果仍然无法播放，请联系管理员检查播放器安装。</p>
+          <button type="button" onClick={handleBack} className="mt-5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm text-[var(--nv-player-text-primary)] hover:bg-[var(--nv-player-surface-hover)]">返回</button>
         </div>
       </div>
     )
@@ -189,7 +246,7 @@ export default function PlayerPage() {
   const nativeCanPlay = playInfo.can_direct_play || canDirectHEVC
   const isRandomAccessMp4 = playInfo.file_ext === '.mp4' || playInfo.file_ext === '.m4v'
   const canUseWC =
-    !highlightMode && !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
+    !highlightMode && (preferredSubtitle === 'auto' || preferredSubtitle === 'off') && !webcodecsFailed && !isPreprocessed && !playInfo.is_strm && !nativeCanPlay && !!webcodecsCap &&
     canUseWebCodecs(playInfo.video_codec, playInfo.audio_codec, webcodecsCap) &&
     isRandomAccessMp4
 
@@ -223,24 +280,11 @@ export default function PlayerPage() {
   const effectiveBrowserMode = runtimeMode || (mode === 'webcodecs' ? null : mode)
   const browserPlaybackResetKey = `${id}:${isPreprocessed ? playInfo.preprocessed_url : 'planned'}:${webcodecsFailed ? 'wc-fallback' : 'initial'}:${highlightMode ? `${clipStart}-${clipEnd}` : 'full'}`
   const playerTitle = media.media_type === 'episode'
-    ? `${media.series?.title || media.title} S${String(media.season_num).padStart(2, '0')}E${String(media.episode_num).padStart(2, '0')}${media.episode_title ? ` - ${media.episode_title}` : ''}`
+    ? `${media.series?.title || media.title} · ${episodeLabel(media.season_num, media.episode_num)}${media.episode_title ? ` - ${media.episode_title}` : ''}`
     : media.title
   const nextTitle = nextEpisode
-    ? `S${String(nextEpisode.season_num).padStart(2, '0')}E${String(nextEpisode.episode_num).padStart(2, '0')}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
+    ? `${episodeLabel(nextEpisode.season_num, nextEpisode.episode_num)}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined
-
-  const handleBack = () => {
-    if (highlightMode) {
-      navigate(`/media/${id}`)
-      return
-    }
-    if (hasHistoryOnMountRef.current) {
-      navigate(-1)
-      return
-    }
-    if (media.media_type === 'episode' && media.series_id) navigate(`/series/${media.series_id}`, { replace: true })
-    else navigate(`/media/${id}`, { replace: true })
-  }
 
   const statusContent = useDesktopPlayer
     ? { icon: <Cpu size={12} />, label: '原生播放', tone: 'accent' as const }
@@ -273,8 +317,14 @@ export default function PlayerPage() {
   return (
     <div className={`group/player relative h-screen w-screen ${useDesktopPlayer ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'}`}>
       <div className="nv-player-runtime-status absolute right-4 top-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-200">
-        {!highlightMode && playInfo.is_strm && <STRMDiagnostics mediaId={id} compact />}
-        {statusContent && (
+        {isAdmin && !highlightMode && (
+          <details className="rounded-lg bg-[var(--nv-player-surface-soft)] p-2 text-sm text-[var(--nv-player-text-secondary)]">
+            <summary className="cursor-pointer min-h-11 flex items-center">播放信息</summary>
+            {playInfo.is_strm && <STRMDiagnostics mediaId={id} compact />}
+            {statusContent && <p className="p-2">{statusContent.label}</p>}
+          </details>
+        )}
+        {highlightMode && statusContent && (
           <div className="flex items-center gap-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 py-1.5 text-xs shadow-[var(--nv-shadow-card)] backdrop-blur-md" style={{ color: statusColor }}>
             {statusContent.icon}
             <span>{statusContent.label}</span>

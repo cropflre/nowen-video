@@ -10,7 +10,9 @@
     "verify:retired-ui": "node scripts/verify-retired-ui.mjs",
     "audit:ui": "node scripts/audit-ui-residuals.mjs",
     "preview": "vite preview",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:family": "node --test scripts/family-viewing.test.mjs",
+    "test:family:browser": "node scripts/family-viewing.browser.cjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.73.8",
@@ -37,6 +39,7 @@
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
     "eslint": "^9.5.0",
+    "playwright": "1.63.0",
     "postcss": "^8.4.38",
     "tailwindcss": "^3.4.4",
     "typescript": "^5.4.5",

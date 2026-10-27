@@ -25,7 +25,7 @@ func registerCoreAPI(
 	jwtMiddleware gin.HandlerFunc,
 ) {
 	api := r.Group("/api")
-	api.Use(jwtMiddleware)
+	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
 	service.AttachMediaAnalysisWorkerSettings(mediaAnalysisService, repos.SystemSetting)
 	service.AttachMediaChapterRepository(mediaAnalysisService, repos.VideoChapter)
 

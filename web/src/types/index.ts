@@ -1,5 +1,13 @@
 // ==================== 用户 ====================
+export interface ViewingPreferences {
+  large_text: boolean
+  subtitle_language: 'auto' | 'off' | 'zh' | 'en' | 'ja'
+  auto_play_next: boolean
+}
+
 export interface User {
+  child_mode?: boolean
+  viewing_preferences?: Partial<ViewingPreferences>
   id: string
   username: string
   role: 'admin' | 'user'
@@ -702,6 +710,7 @@ export interface DanmakuComment {
 
 // ==================== 权限管理 ====================
 export interface UserPermission {
+  child_mode?: boolean
   id: string
   user_id: string
   allowed_libraries: string
@@ -710,6 +719,7 @@ export interface UserPermission {
 }
 
 export interface UpdatePermissionRequest {
+  child_mode?: boolean
   allowed_libraries: string
   max_rating_level: string
   daily_time_limit: number

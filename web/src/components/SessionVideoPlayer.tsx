@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import VideoPlayer from './VideoPlayer'
+import PlaybackFailure from './player/PlaybackFailure'
 import { usePlaybackSessionSource } from '@/hooks/usePlaybackSessionSource'
 import { usePlayerStore } from '@/stores/player'
 import { clearPlaybackSessionRuntime, setPlaybackSessionRuntime } from '@/playback/sessionRuntime'
@@ -9,6 +10,7 @@ interface SessionVideoPlayerProps {
   mediaId: string
   title?: string
   startPosition?: number
+  onRetry?: () => void
   onBack?: () => void
   onNext?: () => void
   nextTitle?: string
@@ -31,6 +33,7 @@ export default function SessionVideoPlayer({
   mediaId,
   title,
   startPosition = 0,
+  onRetry,
   onBack,
   onNext,
   nextTitle,
@@ -254,19 +257,12 @@ export default function SessionVideoPlayer({
 
   if (!playback.source) {
     if (playback.error) {
-      return (
-        <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]">
-          <AlertTriangle className="text-[var(--nv-player-danger)]" size={32} aria-hidden="true" />
-          <p className="text-base font-medium">转码播放启动失败</p>
-          <p className="max-w-xl text-sm text-[var(--nv-player-text-tertiary)]">{playback.error}</p>
-          {onBack && <button type="button" onClick={handleBack} className="mt-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm transition-colors hover:bg-[var(--nv-player-surface-hover)]">返回</button>}
-        </div>
-      )
+      return <PlaybackFailure detail={playback.error} onRetry={onRetry} onBack={handleBack} />
     }
     return (
       <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] text-[var(--nv-player-text-primary)]">
         <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={32} aria-hidden="true" />
-        <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在生成首个播放分片...</p>
+        <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在准备播放…</p>
       </div>
     )
   }
@@ -283,6 +279,7 @@ export default function SessionVideoPlayer({
         startPosition={0}
         knownDuration={knownDuration}
         onBack={handleBack}
+        onRetry={onRetry}
         onNext={onNext ? handleNext : undefined}
         nextTitle={nextTitle}
         onPreprocessReady={onPreprocessReady ? handlePreprocessReady : undefined}

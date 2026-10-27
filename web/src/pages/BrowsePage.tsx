@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/stores/auth'
 import { useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { mediaApi, seriesApi, libraryApi, streamApi } from '@/api'
@@ -153,6 +154,7 @@ function ViewButton({ active, title, onClick, children }: { active: boolean; tit
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const toast = useToast()
+  const isAdmin = useAuthStore((state) => state.user?.role === 'admin')
   const { on, off } = useWebSocket()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [libraries, setLibraries] = useState<Library[]>([])
@@ -197,7 +199,7 @@ export default function BrowsePage() {
   useEffect(() => { setSearchInput(searchQuery) }, [searchQuery])
 
   const libraryKey = selectedLibrary || 'all'
-  const { data: probeData, loading: probeLoading, refetch: refetchProbe } = usePageCache<BrowseProbe>(
+  const { data: probeData, loading: probeLoading, error: probeError, refetch: refetchProbe } = usePageCache<BrowseProbe>(
     `browse:probe:lib=${libraryKey}`,
     async () => {
       const probe = await mediaApi.listMixed({ page: 1, size: 1, library_id: selectedLibrary || undefined })
@@ -232,7 +234,7 @@ export default function BrowsePage() {
     ].join(':')
   }, [probeReady, serverPaginated, libraryKey, page, size, mediaType, searchQuery, serverGenre, yearRange.min, yearRange.max, serverSort])
 
-  const { data: rawBrowseData, loading: browseLoading, refetch } = usePageCache<BrowseData>(
+  const { data: rawBrowseData, loading: browseLoading, error: browseError, refetch } = usePageCache<BrowseData>(
     browseKey,
     async () => {
       if (!browseKey || !probeData) throw new Error('Browse probe is not ready')
@@ -276,7 +278,7 @@ export default function BrowsePage() {
   )
 
   const browseData = rawBrowseData?.scopeKey === browseKey ? rawBrowseData : undefined
-  const loading = probeLoading || browseLoading || !probeReady
+  const loading = probeLoading || browseLoading || (!probeReady && !probeError)
   const mixedItems = browseData?.mixedItems ?? []
   const seriesList = browseData?.seriesList ?? []
   const totalCount = browseData?.totalCount ?? 0
@@ -291,7 +293,7 @@ export default function BrowsePage() {
     if (minRating > 0) changes.rating = null
     if (selectedGenres.length > 1) changes.genres = selectedGenres[0] || null
     if (Object.keys(changes).length === 0) return
-    toastRef.current.info('大型影视库使用服务端分页，已移除当前接口无法准确执行的组合筛选条件')
+    toastRef.current.info('当前影片较多，已清除暂不支持的筛选条件。可以按片名、类型或年份查找。')
     updateUrl(changes)
   }, [serverPaginated, selectedCountry, minRating, selectedGenres, updateUrl])
 
@@ -452,10 +454,10 @@ export default function BrowsePage() {
           <Select
             value={selectedLibrary}
             onChange={(event) => updateUrl({ lib: event.target.value || null })}
-            aria-label="媒体库"
+            aria-label="影片范围"
             className="!w-auto min-w-28"
           >
-            <option value="">全部媒体库</option>
+            <option value="">全部影片</option>
             {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
           </Select>
         )}
@@ -463,9 +465,9 @@ export default function BrowsePage() {
         <SearchField
           value={searchInput}
           onChange={(event) => setSearchInput(event.target.value)}
-          placeholder={serverPaginated ? '服务端搜索标题' : '筛选当前影视库'}
+          placeholder="搜索片名"
           wrapperClassName="min-w-[190px] flex-1 lg:max-w-sm"
-          aria-label="筛选当前影视库"
+          aria-label="搜索片名"
         />
 
         <Button type="button" variant={showFilters || activeFilterCount > 0 ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters}>
@@ -490,7 +492,7 @@ export default function BrowsePage() {
           {serverPaginated ? (
             <div className="flex items-start gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-              <span>大型库模式下，媒体类型、关键词、年份与排序由服务端准确执行；题材、地区和最低评分组合筛选在当前库不超过 {MAX_CLIENT_ITEMS} 部时开放。</span>
+              <span>当前影片较多，可以按片名、类型或年份查找。</span>
             </div>
           ) : (
             <>
@@ -546,18 +548,20 @@ export default function BrowsePage() {
       {serverPaginated && (
         <div className="flex items-start gap-2 border-y border-[var(--nv-border-subtle)] py-2.5 text-[11px] leading-5 text-[var(--nv-text-tertiary)]" role="status">
           <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>大型影视库模式（库内共 {probeData?.total || 0} 部），当前条件匹配 {totalCount} 部；筛选与排序先在服务端执行，再进行稳定分页。</span>
+          <span>共 {probeData?.total || 0} 部影片，当前找到 {totalCount} 部。</span>
         </div>
       )}
 
-      {loading ? (
+      {(probeError || browseError) && !browseData ? (
+        <EmptyState title="暂时无法加载影片" description="请重试，或稍后再来看看。" action={<Button onClick={() => { void refetchProbe(); void refetch() }}>重试</Button>} />
+      ) : loading ? (
         <BrowseSkeleton viewMode={viewMode} />
       ) : pagedItems.length === 0 ? (
         <EmptyState
           icon={<Film size={24} aria-hidden="true" />}
           title={hasSearchOrFilters ? '没有找到匹配的内容' : '影视库暂无内容'}
-          description={hasSearchOrFilters ? '尝试调整筛选条件或使用其他关键词。' : '前往管理页面添加媒体库并扫描文件。'}
-          action={hasSearchOrFilters ? <Button type="button" variant="secondary" size="sm" onClick={clearAllFilters}>清除所有筛选</Button> : undefined}
+          description={hasSearchOrFilters ? '尝试调整筛选条件或使用其他关键词。' : isAdmin ? '添加影片文件夹，或查看现有文件夹的整理进度。' : '请联系家里的管理员添加影片，或确认你可以观看的内容范围。'}
+          action={hasSearchOrFilters ? <Button type="button" variant="secondary" size="sm" onClick={clearAllFilters}>清除所有筛选</Button> : isAdmin ? <Link className="nv-button" data-variant="primary" to="/admin#library">管理影片文件夹</Link> : undefined}
         />
       ) : viewMode === 'grid' ? (
         <MediaGrid>

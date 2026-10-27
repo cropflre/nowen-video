@@ -41,7 +41,7 @@ export const userApi = {
   profile: () =>
     api.get<{ data: User }>('/users/me'),
 
-  updateProfile: (data: { username?: string; nickname?: string; email?: string; avatar?: string }) =>
+  updateProfile: (data: { username?: string; nickname?: string; email?: string; avatar?: string; viewing_preferences?: import('@/types').ViewingPreferences }) =>
     api.put<{ data: User; token?: string; expires_at?: number }>('/users/me', data),
 
   loginLogs: () =>

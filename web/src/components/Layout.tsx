@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
+import { useAuthStore } from '@/stores/auth'
 import Sidebar from './Sidebar'
 import { PageContainer } from './design-system'
 import { AppShell } from '@/ui'
@@ -11,15 +12,15 @@ const WIDE_PAGE_PREFIXES = ['/browse', '/library/', '/files', '/preprocess', '/a
 const DETAIL_PAGE_PREFIXES = ['/media/', '/series/', '/person/']
 
 const TITLE_BY_PREFIX: Array<[string, string]> = [
-  ['/browse', '影视库'],
+  ['/browse', '找片'],
   ['/search', '搜索'],
-  ['/favorites', '收藏'],
+  ['/favorites', '想看'],
   ['/history', '观看历史'],
   ['/playlists', '播放列表'],
   ['/collections', '合集'],
   ['/files', '文件管理'],
   ['/preprocess', '任务中心'],
-  ['/admin', '管理中心'],
+  ['/admin', '家庭管理'],
   ['/stats', '统计'],
   ['/profile', '个人资料'],
   ['/my', '我的'],
@@ -65,6 +66,8 @@ function MinimalToolbar() {
     navigate(next ? `/search?q=${encodeURIComponent(next)}` : '/search')
   }
 
+  if (location.pathname === '/browse' || location.pathname === '/search') return null
+
   return (
     <header className="nv-minimal-toolbar" style={SAFE_INLINE_STYLE}>
       <div className="nv-minimal-toolbar-side">
@@ -76,8 +79,8 @@ function MinimalToolbar() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="搜索"
-          aria-label="搜索媒体"
+          placeholder="搜索片名"
+          aria-label="搜索片名"
         />
       </form>
 
@@ -89,6 +92,7 @@ function MinimalToolbar() {
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
+  const viewerId = useAuthStore((state) => state.user?.id)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
   const isWidePage = location.pathname === '/' || WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
   const usesLocalDetailChrome = location.pathname.startsWith('/media/') || location.pathname.startsWith('/series/')
@@ -104,31 +108,49 @@ export default function Layout() {
   useEffect(() => {
     const mainEl = mainRef.current
     if (!mainEl) return
-    const currentKey = SCROLL_KEY_PREFIX + location.pathname + location.search
-    const savedPos = sessionStorage.getItem(currentKey)
-    requestAnimationFrame(() => {
-      mainEl.scrollTop = savedPos ? parseInt(savedPos, 10) : 0
-    })
-  }, [location.pathname, location.search])
-
-  useEffect(() => {
-    const mainEl = mainRef.current
-    if (!mainEl) return
-    let ticking = false
+    const key = SCROLL_KEY_PREFIX + viewerId + location.pathname + location.search
+    let target = 0
+    try { target = Math.max(0, Number(sessionStorage.getItem(key)) || 0) } catch { /* Optional storage. */ }
+    let restoring = target > 0
+    let lastPosition = target
+    let frame = 0
+    const save = () => {
+      if (restoring) return
+      try { sessionStorage.setItem(key, String(lastPosition)) } catch { /* Optional storage. */ }
+    }
+    const restore = () => {
+      if (!restoring) return
+      mainEl.scrollTop = target
+      if (Math.abs(mainEl.scrollTop - target) < 1) { restoring = false; lastPosition = mainEl.scrollTop }
+    }
+    // Lazy pages initially render a short loader. Restore again when their
+    // content grows instead of overwriting the saved offset with a clamped zero.
+    const observer = new ResizeObserver(restore)
+    Array.from(mainEl.children).forEach((child) => observer.observe(child))
+    mainEl.scrollTop = 0
+    frame = requestAnimationFrame(restore)
+    const stopRestoring = () => { restoring = false }
     const handleScroll = () => {
-      if (ticking) return
-      ticking = true
-      requestAnimationFrame(() => {
-        sessionStorage.setItem(
-          SCROLL_KEY_PREFIX + location.pathname + location.search,
-          String(mainEl.scrollTop),
-        )
-        ticking = false
-      })
+      if (!restoring) lastPosition = mainEl.scrollTop
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(save)
     }
     mainEl.addEventListener('scroll', handleScroll, { passive: true })
-    return () => mainEl.removeEventListener('scroll', handleScroll)
-  }, [location.pathname, location.search])
+    mainEl.addEventListener('wheel', stopRestoring, { passive: true })
+    mainEl.addEventListener('touchstart', stopRestoring, { passive: true })
+    mainEl.addEventListener('pointerdown', stopRestoring)
+    mainEl.addEventListener('keydown', stopRestoring)
+    return () => {
+      cancelAnimationFrame(frame)
+      save()
+      observer.disconnect()
+      mainEl.removeEventListener('scroll', handleScroll)
+      mainEl.removeEventListener('wheel', stopRestoring)
+      mainEl.removeEventListener('touchstart', stopRestoring)
+      mainEl.removeEventListener('pointerdown', stopRestoring)
+      mainEl.removeEventListener('keydown', stopRestoring)
+    }
+  }, [location.pathname, location.search, viewerId])
 
   return (
     <AppShell

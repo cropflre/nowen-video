@@ -15,15 +15,26 @@ import (
 	"go.uber.org/zap"
 )
 
+type playbackSessionBackend interface {
+	Create(context.Context, string, service.PlaybackSessionCreateRequest) (service.PlaybackSessionResult, error)
+	Status(string, string) (service.PlaybackSessionResult, error)
+	Heartbeat(string, string, service.PlaybackSessionHeartbeatRequest) (service.PlaybackSessionResult, error)
+	Restart(context.Context, string, string, service.PlaybackSessionRestartRequest) (service.PlaybackSessionResult, error)
+	Close(context.Context, string, string, string) error
+	OpenPlaylist(string, string, uint64) (*service.PlaybackSessionFile, error)
+	OpenSegment(string, string, uint64, string) (*service.PlaybackSessionFile, error)
+	ReconcilePlaybackThrottle(string) error
+}
+
 type PlaybackSessionHandler struct {
-	sessions   *service.PlaybackSessionService
+	sessions   playbackSessionBackend
 	permission *service.PermissionService
 	mediaRepo  *repository.MediaRepo
 	logger     *zap.SugaredLogger
 }
 
 func NewPlaybackSessionHandler(
-	sessions *service.PlaybackSessionService,
+	sessions playbackSessionBackend,
 	permission *service.PermissionService,
 	mediaRepo *repository.MediaRepo,
 	logger *zap.SugaredLogger,
@@ -67,10 +78,17 @@ func (h *PlaybackSessionHandler) Status(c *gin.Context) {
 		h.writeError(c, err)
 		return
 	}
+	if err := h.checkMediaAccess(c, result.Session.MediaID); err != nil {
+		h.writeError(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 func (h *PlaybackSessionHandler) Heartbeat(c *gin.Context) {
+	if !h.guardSession(c) {
+		return
+	}
 	var request service.PlaybackSessionHeartbeatRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "播放心跳参数无效"})
@@ -91,6 +109,9 @@ func (h *PlaybackSessionHandler) Heartbeat(c *gin.Context) {
 }
 
 func (h *PlaybackSessionHandler) Restart(c *gin.Context) {
+	if !h.guardSession(c) {
+		return
+	}
 	var request service.PlaybackSessionRestartRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "播放重启参数无效"})
@@ -129,6 +150,9 @@ func (h *PlaybackSessionHandler) Close(c *gin.Context) {
 }
 
 func (h *PlaybackSessionHandler) Playlist(c *gin.Context) {
+	if !h.guardSession(c) {
+		return
+	}
 	generationID, err := parseGenerationID(c.Param("generationID"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -144,6 +168,9 @@ func (h *PlaybackSessionHandler) Playlist(c *gin.Context) {
 }
 
 func (h *PlaybackSessionHandler) Segment(c *gin.Context) {
+	if !h.guardSession(c) {
+		return
+	}
 	generationID, err := parseGenerationID(c.Param("generationID"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -226,4 +253,16 @@ func parseGenerationID(raw string) (uint64, error) {
 		return 0, errors.New("generation id must be a positive integer")
 	}
 	return value, nil
+}
+
+func (h *PlaybackSessionHandler) guardSession(c *gin.Context) bool {
+	result, err := h.sessions.Status(c.GetString("user_id"), c.Param("sessionID"))
+	if err == nil {
+		err = h.checkMediaAccess(c, result.Session.MediaID)
+	}
+	if err != nil {
+		h.writeError(c, err)
+		return false
+	}
+	return true
 }

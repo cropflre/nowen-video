@@ -65,11 +65,13 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const [newUser, setNewUser] = useState({
     username: '',
     password: '',
+    child_mode: false,
     role: 'user' as 'user' | 'admin',
     nickname: '',
     email: '',
   })
 
+  const [childMode, setChildMode] = useState(false)
   const [permLibraries, setPermLibraries] = useState<string[]>([])
   const [permRating, setPermRating] = useState('NC-17')
   const [permTimeLimit, setPermTimeLimit] = useState(0)
@@ -141,13 +143,14 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         username: newUser.username.trim(),
         password: newUser.password,
         role: newUser.role,
+        child_mode: newUser.child_mode,
         nickname: newUser.nickname.trim() || undefined,
         email: newUser.email.trim() || undefined,
       })
       setUsers((current) => [res.data.data, ...current])
       toast.success(`已创建用户 ${res.data.data.username}`)
       setShowCreateModal(false)
-      setNewUser({ username: '', password: '', role: 'user', nickname: '', email: '' })
+      setNewUser({ username: '', password: '', role: 'user', nickname: '', email: '', child_mode: false })
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '创建失败')
     } finally {
@@ -176,6 +179,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
       if (permissionRequestRef.current !== requestId) return
       const permission = res.data.data
       setPermLibraries(permission.allowed_libraries ? permission.allowed_libraries.split(',').filter(Boolean) : [])
+      setChildMode(Boolean(permission.child_mode))
       setPermRating(permission.max_rating_level || 'NC-17')
       setPermTimeLimit(Math.min(1440, Math.max(0, permission.daily_time_limit || 0)))
     } catch (err: any) {
@@ -193,11 +197,13 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
     setSavingPerm(true)
     try {
       await adminApi.updateUserPermission(userId, {
+        child_mode: childMode,
         allowed_libraries: permLibraries.join(','),
         max_rating_level: permRating,
         daily_time_limit: Math.min(1440, Math.max(0, permTimeLimit)),
       })
-      toast.success('权限已保存')
+      setUsers((items) => items.map((item) => item.id === userId ? { ...item, child_mode: childMode } : item))
+      toast.success('权限已保存，该账号需要重新登录')
       if (editingUser === userId) closePermEditor()
     } catch (err: any) {
       toast.error(err?.response?.data?.error || '保存权限失败')
@@ -296,6 +302,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                         <span className="font-medium text-[var(--nv-text-primary)]">{user.username}</span>
                         {user.nickname && <span className="text-xs text-[var(--nv-text-tertiary)]">{user.nickname}</span>}
                         <Tag tone={user.role === 'admin' ? 'brand' : 'neutral'}>{user.role === 'admin' ? '管理员' : '普通用户'}</Tag>
+                        {user.child_mode && <Tag tone="brand">儿童账号</Tag>}
                         {user.disabled && <Tag tone="danger">已禁用</Tag>}
                         {user.must_change_pwd && <Tag tone="warning">需改密</Tag>}
                       </div>
@@ -367,11 +374,15 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                               <Shield size={15} className="text-[var(--nv-action-primary)]" />
                               {user.username} 的权限
                             </h4>
-                            <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">不选择媒体库代表允许访问全部媒体库。</p>
+                            <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">{childMode ? '只开放已选影片库中、家长已确认分级的内容。未选择影片库时无法观看。' : '不选择影片库代表允许访问全部影片库。'}</p>
                           </div>
                           <AdminStatus tone="active">自定义权限</AdminStatus>
                         </div>
 
+                        <label className="flex items-start justify-between gap-4 rounded-lg border border-[var(--nv-border-default)] p-4">
+                          <span><strong className="block text-sm">儿童空间</strong><span className="mt-1 block text-sm text-[var(--nv-text-tertiary)]">使用独立账号。退出后，家长需要用自己的账号和密码登录。第三方 Emby 客户端暂不支持儿童账号。</span></span>
+                          <input type="checkbox" role="switch" aria-label="儿童空间" checked={childMode} disabled={savingPerm} onChange={(event) => { setChildMode(event.target.checked); if (event.target.checked) { setPermRating('G'); setPermLibraries([]) } }} className="h-6 w-6 shrink-0" />
+                        </label>
                         <div>
                           <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-secondary)]">
                             <FolderOpen size={13} />
@@ -404,7 +415,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                           <div>
                             <label className="mb-2 block text-xs font-medium text-[var(--nv-text-secondary)]">最高可观看内容分级</label>
                             <Select value={permRating} onChange={(event) => setPermRating(event.target.value)} className="w-full" disabled={savingPerm}>
-                              {RATING_OPTIONS.map((option) => (
+                              {RATING_OPTIONS.filter((option) => !childMode || ['G','PG','PG-13'].includes(option.value)).map((option) => (
                                 <option key={option.value} value={option.value}>{option.label}</option>
                               ))}
                             </Select>
@@ -412,7 +423,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                           <div>
                             <label className="mb-2 flex items-center gap-1.5 text-xs font-medium text-[var(--nv-text-secondary)]">
                               <Clock size={13} />
-                              每日观看时长限制
+                              每日观看时长参考限制
                             </label>
                             <Input
                               type="number"
@@ -488,7 +499,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
             <label className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">角色</label>
             <Select
               value={newUser.role}
-              onChange={(event) => setNewUser({ ...newUser, role: event.target.value as 'user' | 'admin' })}
+              onChange={(event) => setNewUser({ ...newUser, role: event.target.value as 'user' | 'admin', child_mode: event.target.value === 'admin' ? false : newUser.child_mode })}
               className="w-full"
               disabled={creatingUser}
             >
@@ -496,6 +507,10 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
               <option value="admin">管理员</option>
             </Select>
           </div>
+          {newUser.role === 'user' && <label className="flex items-start justify-between gap-3 rounded-lg border border-[var(--nv-border-default)] p-3">
+            <span><strong className="block text-sm">创建为儿童账号</strong><span className="mt-1 block text-sm text-[var(--nv-text-tertiary)]">初始不开放任何影片。创建后在“权限”中选择影片库和分级。</span></span>
+            <input type="checkbox" role="switch" aria-label="创建为儿童账号" checked={newUser.child_mode} disabled={creatingUser} onChange={(event) => setNewUser({ ...newUser, child_mode: event.target.checked })} className="h-6 w-6 shrink-0" />
+          </label>}
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">昵称（可选）</label>

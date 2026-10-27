@@ -111,10 +111,11 @@ const (
 
 // WSClient WebSocket客户端
 type WSClient struct {
-	hub    *WSHub
-	conn   *websocket.Conn
-	send   chan []byte
-	userID string
+	hub       *WSHub
+	conn      *websocket.Conn
+	send      chan []byte
+	userID    string
+	authorize func() bool
 }
 
 // readPump 从WebSocket读取消息
@@ -151,7 +152,7 @@ func (c *WSClient) writePump() {
 		select {
 		case message, ok := <-c.send:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-			if !ok {
+			if !ok || (c.authorize != nil && !c.authorize()) {
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
@@ -173,6 +174,9 @@ func (c *WSClient) writePump() {
 			}
 
 		case <-ticker.C:
+			if c.authorize != nil && !c.authorize() {
+				return
+			}
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
@@ -354,7 +358,7 @@ func (h *WSHub) ClientCount() int {
 	return len(h.clients)
 }
 
-func (h *WSHub) RegisterClient(conn *websocket.Conn, userID string) {
+func (h *WSHub) RegisterClient(conn *websocket.Conn, userID string, authorize ...func() bool) {
 	client := &WSClient{
 		hub:    h,
 		conn:   conn,
@@ -362,6 +366,9 @@ func (h *WSHub) RegisterClient(conn *websocket.Conn, userID string) {
 		userID: userID,
 	}
 
+	if len(authorize) > 0 {
+		client.authorize = authorize[0]
+	}
 	h.register <- client
 	go client.writePump()
 	go client.readPump()

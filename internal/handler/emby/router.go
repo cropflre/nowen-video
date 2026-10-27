@@ -22,7 +22,17 @@ func RegisterRoutes(r *gin.Engine, h *Handler, jwtSecret string) {
 	corsMW := EmbyCORS()
 	var validator middleware.TokenVersionProvider
 	if h.auth != nil {
-		validator = h.auth.ValidateTokenVersion
+		validator = func(userID string) (int, bool, error) {
+			version, disabled, err := h.auth.ValidateTokenVersion(userID)
+			if err != nil {
+				return version, disabled, err
+			}
+			user, err := h.userRepo.FindByID(userID)
+			if err != nil {
+				return 0, true, err
+			}
+			return version, disabled || user.ChildMode, nil
+		}
 	}
 
 	// WebSocket 集线器（在所有前缀下共享）
@@ -102,18 +112,18 @@ func registerEmbyPublic(g *gin.RouterGroup, h *Handler) {
 	g.GET("/Localization/ParentalRatings", h.LocalizationParentalRatingsHandler)
 	g.GET("/QuickConnect/Enabled", h.QuickConnectEnabledHandler)
 
-	// 图片端点允许无 token（Infuse 有时从缓存的 URL 拉图时会丢失 token）
-	g.GET("/Items/:id/Images/:type", h.ImageHandler)
-	g.GET("/Items/:id/Images/:type/:index", h.ImageHandler)
-	g.HEAD("/Items/:id/Images/:type", h.ImageHandler)
-	g.HEAD("/Items/:id/Images/:type/:index", h.ImageHandler)
-
 	// 预检（OPTIONS）由 EmbyCORS 中间件统一 204 短路，不再在此注册 catch-all。
 	// 注册 `/*path` 会与 gin 引擎已有的静态/参数路由发生冲突并 panic。
 }
 
 // registerEmbyAuthed 注册需要 Emby token 的端点。
 func registerEmbyAuthed(g *gin.RouterGroup, h *Handler) {
+	// Artwork is private media data and requires the same authentication.
+	g.GET("/Items/:id/Images/:type", h.ImageHandler)
+	g.GET("/Items/:id/Images/:type/:index", h.ImageHandler)
+	g.HEAD("/Items/:id/Images/:type", h.ImageHandler)
+	g.HEAD("/Items/:id/Images/:type/:index", h.ImageHandler)
+
 	// System（已登录视角）
 	g.GET("/System/Info", h.SystemInfoHandler)
 	g.GET("/system/info", h.SystemInfoHandler)

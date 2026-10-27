@@ -300,7 +300,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 		Bookmark:            NewBookmarkService(repos.Bookmark, repos.Media, logger),
 		Comment:             NewCommentService(repos.Comment, repos.Media, logger),
 		Danmaku:             NewDanmakuService(repos.Danmaku, repos.Media, logger),
-		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
+		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger, repos.DB()),
 		FileWatcher:         fileWatcher,
 		NFO:                 nfoService,
 		Stats:               statsService,

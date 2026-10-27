@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/stores/auth'
 /**
  * WebCodecsPlayerShell —— 基于 WebCodecsPlayer 的完整播放 UI
  *
@@ -97,7 +98,7 @@ export default function WebCodecsPlayerShell({
   const handlePause = useCallback(() => setIsPlaying(false), [])
   const handleEnded = useCallback(() => {
     setIsPlaying(false)
-    if (onNext) setNextCountdown(5)
+    if (onNext && useAuthStore.getState().user?.viewing_preferences?.auto_play_next !== false) setNextCountdown(5)
   }, [onNext])
 
   const handleError = useCallback((msg: string) => {

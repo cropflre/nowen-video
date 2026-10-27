@@ -102,7 +102,7 @@ func (h *Handler) PublicUsersHandler(c *gin.Context) {
 	for i := range users {
 		u := &users[i]
 		// 跳过已禁用的用户
-		if u.Disabled {
+		if u.Disabled || u.ChildMode {
 			continue
 		}
 		out = append(out, EmbyUser{
@@ -195,6 +195,10 @@ func (h *Handler) AuthenticateByNameHandler(c *gin.Context) {
 		return
 	}
 
+	if tok.User.ChildMode {
+		c.JSON(http.StatusForbidden, gin.H{"Error": "儿童账号请使用 Nowen Video 网页端"})
+		return
+	}
 	authHdr := parseEmbyAuthHeader(c.GetHeader("X-Emby-Authorization"))
 	embyUser := h.buildEmbyUser(tok.User.ID, tok.User.Username, tok.User.Role == "admin")
 	sess := SessionInfo{

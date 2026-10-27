@@ -5,7 +5,7 @@
 
 .nv-detail-section-tabs { min-width: 0; display: flex; align-items: center; gap: 1px; overflow-x: auto; border-bottom: 1px solid var(--nv-border-subtle); scrollbar-width: none; }
 .nv-detail-section-tabs::-webkit-scrollbar { display: none; }
-.nv-detail-section-tabs :is(a, button) { position: relative; flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; padding-inline: 9px; border: 0; border-radius: 4px 4px 0 0; background: transparent; color: var(--nv-text-tertiary); font: inherit; font-size: 11px; font-weight: 550; text-decoration: none; cursor: pointer; }
+.nv-detail-section-tabs :is(a, button) { position: relative; flex: 0 0 auto; min-height: 44px; display: inline-flex; align-items: center; padding-inline: 9px; border: 0; border-radius: 4px 4px 0 0; background: transparent; color: var(--nv-text-tertiary); font: inherit; font-size: 14px; font-weight: 550; text-decoration: none; cursor: pointer; }
 .nv-detail-section-tabs :is(a, button):hover:not(:disabled) { background: var(--nv-fill-hover); color: var(--nv-text-primary); }
 .nv-detail-section-tabs :is(a, button)[aria-selected="true"] { color: var(--nv-text-primary); }
 .nv-detail-section-tabs :is(a, button)[aria-selected="true"]::after { content: ''; position: absolute; inset: auto 8px -1px; height: 2px; background: var(--nv-action-primary); }

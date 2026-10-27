@@ -375,54 +375,6 @@
 
 .nv-toolbar-search input::placeholder { color: var(--nv-text-tertiary); }
 
-/* Home owns an immersive hero. Keep search reachable but float the toolbar over
- * artwork instead of consuming a separate horizontal strip above the hero. */
-@media (min-width: 48rem) {
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar {
-    position: absolute;
-    inset: 0 0 auto;
-    z-index: calc(var(--nv-z-sticky) + 2);
-    height: 50px;
-    grid-template-columns: minmax(80px, 1fr) minmax(280px, 420px) minmax(80px, 1fr);
-    border-bottom: 0;
-    background: transparent;
-    pointer-events: none;
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-minimal-toolbar-side,
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search {
-    pointer-events: auto;
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-route-title {
-    opacity: 0;
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search {
-    height: 34px;
-    border-color: rgba(255, 255, 255, .14);
-    background: rgba(12, 12, 14, .36);
-    color: rgba(255, 255, 255, .72);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, .12);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search:focus-within {
-    border-color: rgba(255, 255, 255, .28);
-    background: rgba(12, 12, 14, .52);
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search input {
-    color: #fff;
-    font-size: 12px;
-  }
-
-  .nv-main-scroll:has(.nv-home-page) > .nv-minimal-toolbar .nv-toolbar-search input::placeholder {
-    color: rgba(255, 255, 255, .66);
-  }
-}
-
 .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail .nv-rail-item,
 .nv-app-shell[data-sidebar-collapsed="false"] .nv-rail .nv-rail-profile {
   flex-direction: row;

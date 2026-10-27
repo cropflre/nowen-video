@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 
 export interface NavigationRailLinkProps {
   to: string
   icon: ReactNode
   label: string
+  activeOn?: string[]
   end?: boolean
   meta?: ReactNode
 }
@@ -15,13 +16,17 @@ export function NavigationRailLink({
   label,
   end = false,
   meta,
+  activeOn,
 }: NavigationRailLinkProps) {
+  const { pathname } = useLocation()
+  const forceActive = activeOn?.some((prefix) => pathname.startsWith(prefix)) ?? false
   return (
     <NavLink
       to={to}
       end={end}
-      className="nv-rail-item"
-      style={({ isActive }) => isActive ? {
+      className={({ isActive }) => `nv-rail-item${isActive || forceActive ? ' active' : ''}`}
+      aria-current={forceActive ? 'page' : undefined}
+      style={({ isActive }) => isActive || forceActive ? {
         background: 'var(--nv-fill-hover)',
         borderColor: 'transparent',
       } : undefined}

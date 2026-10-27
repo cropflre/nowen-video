@@ -96,6 +96,16 @@ function LibraryManager({
       setLibraries((current) => [created, ...current.filter((library) => library.id !== created.id)])
     }
     invalidateMediaListCaches()
+    if (created) {
+      setScanning((current) => new Set(current).add(created.id))
+      try {
+        await libraryApi.scan(created.id)
+        toast.success('文件夹已添加，正在查找影片')
+      } catch {
+        setScanning((current) => { const next = new Set(current); next.delete(created.id); return next })
+        toast.warning('文件夹已添加，但未能开始查找影片。请在文件夹菜单中重试扫描。')
+      }
+    }
 
     // Creation has already succeeded at this point. Refreshing the list is a
     // best-effort reconciliation and must not make the modal report failure.

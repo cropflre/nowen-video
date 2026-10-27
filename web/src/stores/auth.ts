@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { clearPageCache } from '@/utils/pageCache'
 import type { User } from '@/types'
 
 interface AuthState {
@@ -20,13 +21,20 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
 
       setAuth: (token, user) =>
-        set({ token, user, isAuthenticated: true }),
+        set((current) => {
+          if (current.user?.id !== user.id || current.user?.role !== user.role || current.user?.child_mode !== user.child_mode) clearPageCache()
+          return { token, user, isAuthenticated: true }
+        }),
 
-      logout: () =>
-        set({ token: null, user: null, isAuthenticated: false }),
+      logout: () => {
+        clearPageCache()
+        set({ token: null, user: null, isAuthenticated: false })
+      },
 
-      updateUser: (user) =>
-        set({ user }),
+      updateUser: (user) => set((current) => {
+        if (current.user?.id !== user.id || current.user?.role !== user.role || current.user?.child_mode !== user.child_mode) clearPageCache()
+        return { user }
+      }),
     }),
     {
       name: 'nowen-auth', // localStorage key

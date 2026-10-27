@@ -1,3 +1,5 @@
+import FamilyRatingEditor from '@/components/media/FamilyRatingEditor'
+import { episodeLabel } from '@/utils/viewing'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { adminApi, seriesApi, streamApi, userApi } from '@/api'
@@ -49,7 +51,7 @@ function historyUpdatedAt(history?: WatchHistory) {
 }
 
 function episodeCode(episode: Media) {
-  return `S${String(episode.season_num).padStart(2, '0')}E${String(episode.episode_num).padStart(2, '0')}`
+  return episodeLabel(episode.season_num, episode.episode_num)
 }
 
 function chooseSeriesPlayback(episodes: Media[], historyMap: Record<string, WatchHistory>): SeriesPlaybackChoice {
@@ -266,7 +268,7 @@ export default function SeriesDetailPage() {
         setIsFavorited(true)
       }
     } catch {
-      toast.error('收藏操作失败')
+      toast.error('未能更新想看列表，请重试')
     }
   }
 
@@ -522,6 +524,8 @@ export default function SeriesDetailPage() {
         onDelete={() => setShowDeleteConfirm(true)}
         onShare={handleShare}
       />
+
+      {isAdmin && <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5"><details><summary className="min-h-11 cursor-pointer py-3">家庭内容分级</summary><FamilyRatingEditor id={series.id} series /></details></div>}
 
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">

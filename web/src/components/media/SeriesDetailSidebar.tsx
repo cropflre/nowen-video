@@ -1,3 +1,4 @@
+import { episodeLabel } from '@/utils/viewing'
 import { Link } from 'react-router-dom'
 import { CheckCircle2, Clapperboard, Database, Play, Tv2 } from 'lucide-react'
 import type { Media, Series, WatchHistory } from '@/types'
@@ -19,7 +20,7 @@ function isCompleted(history?: WatchHistory) {
 
 function episodeCode(episode?: Media | null) {
   if (!episode) return '—'
-  return `S${String(episode.season_num).padStart(2, '0')}E${String(episode.episode_num).padStart(2, '0')}`
+  return episodeLabel(episode.season_num, episode.episode_num)
 }
 
 export default function SeriesDetailSidebar({ series, episodes, historyMap, playEpisode, playLabel }: SeriesDetailSidebarProps) {

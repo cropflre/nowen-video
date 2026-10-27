@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -132,18 +133,18 @@ func (s *AuthService) GetInitStatus() (*InitStatus, error) {
 // Register 用户注册
 func (s *AuthService) Register(req *RegisterRequest, ip, ua string) (*TokenResponse, error) {
 	// 检查是否为第一个用户（第一个用户始终允许注册为管理员）
-	count, _ := s.userRepo.Count()
+	count, countErr := s.userRepo.Count()
+	if countErr != nil {
+		return nil, countErr
+	}
 	isFirstUser := count == 0
 
 	var consumedInvite *model.InviteCode
 
 	// 非第一个用户时，检查注册限制
 	if !isFirstUser {
-		if !s.cfg.Registration.Enabled {
-			return nil, ErrRegistrationDisabled
-		}
 		// 检查邀请码：优先使用数据库中的一码一用表，其次再回退到配置中的全局邀请码
-		needInvite := s.cfg.Registration.InviteCode != ""
+		needInvite := req.InviteCode != "" || s.cfg.Registration.InviteCode != ""
 		var dbCodes []model.InviteCode
 		if s.inviteRepo != nil {
 			dbCodes, _ = s.inviteRepo.List()
@@ -181,6 +182,11 @@ func (s *AuthService) Register(req *RegisterRequest, ip, ua string) (*TokenRespo
 		}
 	}
 
+	// Explicit administrator invitations work without opening public registration.
+	if !isFirstUser && !s.cfg.Registration.Enabled && consumedInvite == nil {
+		return nil, ErrRegistrationDisabled
+	}
+
 	// 检查用户名是否已存在
 	if _, err := s.userRepo.FindByUsername(req.Username); err == nil {
 		return nil, ErrUserExists
@@ -203,13 +209,16 @@ func (s *AuthService) Register(req *RegisterRequest, ip, ua string) (*TokenRespo
 		Role:     role,
 	}
 
-	if err := s.userRepo.Create(user); err != nil {
-		return nil, err
+	if consumedInvite != nil {
+		err = s.userRepo.CreateWithInvite(user, consumedInvite.ID)
+		if errors.Is(err, repository.ErrInviteUnavailable) {
+			return nil, ErrInvalidInviteCode
+		}
+	} else {
+		err = s.userRepo.Create(user)
 	}
-
-	// 邀请码消费
-	if consumedInvite != nil && s.inviteRepo != nil {
-		_ = s.inviteRepo.IncrUsed(consumedInvite.ID)
+	if err != nil {
+		return nil, err
 	}
 
 	// 首次登录即设置 IP
@@ -238,7 +247,7 @@ func (s *AuthService) ValidateTokenVersion(userID string) (int, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
-	return user.TokenVersion, user.Disabled, nil
+	return user.TokenVersion, user.Disabled || (user.ChildMode && user.Role == "admin"), nil
 }
 
 // generateToken 生成JWT令牌

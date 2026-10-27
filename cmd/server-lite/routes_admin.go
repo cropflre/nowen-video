@@ -54,7 +54,8 @@ func registerAdminAPI(r *gin.Engine, cfg *config.Config, handlers *handler.Handl
 	admin.GET("/permissions/:userId", handlers.Admin.GetUserPermission)
 	admin.PUT("/permissions/:userId", handlers.Admin.UpdateUserPermission)
 	admin.GET("/rating/:mediaId", handlers.Admin.GetContentRating)
-	admin.PUT("/rating/:mediaId", handlers.Admin.SetContentRating)
+	admin.PUT("/rating/:mediaId", handlers.Admin.SetFamilyRating)
+	admin.PUT("/series/:seriesId/rating", handlers.Admin.SetFamilyRating)
 
 	admin.GET("/metadata/search", handlers.Admin.SearchMetadata)
 	admin.POST("/media/:mediaId/match", handlers.Admin.MatchMetadata)

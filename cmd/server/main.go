@@ -246,11 +246,11 @@ func main() {
 	})
 
 	// WebSocket路由（需要认证）
-	r.GET("/api/ws", jwtMiddleware, handlers.WS.HandleWebSocket)
+	r.GET("/api/ws", jwtMiddleware, handler.ChildAccessGate(repos.DB()), handlers.WS.HandleWebSocket)
 
 	// 需要认证的路由
 	api := r.Group("/api")
-	api.Use(jwtMiddleware)
+	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
 	{
 		// 媒体库
 		api.GET("/libraries", handlers.Library.List)
@@ -533,7 +533,8 @@ func main() {
 
 		// 内容分级
 		admin.GET("/rating/:mediaId", handlers.Admin.GetContentRating)
-		admin.PUT("/rating/:mediaId", handlers.Admin.SetContentRating)
+		admin.PUT("/rating/:mediaId", handlers.Admin.SetFamilyRating)
+		admin.PUT("/series/:seriesId/rating", handlers.Admin.SetFamilyRating)
 
 		// 手动元数据匹配
 		admin.GET("/metadata/search", handlers.Admin.SearchMetadata)

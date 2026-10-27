@@ -72,8 +72,9 @@ export default function SeriesHero({
         </Link>
       )}
 
-      <Button type="button" variant="secondary" size="lg" iconOnly onClick={onFavorite} disabled={!playEpisode} title={isFavorited ? '取消收藏' : '收藏'} aria-label={isFavorited ? '取消收藏' : '收藏'} aria-pressed={isFavorited}>
+      <Button type="button" variant="secondary" size="lg" onClick={onFavorite} disabled={!playEpisode} title={isFavorited ? '移出想看' : '加入想看'} aria-label={isFavorited ? '移出想看' : '加入想看'} aria-pressed={isFavorited}>
         <Heart size={18} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+        {isFavorited ? '已加入想看' : '想看'}
       </Button>
 
       <div ref={menuRef} className="relative">

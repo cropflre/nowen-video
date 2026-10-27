@@ -71,7 +71,7 @@ func (h *Handler) ImageHandler(c *gin.Context) {
 	default:
 		c.Header("Content-Type", "application/octet-stream")
 	}
-	c.Header("Cache-Control", "public, max-age=86400")
+	c.Header("Cache-Control", "private, no-store")
 	c.File(imgPath)
 }
 

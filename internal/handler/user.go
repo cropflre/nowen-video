@@ -42,6 +42,8 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	user, usernameChanged, err := h.userService.UpdateSelfProfile(userID.(string), &req)
 	if err != nil {
 		switch err {
+		case service.ErrInvalidViewingPreferences:
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		case service.ErrUserExists:
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 		case service.ErrUserNotFound:

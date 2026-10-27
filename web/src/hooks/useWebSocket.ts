@@ -208,6 +208,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null)
 
   const token = useAuthStore((s) => s.token)
+  const childMode = useAuthStore((s) => s.user?.child_mode ?? false)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
   const on = useCallback((event: WSEventType, handler: WSEventHandler) => {
@@ -235,7 +236,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
   }, [])
 
   const connect = useCallback(() => {
-    if (!token || !isAuthenticated) return
+    if (!token || !isAuthenticated || childMode) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -289,10 +290,10 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
     } catch (e) {
       console.error('[WS] 创建连接失败:', e)
     }
-  }, [token, isAuthenticated, autoReconnect, reconnectInterval, maxRetries, dispatchEvent])
+  }, [token, isAuthenticated, childMode, autoReconnect, reconnectInterval, maxRetries, dispatchEvent])
 
   useEffect(() => {
-    if (isAuthenticated && token) {
+    if (isAuthenticated && token && !childMode) {
       connect()
     }
 
@@ -314,7 +315,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}): UseWebSocketRet
         }
       }
     }
-  }, [isAuthenticated, token, connect])
+  }, [isAuthenticated, token, childMode, connect])
 
   return { connected, on, off, lastMessage }
 }

@@ -2,28 +2,27 @@ import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { libraryApi, mediaApi, recommendApi, streamApi } from '@/api'
 import { useWebSocket, WS_EVENTS } from '@/hooks/useWebSocket'
-import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { usePageCache } from '@/hooks/usePageCache'
+import { useAuthStore } from '@/stores/auth'
+import { episodeLabel, remainingMinutes } from '@/utils/viewing'
 import { formatProgress } from '@/utils/format'
 import type { Library, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
+import SuggestOne from '@/components/SuggestOne'
 import HeroCarousel from '@/components/HeroCarousel'
-import { EmptyState, Section } from '@/components/design-system'
+import { Button, EmptyState, Section } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
-import { ChevronRight, Film, FolderOpen, Play, Tv } from 'lucide-react'
-
-const HOME_GENRES = ['动画', '喜剧', '冒险', '家庭'] as const
-
-type HomeGenre = typeof HOME_GENRES[number]
+import { ChevronRight, Play } from 'lucide-react'
 
 interface HomeData {
   recentItems: MixedItem[]
   continueList: WatchHistory[]
   recommendations: RecommendedMedia[]
   libraries: Library[]
-  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
-  allFailed: boolean
+  contentFailed: boolean
+  historyFailed: boolean
+  librariesFailed: boolean
 }
 
 interface HomeShelf {
@@ -55,59 +54,33 @@ function RailTitleLink({ to, label }: { to: string; label: string }) {
   )
 }
 
-function itemMatchesGenre(item: MixedItem, genre: string) {
-  const media = item.type === 'movie' ? item.media : item.series
-  if (!media?.genres) return false
-  return media.genres
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean)
-    .some((value) => value === genre || value.includes(genre))
-}
-
 export default function HomePage() {
   const { on, off } = useWebSocket()
-  const toast = useToast()
-  const { t } = useTranslation()
+  const user = useAuthStore((state) => state.user)
+  const { t, locale } = useTranslation()
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const { data, loading, refetch, invalidate } = usePageCache<HomeData>(
-    'home:overview:minimal-v1',
+  const { data, loading, refreshing, error, refetch, invalidate } = usePageCache<HomeData>(
+    `home:family:${user?.id || 'guest'}`,
     async () => {
       const requests = [
         mediaApi.recentMixed(24),
         mediaApi.continueWatching(10),
-        recommendApi.getRecommendations(12),
+        recommendApi.getRecommendations(5),
         libraryApi.list(),
-        ...HOME_GENRES.map((genre) => mediaApi.listMixed({
-          page: 1,
-          size: 16,
-          genre,
-          sort: 'added',
-          order: 'desc',
-        })),
       ] as const
 
       const results = await Promise.allSettled(requests)
-      const [recentResult, continueResult, recommendResult, libraryResult, ...genreResults] = results
+      const [recentResult, continueResult, recommendResult, libraryResult] = results
       const recentItems = recentResult.status === 'fulfilled' ? (recentResult.value.data.data || []) : []
-      const genreItems: Partial<Record<HomeGenre, MixedItem[]>> = {}
-
-      HOME_GENRES.forEach((genre, index) => {
-        const result = genreResults[index]
-        const serverItems = result?.status === 'fulfilled' ? (result.value.data.data || []) : []
-        genreItems[genre] = serverItems.length > 0
-          ? serverItems
-          : recentItems.filter((item) => itemMatchesGenre(item, genre))
-      })
-
       return {
         recentItems,
         continueList: continueResult.status === 'fulfilled' ? (continueResult.value.data.data || []) : [],
         recommendations: recommendResult.status === 'fulfilled' ? (recommendResult.value.data.data || []) : [],
         libraries: libraryResult.status === 'fulfilled' ? (libraryResult.value.data.data || []) : [],
-        genreItems,
-        allFailed: [recentResult, continueResult, recommendResult].every((result) => result.status === 'rejected'),
+        contentFailed: recentResult.status === 'rejected',
+        historyFailed: continueResult.status === 'rejected',
+        librariesFailed: libraryResult.status === 'rejected',
       }
     },
     { ttl: 30_000 },
@@ -117,17 +90,9 @@ export default function HomePage() {
   const continueList = data?.continueList ?? []
   const recommendations = data?.recommendations ?? []
   const libraries = data?.libraries ?? []
-  const genreItems = data?.genreItems ?? {}
   const watchStateByMediaId = useMemo(() => Object.fromEntries(
     continueList.map((item) => [item.media_id, { position: item.position, duration: item.duration }]),
   ), [continueList])
-
-  const toastRef = useRef(toast)
-  const tRef = useRef(t)
-  useEffect(() => { toastRef.current = toast; tRef.current = t }, [toast, t])
-  useEffect(() => {
-    if (data?.allFailed && !loading) toastRef.current.error(tRef.current('home.loadFailed'))
-  }, [data?.allFailed, loading])
 
   const silentRefresh = useCallback(() => refetch(true), [refetch])
 
@@ -156,90 +121,80 @@ export default function HomePage() {
     }
   }, [on, off, invalidate, silentRefresh])
 
-  const showEmpty = !loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0
+  useEffect(() => {
+    if (!user?.child_mode) return
+    const refresh = () => { if (document.visibilityState === 'visible') void silentRefresh() }
+    const timer = window.setInterval(refresh, 30_000)
+    window.addEventListener('focus', refresh)
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [user?.child_mode, silentRefresh])
+
+  const noContent = recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0
+  const loadFailed = Boolean(error || data?.contentFailed)
+  const isAdmin = user?.role === 'admin'
+  const emptyHint = user?.child_mode ? t('family.emptyChild') : !isAdmin ? t('family.emptyViewer')
+    : libraries.length > 0 ? t('family.emptyLibrary') : t('family.emptyAdmin')
 
   return (
     <div className="nv-home-page">
-      {(recommendations.length > 0 || recentItems.length > 0) && (
-        <HeroCarousel
-          items={recommendations}
-          fallbackItems={recentItems}
-          maxItems={5}
-          watchStateByMediaId={watchStateByMediaId}
-        />
-      )}
-
       <div className="nv-home-content-flow">
+        {user?.child_mode && <p className="text-sm text-[var(--nv-text-tertiary)]">儿童空间 · 只显示家长已确认的影片</p>}
         {continueList.length > 0 && (
-          <ContinueWatchingRow
-            items={continueList}
-            title={t('home.continueWatching')}
-            watchedLabel={(percent) => t('home.watched', { percent: String(percent) })}
-          />
+          <ContinueWatchingRow items={continueList} title={t('home.continueWatching')} locale={locale}
+            remainingLabel={(minutes) => minutes === null ? t('family.resume') : t('family.remaining', { minutes })} />
         )}
-
-        {libraries.length > 0 && <LibraryRail libraries={libraries} />}
-
-        {loading && recentItems.length === 0 && continueList.length === 0 && recommendations.length === 0 && (
+        {!loading && data?.historyFailed && (
+          <div className="flex flex-wrap items-center gap-3 text-sm" role="status">
+            <span>{t('family.historyFailed')}</span>
+            <Button type="button" variant="secondary" disabled={refreshing} onClick={() => void refetch()}>{t('family.retry')}</Button>
+          </div>
+        )}
+        {(recommendations.length > 0 || recentItems.length > 0) && (
+          <section aria-label={t('family.today')}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{t('family.today')}</h2><SuggestOne key={user?.id} items={recentItems} /></div>
+            <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} watchStateByMediaId={watchStateByMediaId} />
+          </section>
+        )}
+        {loading && noContent && (
           <div className="nv-section-stack">
             <HomeRailSkeleton title={t('home.continueWatching')} landscape />
             <HomeRailSkeleton title={t('home.recentlyAdded')} />
           </div>
         )}
-
-        {!loading && recentItems.length > 0 && (
-          <HomeShelfGrid
-            items={recentItems}
-            genreItems={genreItems}
-            recentTitle={t('home.recentlyAdded')}
-          />
+        {recentItems.length > 0 && (
+          <HomePosterShelf shelf={{ key: 'recent', title: t('home.recentlyAdded'), to: '/browse?sort=created_desc', items: recentItems }} />
         )}
-
-        {showEmpty && (
-          <EmptyState
-            icon={<Play size={22} aria-hidden="true" />}
-            title={t('home.noContent')}
-            description={t('home.noContentHint')}
-          />
+        {!loading && noContent && (
+          <EmptyState icon={<Play size={22} aria-hidden="true" />}
+            title={loadFailed ? t('family.loadFailed') : t('family.emptyTitle')}
+            description={loadFailed ? t('family.loadFailedHint') : emptyHint}
+            action={loadFailed || data?.librariesFailed ? (
+              <Button type="button" variant="primary" disabled={refreshing} onClick={() => void refetch()}>{t('family.retry')}</Button>
+            ) : isAdmin ? (
+              <Link className="nv-button" data-variant="primary" to="/admin#library">{libraries.length ? t('family.manageLibrary') : t('family.addFolder')}</Link>
+            ) : user?.child_mode ? <Button disabled={refreshing} onClick={() => void refetch()}>再看看</Button> : undefined} />
+        )}
+        {!loading && !noContent && loadFailed && (
+          <div className="flex flex-wrap items-center gap-3 text-sm" role="status">
+            <span>{t('family.partialFailure')}</span>
+            <Button type="button" variant="secondary" disabled={refreshing} onClick={() => void refetch()}>{t('family.retry')}</Button>
+          </div>
         )}
       </div>
     </div>
   )
 }
 
-function LibraryRail({ libraries }: { libraries: Library[] }) {
-  return (
-    <section className="nv-home-library-section" aria-labelledby="home-library-title">
-      <div className="nv-home-section-heading">
-        <h2 id="home-library-title">媒体库</h2>
-      </div>
-      <div className="nv-home-library-grid">
-        {libraries.map((library) => {
-          const Icon = library.type === 'tvshow' ? Tv : library.type === 'movie' ? Film : FolderOpen
-          return (
-            <Link key={library.id} to={`/library/${library.id}`} className="nv-home-library-tile">
-              <span className="nv-home-library-icon"><Icon size={17} aria-hidden="true" /></span>
-              <span className="nv-home-library-copy">
-                <strong>{library.name}</strong>
-                <span>{library.media_count !== undefined ? `${library.media_count} 项` : library.type === 'tvshow' ? '剧集' : library.type === 'movie' ? '电影' : '媒体'}</span>
-              </span>
-              <ChevronRight size={14} aria-hidden="true" />
-            </Link>
-          )
-        })}
-      </div>
-    </section>
-  )
-}
-
 function ContinueWatchingRow({
   items,
   title,
-  watchedLabel,
+  remainingLabel,
+  locale,
 }: {
   items: WatchHistory[]
   title: string
-  watchedLabel: (percent: number) => string
+  remainingLabel: (minutes: number | null) => string
+  locale: string
 }) {
   return (
     <MediaRail
@@ -251,7 +206,7 @@ function ContinueWatchingRow({
       {items.map((item) => {
         const percent = formatProgress(item.position, item.duration)
         const displayTitle = item.media.media_type === 'episode' && item.media.series
-          ? `${item.media.series.title} S${String(item.media.season_num || 0).padStart(2, '0')}E${String(item.media.episode_num || 0).padStart(2, '0')}`
+          ? `${item.media.series.title} · ${episodeLabel(item.media.season_num, item.media.episode_num, locale)}`
           : item.media.title
         const artworkUrl = getContinueArtwork(item)
 
@@ -271,7 +226,7 @@ function ContinueWatchingRow({
 
               <div className="nv-continue-copy">
                 <h3 className="nv-media-card-title">{displayTitle}</h3>
-                <p className="nv-continue-progress-label">{watchedLabel(percent)}</p>
+                <p className="nv-continue-progress-label">{remainingLabel(remainingMinutes(item.position, item.duration))}</p>
               </div>
             </Link>
           </article>
@@ -296,37 +251,6 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
         ))}
       </div>
     </Section>
-  )
-}
-
-function HomeShelfGrid({
-  items,
-  genreItems,
-  recentTitle,
-}: {
-  items: MixedItem[]
-  genreItems: Partial<Record<HomeGenre, MixedItem[]>>
-  recentTitle: string
-}) {
-  const shelves: HomeShelf[] = [
-    {
-      key: 'recent',
-      title: recentTitle,
-      to: '/browse?sort=created_desc',
-      items,
-    },
-    ...HOME_GENRES.map((genre) => ({
-      key: `genre-${genre}`,
-      title: genre,
-      to: `/browse?genres=${encodeURIComponent(genre)}`,
-      items: genreItems[genre] || [],
-    })).filter((shelf) => shelf.items.length > 0),
-  ]
-
-  return (
-    <div className="nv-home-shelf-grid" aria-label="首页分类内容">
-      {shelves.map((shelf) => <HomePosterShelf key={shelf.key} shelf={shelf} />)}
-    </div>
   )
 }
 

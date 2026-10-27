@@ -1,16 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
-import { createPortal } from 'react-dom'
-import { Captions } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type ComponentProps } from 'react'
 import { mediaAnalysisApi } from '@/api/mediaAnalysis'
 import { withToken } from '@/api/stream'
-import { Button } from '@/components/design-system'
-import SubtitleManager from '@/components/SubtitleManager'
 import HeroSection from './HeroSection'
 import './hero-section-backdrop.css'
 
 type HeroSectionWithBackdropProps = ComponentProps<typeof HeroSection>
 
-const BACKDROP_ROTATE_INTERVAL = 6500
 const MAX_HERO_FRAMES = 6
 
 function getMediaBackdropUrl(mediaId: string, version?: number) {
@@ -25,16 +20,10 @@ function uniqueUrls(urls: string[]) {
 export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropProps) {
   const { media, posterVersion } = props
   const shellRef = useRef<HTMLDivElement>(null)
-  const [actionsHost, setActionsHost] = useState<HTMLElement | null>(null)
-  const [showSubtitleManager, setShowSubtitleManager] = useState(false)
   const [highlightFrames, setHighlightFrames] = useState<string[]>([])
   const [failedFrames, setFailedFrames] = useState<string[]>([])
   const [currentFrame, setCurrentFrame] = useState(0)
   const [readyBackdrop, setReadyBackdrop] = useState<string | null>(null)
-
-  useLayoutEffect(() => {
-    setActionsHost(shellRef.current?.querySelector<HTMLElement>('.nv-media-hero-actions') || null)
-  }, [media.id])
 
   useEffect(() => {
     let cancelled = false
@@ -80,17 +69,6 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
     setCurrentFrame(0)
   }, [carouselFrames.length, currentFrame])
 
-  useEffect(() => {
-    if (carouselFrames.length <= 1) return
-    if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-
-    const timer = window.setInterval(() => {
-      setCurrentFrame((index) => (index + 1) % carouselFrames.length)
-    }, BACKDROP_ROTATE_INTERVAL)
-
-    return () => window.clearInterval(timer)
-  }, [carouselFrames.length])
-
   const currentBackdrop = carouselFrames[currentFrame] || ''
   const backdropReady = Boolean(currentBackdrop && readyBackdrop === currentBackdrop)
 
@@ -120,31 +98,6 @@ export default function HeroSectionWithBackdrop(props: HeroSectionWithBackdropPr
 
       <HeroSection {...props} />
 
-      {actionsHost && createPortal(
-        <span className="nv-detail-subtitle-action-slot">
-          <Button
-            type="button"
-            variant="secondary"
-            size="lg"
-            className="nv-detail-subtitle-action"
-            onClick={() => setShowSubtitleManager(true)}
-            title="字幕"
-            aria-label="打开字幕菜单"
-          >
-            <Captions size={18} aria-hidden="true" />
-            <span>字幕</span>
-          </Button>
-        </span>,
-        actionsHost,
-      )}
-
-      {showSubtitleManager && (
-        <SubtitleManager
-          mediaId={media.id}
-          mediaTitle={media.title}
-          onClose={() => setShowSubtitleManager(false)}
-        />
-      )}
     </div>
   )
 }

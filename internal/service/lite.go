@@ -163,7 +163,7 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 		Playlist:            NewPlaylistService(repos.Playlist, logger),
 		Recommend:           recommendService,
 		Bookmark:            NewBookmarkService(repos.Bookmark, repos.Media, logger),
-		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger),
+		Permission:          NewPermissionService(repos.UserPermission, repos.ContentRating, repos.WatchHistory, logger, repos.DB()),
 		FileWatcher:         fileWatcher,
 		NFO:                 nfoService,
 		Stats:               statsService,

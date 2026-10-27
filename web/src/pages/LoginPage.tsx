@@ -12,10 +12,11 @@ export default function LoginPage() {
   const setAuth = useAuthStore((state) => state.setAuth)
   const { t } = useTranslation()
 
-  const [isRegister, setIsRegister] = useState(false)
+  const [invitation] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('invite') || '')
+  const [isRegister, setIsRegister] = useState(Boolean(invitation))
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [inviteCode, setInviteCode] = useState('')
+  const [inviteCode, setInviteCode] = useState(invitation)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [initialized, setInitialized] = useState(true)
@@ -64,7 +65,7 @@ export default function LoginPage() {
     }
   }
 
-  const canSwitchMode = !initialized || registrationOpen
+  const canSwitchMode = !initialized || registrationOpen || Boolean(invitation)
   const footer = !initialized && isRegister
     ? t('auth.firstUserHint')
     : !isRegister && initialized
@@ -79,6 +80,7 @@ export default function LoginPage() {
       footer={footer}
     >
       <form onSubmit={handleSubmit} className="space-y-5">
+        {invitation && isRegister && <p className="text-sm">家人邀请你加入。设置账号和密码后，就能开始观看。</p>}
         {error && (
           <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-status-danger)] bg-[var(--nv-bg-surface-soft)] px-4 py-3 text-sm text-[var(--nv-status-danger)]" role="alert">
             {error}
@@ -118,7 +120,7 @@ export default function LoginPage() {
           />
         </div>
 
-        {isRegister && initialized && inviteRequired && (
+        {isRegister && initialized && (inviteRequired || Boolean(invitation)) && (
           <div className="space-y-1.5">
             <label htmlFor="auth-invite-code" className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--nv-text-secondary)]">
               邀请码

@@ -6,7 +6,7 @@
 
 .nv-home-page .nv-hero-carousel {
   width: calc(100% + (var(--nv-page-gutter) * 2));
-  height: clamp(560px, 64vh, 820px);
+  height: clamp(320px, 42vh, 440px);
   margin-inline: calc(var(--nv-page-gutter) * -1);
   border: 0;
   border-radius: 0;
@@ -146,7 +146,7 @@
   display: flex;
   flex-direction: column;
   gap: clamp(28px, 2.6vw, 40px);
-  margin-top: -18px;
+  margin-top: 0;
   padding-top: 0;
 }
 
@@ -381,7 +381,7 @@
 
 @media (max-width: 74.999rem) and (min-width: 48rem) {
   .nv-home-page .nv-hero-carousel {
-    height: clamp(520px, 61vh, 680px);
+    height: clamp(320px, 42vh, 420px);
   }
 
   .nv-home-page .nv-home-hero-foreground {
@@ -410,7 +410,7 @@
   }
 
   .nv-home-page .nv-hero-carousel {
-    height: min(64dvh, 520px);
+    height: clamp(320px, 48dvh, 400px);
   }
 
   .nv-home-page .nv-home-hero-foreground {
@@ -465,4 +465,10 @@
   .nv-home-compact-shelf .nv-media-rail-track {
     gap: var(--nv-grid-gap-x);
   }
+}
+
+.nv-home-page .nv-media-hero-actions .nv-button {
+  min-height: 44px;
+  padding-inline: 18px;
+  font-size: 14px;
 }

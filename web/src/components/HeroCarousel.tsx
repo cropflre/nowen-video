@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { buttonClassName } from '@/components/design-system'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
 import { MediaHeroContent } from '@/ui'
 
-const AUTO_PLAY_INTERVAL = 7000
 const SWIPE_THRESHOLD = 50
 const SWIPE_VELOCITY = 300
 const CLICK_DRAG_GUARD_THRESHOLD = 6
@@ -187,7 +187,6 @@ export default function HeroCarousel({
   const navigate = useNavigate()
   const prefersReducedMotion = useReducedMotion()
   const containerRef = useRef<HTMLElement>(null)
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const suppressNavigationRef = useRef(false)
 
   const items = useMemo(() => {
@@ -199,7 +198,6 @@ export default function HeroCarousel({
   }, [rawItems, fallbackItems, maxItems, t])
 
   const [current, setCurrent] = useState(0)
-  const [isHovering, setIsHovering] = useState(false)
   const [isInViewport, setIsInViewport] = useState(true)
   const [isPageVisible, setIsPageVisible] = useState(() => document.visibilityState !== 'hidden')
 
@@ -236,18 +234,9 @@ export default function HeroCarousel({
   }, [])
 
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current)
-    if (items.length <= 1 || isHovering || !isInViewport || !isPageVisible) return
-
-    timerRef.current = setInterval(goNext, AUTO_PLAY_INTERVAL)
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
-    }
-  }, [goNext, isHovering, isInViewport, isPageVisible, items.length])
-
-  useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!isInViewport || !isPageVisible) return
+      if (!isInViewport || !isPageVisible || !containerRef.current?.contains(document.activeElement)) return
+      if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable=true]')) return
 
       if (event.key === 'ArrowLeft') {
         event.preventDefault()
@@ -299,8 +288,6 @@ export default function HeroCarousel({
       aria-label={`${t('home.recommended')}：${item.media.title}，点击查看详情`}
       title="点击查看详情"
       onClick={openCurrentDetail}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
     >
       <AnimatePresence initial={false} mode="sync">
         <motion.div
@@ -346,6 +333,13 @@ export default function HeroCarousel({
               <MediaHeroContent
                 media={item.media}
                 inlineBadges
+                actions={(
+                  <Link to={isSeriesProxy(item.media) ? getHeroDetailPath(item.media) : `/play/${item.media.id}`}
+                    className={buttonClassName({ variant: 'primary', size: 'lg' })}
+                    onClick={(event) => event.stopPropagation()}>
+                    {isSeriesProxy(item.media) ? t('family.chooseEpisode') : watchState?.position > 0 ? t('family.resume') : t('home.playNow')}
+                  </Link>
+                )}
                 supplemental={watchState?.duration > 0 ? (
                   <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
                     <div className="nv-home-hero-watch-progress-label">
@@ -362,11 +356,11 @@ export default function HeroCarousel({
         </div>
       </div>
 
-      {items.length > 1 && isHovering && (
+      {items.length > 1 && (
         <>
           <button
             type="button"
-            className="absolute left-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
+            className="absolute right-16 bottom-4 z-30 grid h-11 w-11 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
             onClick={(event) => {
               event.stopPropagation()
               goPrev()
@@ -378,7 +372,7 @@ export default function HeroCarousel({
           </button>
           <button
             type="button"
-            className="absolute right-3 top-1/2 z-30 grid h-12 w-8 -translate-y-1/2 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
+            className="absolute right-3 bottom-4 z-30 grid h-11 w-11 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
             onClick={(event) => {
               event.stopPropagation()
               goNext()

@@ -1,6 +1,6 @@
 import { userApi } from '@/api'
-import { useToast } from '@/components/Toast'
-import { EmptyState } from '@/components/design-system'
+import { Link } from 'react-router-dom'
+import { Button, EmptyState } from '@/components/design-system'
 import { useTranslation } from '@/i18n'
 import { usePageCache } from '@/hooks/usePageCache'
 import { usePagination } from '@/hooks/usePagination'
@@ -25,10 +25,9 @@ export default function FavoritesPage() {
     initialSize: 30,
     syncToUrl: true,
   })
-  const toast = useToast()
   const { t } = useTranslation()
 
-  const { data, loading, error } = usePageCache<FavoritesData>(
+  const { data, loading, error, refreshing, refetch } = usePageCache<FavoritesData>(
     `favorites:page=${page}:size=${size}`,
     async () => {
       const res = await userApi.favorites(page, size)
@@ -37,7 +36,6 @@ export default function FavoritesPage() {
     { ttl: 15_000 },
   )
 
-  if (error) toast.error(t('favorites.loadFailed'))
 
   const favorites = data?.list ?? []
   const total = data?.total ?? 0
@@ -50,20 +48,20 @@ export default function FavoritesPage() {
         icon={<Heart size={20} />}
         eyebrow="MY LIBRARY"
         title={t('favorites.title')}
-        description="把喜欢的电影与剧集留在一个更容易再次找到的位置。"
+        description="想看的影片先放在这里，下次直接找。"
         statValue={total}
-        statLabel="个收藏"
-        statAriaLabel={`共 ${total} 个收藏`}
+        statLabel="部影片"
+        statAriaLabel={`共 ${total} 部影片`}
       />
 
       <PersonalWorkspacePanel
         titleId="favorite-media-title"
-        title="收藏内容"
-        description={total > 0 ? `当前共有 ${total} 个收藏，按最近收藏内容浏览。` : '收藏的内容会集中显示在这里。'}
+        title="想看的影片"
+        description={total > 0 ? `当前共有 ${total} 部影片，按最近想看的影片浏览。` : '加入“想看”的影片会显示在这里。'}
         count={total > 0 ? `${total} 项` : undefined}
       >
         {loading && (
-          <SharedMediaGrid aria-busy="true" aria-label="正在加载收藏内容">
+          <SharedMediaGrid aria-busy="true" aria-label="正在加载想看的影片">
             {Array.from({ length: 10 }).map((_, index) => (
               <div key={index}>
                 <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
@@ -84,8 +82,9 @@ export default function FavoritesPage() {
           <EmptyState
             className="nv-personal-workspace-empty"
             icon={<Heart size={26} aria-hidden="true" />}
-            title={t('favorites.empty')}
-            description={t('favorites.emptyHint')}
+            title={error ? t('favorites.loadFailed') : t('favorites.empty')}
+            description={error ? t('family.loadFailedHint') : t('favorites.emptyHint')}
+            action={error ? <Button disabled={refreshing} onClick={() => void refetch()}>{t('family.retry')}</Button> : <Link className="nv-button" data-variant="primary" to="/browse">{t('nav.browse')}</Link>}
           />
         )}
 

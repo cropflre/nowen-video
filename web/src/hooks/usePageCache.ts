@@ -20,17 +20,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useAuthStore } from '@/stores/auth'
+import { cacheState, globalCache, globalInFlight, notify, subscribe, type CacheEntry, type InFlightEntry } from '@/utils/pageCache'
 
 // ========== 类型定义 ==========
-
-interface CacheEntry<T> {
-  data: T
-  loadedAt: number
-}
-
-interface InFlightEntry<T> {
-  promise: Promise<T>
-}
 
 export interface UsePageCacheOptions {
   /** 缓存新鲜时间（毫秒），过期后后台静默刷新。默认 30s */
@@ -58,52 +51,7 @@ export interface UsePageCacheReturn<T> {
 
 // ========== 全局缓存存储 ==========
 
-const globalCache = new Map<string, CacheEntry<unknown>>()
-const globalInFlight = new Map<string, InFlightEntry<unknown>>()
-// 订阅者：某个 key 的数据被更新时通知同 key 的所有实例
-const globalSubscribers = new Map<string, Set<() => void>>()
-
-function subscribe(key: string, cb: () => void) {
-  let set = globalSubscribers.get(key)
-  if (!set) {
-    set = new Set()
-    globalSubscribers.set(key, set)
-  }
-  set.add(cb)
-  return () => {
-    set!.delete(cb)
-    if (set!.size === 0) globalSubscribers.delete(key)
-  }
-}
-
-function notify(key: string) {
-  globalSubscribers.get(key)?.forEach((cb) => cb())
-}
-
-// ========== 导出工具 ==========
-
-/** 手动使某个缓存失效，可用于跨页面场景（如修改后希望相关列表页下次进入重新加载） */
-export function invalidatePageCache(key: string) {
-  globalCache.delete(key)
-  notify(key)
-}
-
-/** 按前缀失效（如 invalidatePageCachePrefix('media:') 清掉所有媒体详情缓存） */
-export function invalidatePageCachePrefix(prefix: string) {
-  for (const k of Array.from(globalCache.keys())) {
-    if (k.startsWith(prefix)) {
-      globalCache.delete(k)
-      notify(k)
-    }
-  }
-}
-
-/** 清空全部缓存（如登出时调用） */
-export function clearPageCache() {
-  const keys = Array.from(globalCache.keys())
-  globalCache.clear()
-  keys.forEach(notify)
-}
+export { clearPageCache, invalidatePageCache, invalidatePageCachePrefix } from '@/utils/pageCache'
 
 // ========== 主 Hook ==========
 
@@ -112,6 +60,8 @@ export function usePageCache<T>(
   fetcher: () => Promise<T>,
   options: UsePageCacheOptions = {},
 ): UsePageCacheReturn<T> {
+  const owner = useAuthStore((state) => state.user?.id || 'guest')
+  key = key ? `${key}:user=${owner}` : key
   const { ttl = 30_000, enabled = true, keepStaleOnError = true } = options
 
   const cachedEntry = key ? (globalCache.get(key) as CacheEntry<T> | undefined) : undefined
@@ -144,40 +94,43 @@ export function usePageCache<T>(
     if (!silent && aliveRef.current) setLoading(true)
     else if (aliveRef.current) setRefreshing(true)
 
+    const epoch = cacheState.epoch
     // 并发去重
     let inFlight = globalInFlight.get(k) as InFlightEntry<T> | undefined
     if (!inFlight) {
       const promise = (async () => {
         try {
           const result = await fetcherRef.current()
-          globalCache.set(k, { data: result, loadedAt: Date.now() })
-          notify(k)
+          if (epoch === cacheState.epoch) {
+            globalCache.set(k, { data: result, loadedAt: Date.now() })
+            notify(k)
+          }
           return result
         } finally {
-          globalInFlight.delete(k)
+          if (globalInFlight.get(k)?.epoch === epoch) globalInFlight.delete(k)
         }
       })()
-      inFlight = { promise }
+      inFlight = { promise, epoch }
       globalInFlight.set(k, inFlight as InFlightEntry<unknown>)
     }
 
     try {
       const result = await inFlight.promise
-      if (aliveRef.current && currentKeyRef.current === k) {
+      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
         setStateKey(k)
         setData(result)
         setError(null)
       }
-      return result
+      return epoch === cacheState.epoch ? result : undefined
     } catch (err) {
-      if (aliveRef.current && currentKeyRef.current === k) {
+      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
         setStateKey(k)
         setError(err)
         if (!keepStaleOnError) setData(undefined)
       }
       return undefined
     } finally {
-      if (aliveRef.current && currentKeyRef.current === k) {
+      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
         setLoading(false)
         setRefreshing(false)
       }

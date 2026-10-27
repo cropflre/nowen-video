@@ -24,9 +24,27 @@ const zhCN: Record<string, string> = {
   'common.batchOperation': '批量操作',
 
   // ==================== 导航 ====================
+  'nav.browse': '找片',
+  'nav.my': '我的',
+  'family.chooseEpisode': '选集播放',
+  'family.resume': '继续播放',
+  'family.remaining': '还剩 {minutes} 分钟',
+  'family.today': '今天可以看',
+  'family.loadFailed': '暂时无法加载影片',
+  'family.loadFailedHint': '请重试，或稍后再来看看。',
+  'family.emptyTitle': '还没有可看的影片',
+  'family.emptyChild': '家长还没有确认可以看的影片，请让家长选择影片库并确认内容分级。',
+  'family.emptyViewer': '请联系家里的管理员添加影片，或确认你可以观看的内容范围。',
+  'family.emptyLibrary': '文件夹已经添加，但目前还没有可看的影片。可以到家庭管理查看整理进度。',
+  'family.emptyAdmin': '添加一个影片文件夹，家人就能在这里找到影片。',
+  'family.retry': '重试',
+  'family.manageLibrary': '查看影片文件夹',
+  'family.addFolder': '添加影片文件夹',
+  'family.historyFailed': '观看记录暂时没有加载出来。',
+  'family.partialFailure': '部分影片暂时没有加载出来。',
   'nav.home': '首页',
   'nav.search': '搜索',
-  'nav.favorites': '我的收藏',
+  'nav.favorites': '想看',
   'nav.history': '观看历史',
   'nav.playlists': '播放列表',
   'nav.stats': '观影报告',
@@ -80,8 +98,8 @@ const zhCN: Record<string, string> = {
   'media.fileSize': '文件大小',
   'media.play': '播放',
   'media.trailer': '预告片',
-  'media.addFavorite': '加入收藏',
-  'media.removeFavorite': '取消收藏',
+  'media.addFavorite': '加入想看',
+  'media.removeFavorite': '移出想看',
   'media.noOverview': '暂无简介',
 
   // ==================== 播放器 ====================
@@ -370,10 +388,10 @@ const zhCN: Record<string, string> = {
   'history.unknownMedia': '未知媒体',
 
   // ==================== 收藏 ====================
-  'favorites.title': '我的收藏',
-  'favorites.loadFailed': '加载收藏列表失败',
-  'favorites.empty': '还没有收藏的内容',
-  'favorites.emptyHint': '浏览媒体库，点击收藏按钮添加到这里',
+  'favorites.title': '想看',
+  'favorites.loadFailed': '暂时无法加载想看列表',
+  'favorites.empty': '还没有想看的影片',
+  'favorites.emptyHint': '找到喜欢的影片，点击“想看”，下次就能在这里找到',
 
   // ==================== 播放列表 ====================
   'playlists.title': '播放列表',
@@ -485,7 +503,7 @@ const zhCN: Record<string, string> = {
 
   // ==================== 媒体详情（补充） ====================
   'mediaDetail.loadFailed': '加载媒体详情失败',
-  'mediaDetail.favoriteFailed': '收藏操作失败',
+  'mediaDetail.favoriteFailed': '未能更新想看列表，请重试',
   'mediaDetail.scrapeSuccess': '元数据刮削成功',
   'mediaDetail.scrapeFailed': '元数据刮削失败，请检查 TMDb 配置或网络/代理',
   'mediaDetail.addToPlaylistSuccess': '已添加到播放列表',

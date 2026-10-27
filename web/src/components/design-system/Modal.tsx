@@ -40,18 +40,34 @@ export function Modal({
 }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null)
 
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
-    if (closeOnEscape && event.key === 'Escape') onClose()
-  }, [closeOnEscape, onClose])
+    const dialogs = document.querySelectorAll('[aria-modal="true"]')
+    if (dialogs[dialogs.length - 1] !== overlayRef.current) return
+    if (closeOnEscape && event.key === 'Escape') { event.preventDefault(); closeRef.current(); return }
+    if (event.key !== 'Tab') return
+    const controls = Array.from(overlayRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, [tabindex="0"]') || []).filter((element) => element.getClientRects().length > 0)
+    const first = controls[0]
+    const last = controls[controls.length - 1]
+    if (!first) { event.preventDefault(); overlayRef.current?.focus(); return }
+    if (event.shiftKey && (document.activeElement === first || !overlayRef.current?.contains(document.activeElement))) { event.preventDefault(); last.focus() }
+    else if (!event.shiftKey && (document.activeElement === last || !overlayRef.current?.contains(document.activeElement))) { event.preventDefault(); first.focus() }
+  }, [closeOnEscape])
 
   useEffect(() => {
     if (!open) return
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', handleKeyDown)
+    const frame = requestAnimationFrame(() => overlayRef.current?.querySelector<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled)')?.focus())
     return () => {
+      cancelAnimationFrame(frame)
       document.body.style.overflow = previousOverflow
       document.removeEventListener('keydown', handleKeyDown)
+      if (previousFocus?.isConnected) previousFocus.focus()
     }
   }, [handleKeyDown, open])
 
@@ -72,6 +88,7 @@ export function Modal({
         paddingLeft: 'max(10px, min(20px, 2vw), env(safe-area-inset-left, 0px))',
       }}
       onMouseDown={handleBackdrop}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}

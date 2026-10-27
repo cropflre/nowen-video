@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"github.com/nowen-video/nowen-video/internal/model"
 	"gorm.io/gorm"
 )
@@ -42,6 +43,9 @@ func (r *UserPermissionRepo) Upsert(perm *model.UserPermission) error {
 	err := r.db.Where("user_id = ?", perm.UserID).First(&existing).Error
 	if err == gorm.ErrRecordNotFound {
 		return r.db.Create(perm).Error
+	}
+	if err != nil {
+		return err
 	}
 	existing.AllowedLibraries = perm.AllowedLibraries
 	existing.MaxRatingLevel = perm.MaxRatingLevel
@@ -108,3 +112,26 @@ func (r *SystemSettingRepo) SetMulti(kvs map[string]string) error {
 	}
 	return nil
 }
+
+// UpdateFamilyPolicy saves permissions and the account mode atomically. Any
+// policy change revokes previously issued tokens, including cached image URLs.
+func (r *UserPermissionRepo) UpdateFamilyPolicy(perm *model.UserPermission) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var user model.User
+		if err := tx.First(&user, "id = ?", perm.UserID).Error; err != nil {
+			return err
+		}
+		if user.Role == "admin" && perm.ChildMode {
+			return ErrInvalidFamilyPolicy
+		}
+		scoped := &UserPermissionRepo{db: tx}
+		if err := scoped.Upsert(perm); err != nil {
+			return err
+		}
+		return tx.Model(&model.User{}).Where("id = ?", perm.UserID).Updates(map[string]interface{}{
+			"child_mode": perm.ChildMode, "token_version": gorm.Expr("token_version + 1"),
+		}).Error
+	})
+}
+
+var ErrInvalidFamilyPolicy = errors.New("administrators cannot be child accounts")

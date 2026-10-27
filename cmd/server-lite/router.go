@@ -96,7 +96,7 @@ func buildRouter(
 	mediaAnalysisHandler := handler.NewMediaAnalysisHandler(mediaAnalysisService, logger)
 
 	startMaintenanceJobs(repos)
-	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware)
+	registerPublicRoutes(r, cfg, handlers, profileRuntime, appVer, jwtMiddleware, jwtRefreshMiddleware, handler.ChildAccessGate(repos.DB()))
 	registerCoreAPI(r, cfg, services, handlers, playbackPlanHandler, playbackSessionHandler, mediaAnalysisHandler, mediaAnalysisService, repos, jwtMiddleware)
 	registerAdminAPI(r, cfg, handlers, taskCenterHandler, runtimeHistoryHandler, jwtMiddleware)
 	r.POST("/api/admin/tasks/:kind/:id/:action", jwtMiddleware, middleware.AdminOnly(), taskCenterHandler.Action)
@@ -161,6 +161,7 @@ func registerPublicRoutes(
 	appVer string,
 	jwtMiddleware gin.HandlerFunc,
 	jwtRefreshMiddleware gin.HandlerFunc,
+	childGate gin.HandlerFunc,
 ) {
 	auth := r.Group("/api/auth")
 	auth.POST("/login", handlers.Auth.Login)
@@ -222,7 +223,7 @@ func registerPublicRoutes(
 		c.Header("Expires", "0")
 		c.File(cfg.App.WebDir + "/sw.js")
 	})
-	r.GET("/api/ws", jwtMiddleware, handlers.WS.HandleWebSocket)
+	r.GET("/api/ws", jwtMiddleware, childGate, handlers.WS.HandleWebSocket)
 }
 
 func getLocalIPv4Addresses() []string {

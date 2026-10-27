@@ -3,6 +3,7 @@ package service
 import (
 	cryptoRand "crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 
 	"github.com/nowen-video/nowen-video/internal/config"
@@ -83,11 +84,12 @@ func (s *UserService) ListUsers() ([]model.User, error) {
 
 // CreateUserRequest 管理员创建用户
 type CreateUserRequest struct {
-	Username string `json:"username" binding:"required,min=3,max=32"`
-	Password string `json:"password" binding:"required,min=6,max=64"`
-	Role     string `json:"role"`     // admin / user，默认 user
-	Nickname string `json:"nickname"` // 可选
-	Email    string `json:"email"`    // 可选
+	ChildMode bool   `json:"child_mode"`
+	Username  string `json:"username" binding:"required,min=3,max=32"`
+	Password  string `json:"password" binding:"required,min=6,max=64"`
+	Role      string `json:"role"`     // admin / user，默认 user
+	Nickname  string `json:"nickname"` // 可选
+	Email     string `json:"email"`    // 可选
 }
 
 // CreateUser 管理员直接创建用户
@@ -99,17 +101,28 @@ func (s *UserService) CreateUser(req *CreateUserRequest) (*model.User, error) {
 	if role != "admin" && role != "user" {
 		role = "user"
 	}
+	if role == "admin" && req.ChildMode {
+		return nil, ErrInvalidPermission
+	}
 	hashed, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
 	}
+	var preferences model.ViewingPreferences
+	if req.ChildMode {
+		off := false
+		preferences.AutoPlayNext = &off
+		preferences.SubtitleLanguage = "auto"
+	}
 	user := &model.User{
-		Username:      req.Username,
-		Password:      string(hashed),
-		Role:          role,
-		Nickname:      req.Nickname,
-		Email:         req.Email,
-		MustChangePwd: true, // 管理员建号后要求首次登录改密
+		ViewingPreferences: preferences,
+		ChildMode:          req.ChildMode,
+		Username:           req.Username,
+		Password:           string(hashed),
+		Role:               role,
+		Nickname:           req.Nickname,
+		Email:              req.Email,
+		MustChangePwd:      true, // 管理员建号后要求首次登录改密
 	}
 	if err := s.repo.Create(user); err != nil {
 		return nil, err
@@ -146,6 +159,9 @@ func (s *UserService) UpdateUserByAdmin(id string, req *UpdateUserRequest) (*mod
 			if count <= 1 {
 				return nil, ErrLastAdmin
 			}
+		}
+		if role == "admin" && user.ChildMode {
+			return nil, ErrInvalidPermission
 		}
 		if role != user.Role {
 			fields["role"] = role
@@ -196,10 +212,11 @@ func (s *UserService) SetUserDisabled(id string, disabled bool) error {
 
 // UpdateSelfProfileRequest 用户自助更新资料
 type UpdateSelfProfileRequest struct {
-	Username *string `json:"username,omitempty" binding:"omitempty,min=3,max=32"`
-	Nickname *string `json:"nickname,omitempty"`
-	Email    *string `json:"email,omitempty"`
-	Avatar   *string `json:"avatar,omitempty"`
+	ViewingPreferences *model.ViewingPreferences `json:"viewing_preferences,omitempty"`
+	Username           *string                   `json:"username,omitempty" binding:"omitempty,min=3,max=32"`
+	Nickname           *string                   `json:"nickname,omitempty"`
+	Email              *string                   `json:"email,omitempty"`
+	Avatar             *string                   `json:"avatar,omitempty"`
 }
 
 // UpdateSelfProfile 用户更新自己的资料（用户名/昵称/邮箱/头像）
@@ -212,6 +229,22 @@ func (s *UserService) UpdateSelfProfile(userID string, req *UpdateSelfProfileReq
 	}
 
 	fields := map[string]interface{}{}
+	if req.ViewingPreferences != nil {
+		preferences := *req.ViewingPreferences
+		switch preferences.SubtitleLanguage {
+		case "", "auto", "off", "zh", "en", "ja":
+		default:
+			return nil, false, ErrInvalidViewingPreferences
+		}
+		if preferences.SubtitleLanguage == "" {
+			preferences.SubtitleLanguage = "auto"
+		}
+		encoded, err := json.Marshal(preferences)
+		if err != nil {
+			return nil, false, err
+		}
+		fields["viewing_preferences"] = string(encoded)
+	}
 	usernameChanged := false
 
 	if req.Username != nil {

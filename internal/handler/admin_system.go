@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -91,6 +92,7 @@ func (h *AdminHandler) GetUserPermission(c *gin.Context) {
 
 // UpdateUserPermissionRequest 更新用户权限请求
 type UpdateUserPermissionRequest struct {
+	ChildMode        *bool  `json:"child_mode"`
 	AllowedLibraries string `json:"allowed_libraries"` // 逗号分隔的媒体库ID
 	MaxRatingLevel   string `json:"max_rating_level"`
 	DailyTimeLimit   int    `json:"daily_time_limit"` // 分钟
@@ -106,11 +108,18 @@ func (h *AdminHandler) UpdateUserPermission(c *gin.Context) {
 		return
 	}
 
-	if err := h.permissionService.UpdateUserPermission(userID, req.AllowedLibraries, req.MaxRatingLevel, req.DailyTimeLimit); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新权限失败"})
+	mode := []bool{}
+	if req.ChildMode != nil {
+		mode = append(mode, *req.ChildMode)
+	}
+	if err := h.permissionService.UpdateUserPermission(userID, req.AllowedLibraries, req.MaxRatingLevel, req.DailyTimeLimit, mode...); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "更新权限失败"})
 		return
 	}
 
+	if encoded, err := json.Marshal(req); err == nil {
+		h.auditFromContext(c, "family.permission", "user", userID, string(encoded))
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "权限已更新"})
 }
 

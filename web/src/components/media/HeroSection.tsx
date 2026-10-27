@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/stores/auth'
 import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router-dom'
@@ -7,6 +8,7 @@ import { useToast } from '@/components/Toast'
 import { Button, Tag, buttonClassName } from '@/components/design-system'
 import { HeroContent, MediaArtwork } from '@/ui'
 import { useTranslation } from '@/i18n'
+import { episodeLabel, resumePosition } from '@/utils/viewing'
 import { formatDuration, formatDurationShort, formatTime } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
 import {
@@ -158,7 +160,6 @@ function getBackdropFallbackUrl(media: Media, version?: number) {
 
 export default function HeroSection({
   media,
-  playInfo,
   isFavorited,
   watchProgress,
   playlists,
@@ -176,7 +177,8 @@ export default function HeroSection({
 }: HeroSectionProps) {
   const assetRefreshVersion = usePosterVersion()
   const toast = useToast()
-  const { t } = useTranslation()
+  const { t, locale } = useTranslation()
+  const childMode = useAuthStore((state) => state.user?.child_mode ?? false)
   const [imgLoaded, setImgLoaded] = useState(false)
   const [failedBackdropKey, setFailedBackdropKey] = useState<string | null>(null)
   const [showPlaylistMenu, setShowPlaylistMenu] = useState(false)
@@ -208,7 +210,7 @@ export default function HeroSection({
     ? (media.episode_title || t('hero.episodeNum', { num: String(media.episode_num) }))
     : media.title
 
-  const isResume = !!watchProgress && !watchProgress.completed && watchProgress.position > 0
+  const isResume = !!watchProgress && resumePosition(watchProgress) > 0
   const watchDuration = watchProgress?.duration || media.duration || 0
   const watchPercent = watchProgress && watchDuration > 0
     ? Math.min(100, Math.max(0, Math.round((watchProgress.position / watchDuration) * 100)))
@@ -216,14 +218,6 @@ export default function HeroSection({
   const playLabel = isResume
     ? t('hero.continuePlayAt', { time: formatDurationShort(watchProgress.position) })
     : t('media.play')
-
-  const playStatus = playInfo
-    ? playInfo.is_strm
-      ? { label: 'STRM 远程流', tone: 'neutral' as const }
-      : playInfo.can_direct_play
-        ? { label: t('hero.directPlay'), tone: 'success' as const }
-        : { label: t('hero.needTranscode'), tone: 'warning' as const }
-    : null
 
   const episodeEyebrow = media.media_type === 'episode' && media.series_id ? (
     <Link
@@ -233,7 +227,7 @@ export default function HeroSection({
       <span className="truncate">{media.series?.title || media.title}</span>
       <ChevronRight size={14} aria-hidden="true" />
       <span className="shrink-0 text-[var(--nv-action-muted-hover)]">
-        S{String(media.season_num).padStart(2, '0')}E{String(media.episode_num).padStart(2, '0')}
+        {episodeLabel(media.season_num, media.episode_num, locale)}
       </span>
     </Link>
   ) : undefined
@@ -258,17 +252,10 @@ export default function HeroSection({
         {playLabel}
       </Link>
 
-      {media.trailer_url && onShowTrailer && (
-        <Button variant="secondary" size="lg" onClick={onShowTrailer}>
-          <Clapperboard size={17} aria-hidden="true" />
-          {t('media.trailer')}
-        </Button>
-      )}
 
       <Button
         variant="secondary"
         size="lg"
-        iconOnly
         onClick={onFavorite}
         className={isFavorited ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)] text-[var(--nv-action-muted-hover)]' : undefined}
         title={isFavorited ? t('media.removeFavorite') : t('media.addFavorite')}
@@ -276,9 +263,10 @@ export default function HeroSection({
         aria-pressed={isFavorited}
       >
         <Heart size={19} fill={isFavorited ? 'currentColor' : 'none'} aria-hidden="true" />
+        {isFavorited ? t('media.removeFavorite') : t('nav.favorites')}
       </Button>
 
-      <Button
+      {!childMode && <Button
         ref={playlistButtonRef}
         variant="secondary"
         size="lg"
@@ -293,7 +281,7 @@ export default function HeroSection({
         aria-haspopup="menu"
       >
         <ListPlus size={19} aria-hidden="true" />
-      </Button>
+      </Button>}
 
       <AnchoredMenu
         open={showPlaylistMenu}
@@ -338,6 +326,8 @@ export default function HeroSection({
         ariaLabel={t('hero.moreActions')}
         onClose={() => setShowMoreMenu(false)}
       >
+        {isResume && <Link to={`/play/${media.id}?start=0`} className={menuItemClassName} role="menuitem">从头播放</Link>}
+        {media.trailer_url && onShowTrailer && <button onClick={() => { onShowTrailer(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem"><Clapperboard size={14} aria-hidden="true" />{t('media.trailer')}</button>}
         {isAdmin && (
           <>
             <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
@@ -445,7 +435,6 @@ export default function HeroSection({
                 </Link>
               ))}
               {media.video_codec && <Tag>{media.video_codec}</Tag>}
-              {playStatus && <Tag tone={playStatus.tone}>{playStatus.label}</Tag>}
               {media.country && <span>{media.country}</span>}
             </>
           )}

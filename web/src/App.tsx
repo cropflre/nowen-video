@@ -1,10 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { lazy, Suspense, useEffect } from 'react'
+import { Fragment, lazy, Suspense, useEffect } from 'react'
 import { useAuthStore } from '@/stores/auth'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { ToastProvider } from '@/components/Toast'
 import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
+import { ViewingPreferenceBridge } from '@/components/ViewingPreferences'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
@@ -74,7 +75,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (user?.must_change_pwd && window.location.pathname !== '/force-change-password') {
     return <Navigate to="/force-change-password" replace />
   }
-  return <>{children}</>
+  if (user?.child_mode && ['/admin','/files','/preprocess','/stats','/playlists','/person/','/collections'].some((path) => window.location.pathname.startsWith(path))) {
+    return <Navigate to="/" replace />
+  }
+  return <Fragment key={`${user?.id}:${user?.role}:${user?.child_mode}`}>{children}</Fragment>
 }
 
 function CapabilityRoute({
@@ -119,6 +123,7 @@ export default function App() {
           }}
         >
           <ServerProfileLoader />
+          <ViewingPreferenceBridge />
           <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />

@@ -28,9 +28,11 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 import CastPanel from './CastPanel'
+import PlaybackFailure from './player/PlaybackFailure'
 import SubtitleSearchPanel from './SubtitleSearchPanel'
 import SubtitleContentSearch from './SubtitleContentSearch'
 import { Tag } from '@/components/design-system'
+import { subtitleMatchesLanguage } from '@/utils/viewing'
 import { parseWebVtt, type ParsedSubtitleCue } from '@/utils/webVtt'
 
 interface VideoPlayerProps {
@@ -39,6 +41,7 @@ interface VideoPlayerProps {
   mediaId: string
   title?: string
   startPosition?: number
+  onRetry?: () => void
   onBack?: () => void
   onNext?: () => void
   nextTitle?: string
@@ -49,7 +52,7 @@ interface VideoPlayerProps {
   spriteVttUrl?: string
 }
 
-const PLAYER_CONTROL_CLASS = 'flex h-9 min-w-9 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-secondary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]'
+const PLAYER_CONTROL_CLASS = 'flex h-11 min-w-11 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-secondary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]'
 const PLAYER_MENU_CLASS = 'absolute bottom-full right-0 mb-2 min-w-[200px] overflow-hidden rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2 shadow-[var(--nv-player-shadow)] backdrop-blur-xl'
 const PLAYER_MENU_ITEM = 'flex min-h-10 w-full items-center gap-2 rounded-[var(--nv-player-radius-control)] border border-transparent px-3 py-2 text-left text-sm text-[var(--nv-player-text-secondary)] transition-[background-color,border-color,color] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]'
 const PLAYER_MENU_ACTIVE = 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]'
@@ -62,6 +65,7 @@ export default function VideoPlayer({
   mediaId,
   title,
   startPosition = 0,
+  onRetry,
   onBack,
   onNext,
   nextTitle,
@@ -71,6 +75,8 @@ export default function VideoPlayer({
   onRemuxFallback,
   spriteVttUrl,
 }: VideoPlayerProps) {
+  const autoPlayNext = useAuthStore((state) => state.user?.viewing_preferences?.auto_play_next ?? true)
+  const subtitleLanguage = useAuthStore((state) => state.user?.viewing_preferences?.subtitle_language || 'auto')
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -108,7 +114,8 @@ export default function VideoPlayer({
   const [activeSubtitle, setActiveSubtitle] = useState<string | null>(null)
   const [subtitleCues, setSubtitleCues] = useState<ParsedSubtitleCue[]>([])
   const subtitleLoadControllerRef = useRef<AbortController | null>(null)
-  const userDisabledSubtitleRef = useRef(false)
+  const userDisabledSubtitleRef = useRef(subtitleLanguage === 'off')
+  const subtitlePreferenceRef = useRef(subtitleLanguage)
   const [showCastPanel, setShowCastPanel] = useState(false)
 
   const [aiSubtitleStatus, setAiSubtitleStatus] = useState<ASRTask | null>(null)
@@ -370,7 +377,26 @@ export default function VideoPlayer({
 
   useEffect(() => () => subtitleLoadControllerRef.current?.abort(), [])
 
+  useEffect(() => {
+    if (subtitlePreferenceRef.current === subtitleLanguage) return
+    subtitlePreferenceRef.current = subtitleLanguage
+    // Account preferences may arrive after the player has mounted. Clear the
+    // previous request and track before applying the newly loaded language.
+    loadSubtitle('off', '')
+    userDisabledSubtitleRef.current = subtitleLanguage === 'off'
+  }, [subtitleLanguage, loadSubtitle])
+
   const autoSelectSubtitle = useCallback(() => {
+    if (subtitleLanguage === 'off') { loadSubtitle('off', ''); return }
+    if (subtitleLanguage !== 'auto') {
+      const external = externalSubs.find((track) => subtitleMatchesLanguage(`${track.language} ${track.filename}`, subtitleLanguage))
+      if (external) { loadSubtitle('external', external.path); return }
+      const embedded = embeddedSubs.find((track) => !track.bitmap && subtitleMatchesLanguage(`${track.language} ${track.title}`, subtitleLanguage))
+      if (embedded) { loadSubtitle('embedded', String(embedded.index)); return }
+      const translated = translatedSubs.find((track) => subtitleMatchesLanguage(track.language, subtitleLanguage))
+      if (translated) loadSubtitle('translated', translated.language)
+      return
+    }
     if (externalSubs.length > 0) {
       loadSubtitle('external', externalSubs[0].path)
       return
@@ -385,7 +411,7 @@ export default function VideoPlayer({
       return
     }
     if (translatedSubs.length > 0) loadSubtitle('translated', translatedSubs[0].language)
-  }, [externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, loadSubtitle])
+  }, [externalSubs, embeddedSubs, aiSubtitleStatus, translatedSubs, loadSubtitle, subtitleLanguage])
 
   useEffect(() => {
     if (!mediaId || activeSubtitle || userDisabledSubtitleRef.current) return
@@ -439,6 +465,10 @@ export default function VideoPlayer({
       hls.loadSource(src)
       hls.attachMedia(video)
       hls.on(Hls.Events.MANIFEST_PARSED, (_event, data) => {
+        // Subtitles use the selected custom cue renderer. Do not let a default
+        // HLS track display a second language or bypass the account's Off setting.
+        hls.subtitleDisplay = false
+        hls.subtitleTrack = -1
         const levels = data.levels.map((level, index) => ({
           index,
           label: `${level.height}p`,
@@ -514,7 +544,7 @@ export default function VideoPlayer({
     }
     const onEnded = () => {
       setPlaying(false)
-      if (onNext) setNextCountdown(5)
+      if (onNext && autoPlayNext) setNextCountdown(5)
     }
     const onSeeked = () => {
       const position = video.currentTime + remuxOffsetRef.current
@@ -538,7 +568,7 @@ export default function VideoPlayer({
       video.removeEventListener('ended', onEnded)
       video.removeEventListener('seeked', onSeeked)
     }
-  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext, mediaId])
+  }, [setPlaying, setCurrentTime, setDuration, setVolume, setMuted, onNext, mediaId, autoPlayNext])
 
   useEffect(() => {
     if (nextCountdown === null) return
@@ -954,14 +984,7 @@ export default function VideoPlayer({
 
       {loadError && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-[color-mix(in_srgb,var(--nv-player-canvas)_90%,transparent)] p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-surface)] p-7 text-center shadow-[var(--nv-player-shadow)]">
-            <p className="text-lg font-medium text-[var(--nv-player-danger)]">{loadError}</p>
-            {onBack && (
-              <button type="button" onClick={onBack} className="mt-5 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-5 py-2.5 text-sm text-[var(--nv-player-text-primary)] transition-[background-color,border-color] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)]">
-                返回
-              </button>
-            )}
-          </div>
+          <PlaybackFailure detail={loadError} onRetry={onRetry} onBack={onBack} />
         </div>
       )}
 

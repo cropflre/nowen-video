@@ -169,3 +169,9 @@
   .nv-media-card-overlay,
   .nv-media-card-play { transition: none; }
 }
+
+/* Playback must remain discoverable without a mouse hover. */
+@media (hover: none), (pointer: coarse) {
+  .nv-media-card-overlay { opacity: 1; place-items: end; padding: 8px; }
+  .nv-media-card-play { opacity: 1; transform: none; min-width: 44px; min-height: 44px; }
+}

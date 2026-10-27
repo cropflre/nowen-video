@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"time"
 
 	"github.com/nowen-video/nowen-video/internal/model"
@@ -80,4 +81,24 @@ func (r *UserRepo) CountAdmins() (int64, error) {
 	var count int64
 	err := r.db.Model(&model.User{}).Where("role = ?", "admin").Count(&count).Error
 	return count, err
+}
+
+// ErrInviteUnavailable covers expired, revoked and exhausted invitations.
+var ErrInviteUnavailable = errors.New("invitation unavailable")
+
+// CreateWithInvite consumes a slot and creates the account in one transaction.
+// A failed account insert rolls back the slot; concurrent joins cannot exceed max_uses.
+func (r *UserRepo) CreateWithInvite(user *model.User, inviteID string) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.InviteCode{}).
+			Where("id = ? AND (expires_at IS NULL OR expires_at > ?) AND (max_uses = 0 OR used_count < max_uses)", inviteID, time.Now()).
+			UpdateColumn("used_count", gorm.Expr("used_count + 1"))
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrInviteUnavailable
+		}
+		return tx.Create(user).Error
+	})
 }

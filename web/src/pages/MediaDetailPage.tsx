@@ -1,3 +1,4 @@
+import FamilyRatingEditor from '@/components/media/FamilyRatingEditor'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { adminApi, mediaApi, playlistApi, recommendApi, streamApi, userApi } from '@/api'
@@ -42,9 +43,9 @@ import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { AnimatePresence, motion } from 'framer-motion'
 import { durations, easeSmooth } from '@/lib/motion'
-import { ArrowLeft, Captions, Pencil, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Captions } from 'lucide-react'
 
-type DetailTab = 'overview' | 'cast' | 'highlights' | 'tech' | 'subtitles' | 'related'
+type DetailTab = 'overview' | 'cast' | 'subtitles' | 'related'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -486,26 +487,15 @@ export default function MediaDetailPage() {
           <ArrowLeft size={17} aria-hidden="true" />
         </Button>
 
-        <div className="nv-detail-breadcrumb" title={`影视库 / ${breadcrumbLabel}`}>
-          <span>影视库</span>
+        <div className="nv-detail-breadcrumb" title={`找片 / ${breadcrumbLabel}`}>
+          <span>找片</span>
           <span aria-hidden="true">/</span>
           <strong>{breadcrumbLabel}</strong>
         </div>
 
         <div className="nv-detail-toolbar-spacer" />
 
-        {isAdmin && (
-          <div className="nv-detail-admin-actions">
-            <Button type="button" variant="ghost" size="sm" onClick={handleEditMetadata}>
-              <Pencil size={14} aria-hidden="true" />
-              编辑元数据
-            </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={handleRefreshMetadata} disabled={scraping}>
-              <RefreshCw size={14} className={scraping ? 'animate-spin' : undefined} aria-hidden="true" />
-              {scraping ? '重新刮削中' : '重新刮削'}
-            </Button>
-          </div>
-        )}
+
       </div>
 
       <HeroSection
@@ -538,8 +528,6 @@ export default function MediaDetailPage() {
               items={[
                 { value: 'overview', label: '简介', panelId: 'detail-overview', tabId: 'detail-tab-overview' },
                 { value: 'cast', label: '演职人员', panelId: 'detail-cast', tabId: 'detail-tab-cast' },
-                { value: 'highlights', label: '片段', panelId: 'detail-highlights', tabId: 'detail-tab-highlights' },
-                { value: 'tech', label: '技术规格', panelId: 'detail-tech', tabId: 'detail-tab-tech' },
                 { value: 'subtitles', label: '字幕', panelId: 'detail-subtitles', tabId: 'detail-tab-subtitles' },
                 { value: 'related', label: '相关推荐', panelId: 'detail-related', tabId: 'detail-tab-related' },
               ]}
@@ -554,31 +542,17 @@ export default function MediaDetailPage() {
               <CastGrid persons={persons} />
             </section>
 
-            <section id="detail-highlights" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-highlights" hidden={activeTab !== 'highlights'}>
-              <MediaHighlightsPanel mediaId={media.id} isAdmin={isAdmin} />
-            </section>
-
-            <section id="detail-tech" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-tech" hidden={activeTab !== 'tech'}>
-              <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
-              <details className="nv-detail-tech-details">
-                <summary>查看完整技术信息</summary>
-                <div className="nv-detail-tech-details-body">
-                  <MediaTechSpecs media={media} techSpecs={techSpecs} fileInfo={fileInfo} library={libraryInfo} playbackStats={playbackStats} loading={enhancedLoading} isAdmin={isAdmin} />
-                </div>
-              </details>
-            </section>
-
             <section id="detail-subtitles" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-subtitles" hidden={activeTab !== 'subtitles'}>
               {enhancedLoading && !hasSubtitleData ? (
                 <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" aria-label="正在加载字幕信息" />
               ) : hasSubtitleData ? (
                 <div className="nv-detail-subtitle-tab">
                   <div className="nv-detail-subtitle-tab-copy">
-                    <span className="nv-detail-subtitle-tab-eyebrow">SUBTITLES</span>
+
                     <DetailSectionTitle icon={<Captions size={17} />}>字幕</DetailSectionTitle>
-                    <p>已检测到 {embeddedSubtitleCount + externalSubtitleCount} 个字幕来源，可查看内嵌与外挂字幕并管理文本字幕提取。</p>
+                    <p>已检测到 {embeddedSubtitleCount + externalSubtitleCount} 个字幕来源，播放时可以选择或关闭字幕。</p>
                   </div>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>
+                  {isAdmin && <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>}
                 </div>
               ) : (
                 <EmptyState className="nv-detail-tab-empty-state" icon={<Captions size={23} aria-hidden="true" />} title="暂无字幕" description="当前媒体暂未检测到内嵌字幕轨道或外挂字幕文件。" />
@@ -591,6 +565,20 @@ export default function MediaDetailPage() {
               )}
               <RecommendationCarousel recommendations={recommendations} />
             </section>
+            <details className="nv-detail-tech-details mt-6">
+              <summary>更多信息与片段</summary>
+              <div className="nv-detail-tech-details-body space-y-6">
+                {isAdmin && <FamilyRatingEditor id={media.id} />}
+                <MediaHighlightsPanel mediaId={media.id} isAdmin={isAdmin} />
+                <details className="nv-detail-tech-details">
+                  <summary>技术信息</summary>
+                  <div className="nv-detail-tech-details-body">
+                    <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
+                    <MediaTechSpecs media={media} techSpecs={techSpecs} fileInfo={fileInfo} library={libraryInfo} playbackStats={playbackStats} loading={enhancedLoading} isAdmin={isAdmin} />
+                  </div>
+                </details>
+              </div>
+            </details>
           </main>
 
           <MediaDetailSidebar media={media} playInfo={playInfo} techSpecs={techSpecs} fileInfo={fileInfo} playbackStats={playbackStats} isAdmin={isAdmin} onManageSubtitles={() => setShowSubtitleManager(true)} />

@@ -1,3 +1,4 @@
+import { useAuthStore } from '@/stores/auth'
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { aiApi, mediaApi, personApi, streamApi } from '@/api'
@@ -17,7 +18,7 @@ import {
   User,
   X,
 } from 'lucide-react'
-import { t as translate, useTranslation } from '@/i18n'
+import { useTranslation } from '@/i18n'
 
 const SORT_OPTIONS = [
   { value: 'relevance', labelKey: 'search.sortRelevance' },
@@ -163,7 +164,7 @@ function uniqueById<T extends { id: string }>(items: T[]) {
 
 async function loadSearchUniverse(rawQuery: string): Promise<SearchUniverse> {
   const query = rawQuery.trim()
-  const cacheKey = normalizeText(query)
+  const cacheKey = `${useAuthStore.getState().user?.id || 'guest'}:${useAuthStore.getState().user?.role || 'guest'}:${normalizeText(query)}`
   const cached = searchUniverseCache.get(cacheKey)
   if (cached && Date.now() - cached.loadedAt <= SEARCH_CACHE_TTL) {
     return { media: cached.media, series: cached.series }
@@ -270,6 +271,8 @@ export default function SearchPage() {
   const [people, setPeople] = useState<Person[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [searchError, setSearchError] = useState(false)
+  const [searchAttempt, setSearchAttempt] = useState(0)
   const [showFilters, setShowFilters] = useState(false)
   const [aiState, setAiState] = useState<{ sourceQuery: string; intent: SearchIntent } | null>(null)
   const [aiLoadingQuery, setAiLoadingQuery] = useState<string | null>(null)
@@ -384,6 +387,7 @@ export default function SearchPage() {
 
   useEffect(() => {
     const requestId = ++searchRequestRef.current
+    setSearchError(false)
     if (!query || !effectiveSearch.query) {
       setResults([])
       setPeople([])
@@ -418,7 +422,7 @@ export default function SearchPage() {
         setResults([])
         setPeople([])
         setTotal(0)
-        toastRef.current.error(translate('search.searchFailed'))
+        setSearchError(true)
       })
       .finally(() => {
         if (searchRequestRef.current === requestId) setLoading(false)
@@ -427,7 +431,7 @@ export default function SearchPage() {
     return () => {
       if (searchRequestRef.current === requestId) searchRequestRef.current += 1
     }
-  }, [effectiveSearch, page, query, size])
+  }, [effectiveSearch, page, query, size, searchAttempt])
 
   const totalPages = Math.max(1, Math.ceil(total / size))
   useEffect(() => {
@@ -595,9 +599,9 @@ export default function SearchPage() {
       {searched && !loading && !aiLoading && !hasAnyResults && (
         <EmptyState
           icon={<SearchIcon size={22} aria-hidden="true" />}
-          title={t('search.noMatch')}
-          description={hasActiveFilters ? t('search.noMatchHintFiltered') : t('search.noMatchHint')}
-          action={hasActiveFilters ? <Button variant="secondary" size="sm" onClick={clearFilters}>{t('search.clearFilterConditions')}</Button> : undefined}
+          title={searchError ? t('search.searchFailed') : t('search.noMatch')}
+          description={searchError ? t('family.loadFailedHint') : hasActiveFilters ? t('search.noMatchHintFiltered') : t('search.noMatchHint')}
+          action={searchError ? <Button onClick={() => setSearchAttempt((value) => value + 1)}>{t('family.retry')}</Button> : hasActiveFilters ? <Button variant="secondary" size="sm" onClick={clearFilters}>{t('search.clearFilterConditions')}</Button> : undefined}
         />
       )}
 

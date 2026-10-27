@@ -80,8 +80,6 @@
 .nv-series-source-empty { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--nv-text-tertiary); font-size: 10px; }
 
 @media (min-width: 48rem) {
-  .nv-series-detail-page .nv-series-detail-tabs { display: none; }
-  .nv-series-detail-page .nv-detail-tab-panel[hidden] { display: block; }
   .nv-series-detail-page [class*="group/series-slider"] > div.flex { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; overflow: visible; padding-bottom: 0; scroll-snap-type: none; }
   .nv-series-detail-page [class*="group/series-slider"] > button { display: none; }
   .nv-series-detail-page .nv-episode-slide-card { width: auto; min-width: 0; border-radius: var(--nv-radius-card); box-shadow: none; }

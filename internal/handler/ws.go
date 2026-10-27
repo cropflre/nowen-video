@@ -20,6 +20,7 @@ var upgrader = websocket.Upgrader{
 
 // WSHandler WebSocket处理器
 type WSHandler struct {
+	users  *service.UserService
 	hub    *service.WSHub
 	logger *zap.SugaredLogger
 }
@@ -29,17 +30,28 @@ func (h *WSHandler) HandleWebSocket(c *gin.Context) {
 	// 获取用户信息（已通过JWT中间件验证）
 	userID, _ := c.Get("user_id")
 
+	// Check again on delivery: a pre-existing adult socket must not survive a
+	// parent's conversion of the account into a child account.
+	uid, _ := userID.(string)
+	if h.users == nil {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	initial, err := h.users.GetProfile(uid)
+	if err != nil || initial.ChildMode || initial.Disabled {
+		c.AbortWithStatus(http.StatusForbidden)
+		return
+	}
+	authorize := func() bool {
+		current, err := h.users.GetProfile(uid)
+		return err == nil && !current.ChildMode && !current.Disabled && current.TokenVersion == initial.TokenVersion
+	}
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.logger.Errorf("WebSocket升级失败: %v", err)
 		return
 	}
 
-	uid := ""
-	if userID != nil {
-		uid = userID.(string)
-	}
-
-	h.hub.RegisterClient(conn, uid)
+	h.hub.RegisterClient(conn, uid, authorize)
 	h.logger.Debugf("新的WebSocket连接: user=%s", uid)
 }

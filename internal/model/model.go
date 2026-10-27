@@ -10,13 +10,22 @@ import (
 	"gorm.io/gorm"
 )
 
+// ViewingPreferences is account-scoped and contains no access-control settings.
+type ViewingPreferences struct {
+	LargeText        bool   `json:"large_text"`
+	SubtitleLanguage string `json:"subtitle_language"`
+	AutoPlayNext     *bool  `json:"auto_play_next,omitempty"`
+}
+
 // User 用户模型
 type User struct {
-	ID       string `json:"id" gorm:"primaryKey;type:text"`
-	Username string `json:"username" gorm:"uniqueIndex;type:text;not null"`
-	Password string `json:"-" gorm:"type:text;not null"`        // bcrypt哈希，JSON不输出
-	Role     string `json:"role" gorm:"type:text;default:user"` // admin / user
-	Avatar   string `json:"avatar" gorm:"type:text"`
+	ChildMode          bool               `json:"child_mode" gorm:"default:false"`
+	ViewingPreferences ViewingPreferences `json:"viewing_preferences" gorm:"serializer:json;type:text"`
+	ID                 string             `json:"id" gorm:"primaryKey;type:text"`
+	Username           string             `json:"username" gorm:"uniqueIndex;type:text;not null"`
+	Password           string             `json:"-" gorm:"type:text;not null"`        // bcrypt哈希，JSON不输出
+	Role               string             `json:"role" gorm:"type:text;default:user"` // admin / user
+	Avatar             string             `json:"avatar" gorm:"type:text"`
 	// 扩展资料
 	Nickname string `json:"nickname" gorm:"type:text"`
 	Email    string `json:"email" gorm:"type:text;index"`
@@ -656,6 +665,7 @@ func (cr *ContentRating) BeforeCreate(tx *gorm.DB) error {
 
 // UserPermission 用户权限设置
 type UserPermission struct {
+	ChildMode        bool      `json:"child_mode" gorm:"-"`
 	ID               string    `json:"id" gorm:"primaryKey;type:text"`
 	UserID           string    `json:"user_id" gorm:"uniqueIndex;type:text;not null"`
 	AllowedLibraries string    `json:"allowed_libraries" gorm:"type:text"`              // 允许访问的媒体库ID，逗号分隔，空表示全部
@@ -952,6 +962,8 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "logo_path", DDL: "ALTER TABLE `media` ADD COLUMN `logo_path` text DEFAULT ''"},
 		},
 		"users": {
+			{Column: "child_mode", DDL: "ALTER TABLE `users` ADD COLUMN `child_mode` numeric DEFAULT 0"},
+			{Column: "viewing_preferences", DDL: "ALTER TABLE `users` ADD COLUMN `viewing_preferences` text"},
 			{Column: "nickname", DDL: "ALTER TABLE `users` ADD COLUMN `nickname` text DEFAULT ''"},
 			{Column: "email", DDL: "ALTER TABLE `users` ADD COLUMN `email` text DEFAULT ''"},
 			{Column: "disabled", DDL: "ALTER TABLE `users` ADD COLUMN `disabled` numeric DEFAULT 0"},

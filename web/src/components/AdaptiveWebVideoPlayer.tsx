@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AlertTriangle, Loader2, ShieldCheck } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import VideoPlayer from './VideoPlayer'
+import PlaybackFailure from './player/PlaybackFailure'
 import SessionVideoPlayer from './SessionVideoPlayer'
 import { streamApi, type PlaybackMethod, type PlaybackPlan } from '@/api/stream'
 import { usePlayerStore } from '@/stores/player'
@@ -85,13 +86,6 @@ function planHasUsableSource(plan: PlaybackPlan): boolean {
   return Boolean(plan.url)
 }
 
-function labelForMode(mode: BrowserPlaybackMode): string {
-  if (mode === 'direct') return '直接播放'
-  if (mode === 'remux') return 'Remux 兼容播放'
-  if (mode === 'smart_remux') return 'Smart Remux（音频转码）'
-  return 'HLS 转码播放'
-}
-
 export default function AdaptiveWebVideoPlayer({
   mediaId,
   initialPlan,
@@ -124,7 +118,7 @@ export default function AdaptiveWebVideoPlayer({
   const [resumePosition, setResumePosition] = useState(Math.max(0, startPosition))
   const [transitioning, setTransitioning] = useState(false)
   const [terminalError, setTerminalError] = useState<string | null>(null)
-  const [lastTransition, setLastTransition] = useState<PlaybackTransition | null>(null)
+  const [retryVersion, setRetryVersion] = useState(0)
 
   useEffect(() => {
     const resetConfig = resetConfigRef.current
@@ -137,7 +131,6 @@ export default function AdaptiveWebVideoPlayer({
     setResumePosition(Math.max(0, resetConfig.startPosition))
     setTransitioning(false)
     setTerminalError(null)
-    setLastTransition(null)
   }, [mediaId, resetKey])
 
   const activeMode = useMemo(() => modeForMethod(activePlan?.method) || initialMode, [activePlan?.method, initialMode])
@@ -164,7 +157,7 @@ export default function AdaptiveWebVideoPlayer({
     const store = usePlayerStore.getState()
     const storePosition = Number.isFinite(store.currentTime) ? Math.max(0, store.currentTime) : 0
     const elementPosition = Number.isFinite(video.currentTime) ? Math.max(0, video.currentTime) : 0
-    const position = Math.max(storePosition, elementPosition)
+    const position = Math.max(storePosition, elementPosition, video.readyState === 0 ? resumePosition : 0)
     const reason = mediaErrorReason(video.error)
     const caps = getMediaCapabilities()
     const analysis = analyzeMediaError(video.error, caps)
@@ -196,8 +189,7 @@ export default function AdaptiveWebVideoPlayer({
         setTransitioning(false)
         window.setTimeout(() => {
           if (operationRef.current === operation) {
-            video.load()
-            void video.play().catch(() => undefined)
+            setRetryVersion((value) => value + 1)
           }
         }, NETWORK_RETRY_DELAY_MS)
         return
@@ -229,7 +221,6 @@ export default function AdaptiveWebVideoPlayer({
 
       const transition = { from, to, reason }
       setActivePlan(nextPlan)
-      setLastTransition(transition)
       onTransition?.(transition)
     } catch (cause) {
       if (operationRef.current === operation) setTerminalError(`${reason}；${errorMessage(cause)}`)
@@ -239,7 +230,7 @@ export default function AdaptiveWebVideoPlayer({
         transitionInFlightRef.current = false
       }
     }
-  }, [activeMode, mediaId, onTransition])
+  }, [activeMode, mediaId, onTransition, resumePosition])
 
   useEffect(() => {
     const root = rootRef.current
@@ -250,14 +241,13 @@ export default function AdaptiveWebVideoPlayer({
     }
     root.addEventListener('error', handleMediaError, true)
     return () => root.removeEventListener('error', handleMediaError, true)
-  }, [activeMode, requestFallback])
+  }, [activeMode, requestFallback, terminalError, retryVersion])
 
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
     const restorePlaybackState = (event: Event) => {
       if (!(event.target instanceof HTMLVideoElement)) return
-      networkRetryCountRef.current.delete(activeMode)
       const snapshot = snapshotRef.current
       if (!snapshot) return
       const video = event.target
@@ -272,34 +262,39 @@ export default function AdaptiveWebVideoPlayer({
     }
     root.addEventListener('loadedmetadata', restorePlaybackState, true)
     return () => root.removeEventListener('loadedmetadata', restorePlaybackState, true)
-  }, [activeMode, activeSrc, requiresSession])
+  }, [activeMode, activeSrc, requiresSession, terminalError, retryVersion])
 
   useEffect(() => () => {
     operationRef.current += 1
     transitionInFlightRef.current = false
   }, [])
 
-  if (terminalError) {
-    return (
-      <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]">
-        <AlertTriangle className="text-[var(--nv-player-danger)]" size={34} aria-hidden="true" />
-        <p className="text-base font-medium">所有兼容播放方式都失败了</p>
-        <p className="max-w-2xl text-sm text-[var(--nv-player-text-tertiary)]">{terminalError}</p>
-        {onBack && <button type="button" onClick={onBack} className="mt-2 rounded-[var(--nv-player-radius-control)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-4 py-2 text-sm transition-colors hover:bg-[var(--nv-player-surface-hover)]">返回</button>}
-      </div>
-    )
+  const handleRetry = () => {
+    // Keep the absolute playhead, including session offsets, when remounting.
+    const current = usePlayerStore.getState().currentTime
+    if (Number.isFinite(current) && current > 0) setResumePosition(current)
+    operationRef.current += 1
+    transitionInFlightRef.current = false
+    failedModesRef.current.clear()
+    networkRetryCountRef.current.clear()
+    setTerminalError(null)
+    setTransitioning(false)
+    setRetryVersion((value) => value + 1)
   }
+
+  if (terminalError) return <PlaybackFailure detail={terminalError} onRetry={handleRetry} onBack={onBack} />
 
   return (
     <div ref={rootRef} className="group/player relative h-full w-full bg-[var(--nv-player-canvas)]">
       {requiresSession ? (
         <SessionVideoPlayer
-          key={`${mediaId}:${activePlan?.method || activeMode}:${activePlan?.url || 'session'}`}
+          key={`${mediaId}:${activePlan?.method || activeMode}:${activePlan?.url || 'session'}:${retryVersion}`}
           mediaId={mediaId}
           title={title}
           startPosition={resumePosition}
           knownDuration={knownDuration}
           onBack={onBack}
+          onRetry={handleRetry}
           onNext={onNext}
           nextTitle={nextTitle}
           onPreprocessReady={onPreprocessReady}
@@ -307,13 +302,14 @@ export default function AdaptiveWebVideoPlayer({
         />
       ) : (
         <VideoPlayer
-          key={`${mediaId}:${activeMode}:${activeSrc}`}
+          key={`${mediaId}:${activeMode}:${activeSrc}:${retryVersion}`}
           src={activeSrc}
           mode={activeMode}
           mediaId={mediaId}
           title={title}
           startPosition={resumePosition}
           onBack={onBack}
+          onRetry={handleRetry}
           onNext={onNext}
           nextTitle={nextTitle}
           isStrm={isStrm}
@@ -326,14 +322,7 @@ export default function AdaptiveWebVideoPlayer({
       {transitioning && (
         <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-[color-mix(in_srgb,var(--nv-player-canvas)_80%,transparent)] text-[var(--nv-player-text-primary)] backdrop-blur-sm">
           <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={32} aria-hidden="true" />
-          <p className="text-sm text-[var(--nv-player-text-secondary)]">当前方式播放失败，正在切换兼容方案...</p>
-        </div>
-      )}
-
-      {!transitioning && lastTransition && (
-        <div className="pointer-events-none absolute bottom-20 right-4 z-[65] flex items-center gap-2 rounded-[var(--nv-player-radius-control)] border px-3 py-2 text-xs backdrop-blur-md" style={{ borderColor: 'color-mix(in srgb, var(--nv-player-success) 25%, transparent)', background: 'color-mix(in srgb, var(--nv-player-canvas) 70%, transparent)', color: 'var(--nv-player-success)' }}>
-          <ShieldCheck size={14} aria-hidden="true" />
-          <span>已自动切换为{labelForMode(lastTransition.to)}</span>
+          <p className="text-sm text-[var(--nv-player-text-secondary)]">正在尝试另一种播放方式，请稍候…</p>
         </div>
       )}
     </div>

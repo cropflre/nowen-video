@@ -67,18 +67,6 @@
     padding-bottom: 30px;
   }
 
-  /* Desktop detail is a continuous document. Remove every residual divider at
-     the Hero/content seam and give the first real section enough breathing room. */
-  .nv-media-detail-page:not(.nv-series-detail-page) .nv-detail-section-tabs {
-    display: none !important;
-    height: 0 !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: 0 !important;
-    box-shadow: none !important;
-  }
-
   .nv-media-detail-page .nv-detail-content-shell,
   .nv-media-detail-page .nv-detail-body-grid,
   .nv-media-detail-page .nv-detail-main-column,

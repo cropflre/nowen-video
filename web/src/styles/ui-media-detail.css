@@ -293,22 +293,8 @@
   box-shadow: none;
 }
 
-/* Visual order follows Hills Lite on desktop: cast -> similar -> metadata ->
- * highlights -> technical info -> subtitles. Hero already owns the synopsis. */
-@media (min-width: 48rem) {
-  .nv-media-detail-page:not(.nv-series-detail-page) .nv-detail-section-tabs { display: none; }
-  .nv-media-detail-page:not(.nv-series-detail-page) .nv-detail-tab-panel[hidden] { display: block; }
-
-  .nv-media-detail-page #detail-cast { order: 1; margin-top: 0; }
-  .nv-media-detail-page #detail-related { order: 2; }
-  .nv-media-detail-page #detail-overview { order: 3; }
-  .nv-media-detail-page #detail-highlights { order: 4; }
-  .nv-media-detail-page #detail-tech { order: 5; }
-  .nv-media-detail-page #detail-subtitles { order: 6; }
-
-  .nv-media-detail-page #detail-overview .nv-media-info-intro { display: none; }
-  .nv-media-detail-page #detail-overview .nv-media-info-badges { border-top: 0; }
-}
+/* Keep the same explicit viewing sections on desktop and mobile. */
+.nv-media-detail-page .nv-detail-tab-panel[hidden] { display: none; }
 
 .nv-media-detail-page .nv-detail-tab-secondary-section { margin-top: 24px; }
 .nv-media-detail-page .nv-media-info {
@@ -452,12 +438,13 @@
 }
 .nv-detail-tech-details { margin-top: 10px; border-bottom: 1px solid var(--nv-border-subtle); }
 .nv-detail-tech-details > summary {
-  min-height: 34px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   padding-inline: 2px;
   color: var(--nv-text-tertiary);
-  font-size: 10.5px;
+  font-size: 14px;
+  cursor: pointer;
   list-style: none;
 }
 .nv-detail-tech-details > summary::-webkit-details-marker { display: none; }

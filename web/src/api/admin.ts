@@ -28,7 +28,7 @@ export const adminApi = {
   listUsers: () =>
     api.get<ListResponse<User>>('/admin/users'),
 
-  createUser: (data: { username: string; password: string; role?: 'admin' | 'user'; nickname?: string; email?: string }) =>
+  createUser: (data: { child_mode?: boolean; username: string; password: string; role?: 'admin' | 'user'; nickname?: string; email?: string }) =>
     api.post<{ data: User }>('/admin/users', data),
 
   updateUser: (id: string, data: { role?: 'admin' | 'user'; nickname?: string; email?: string; avatar?: string }) =>
@@ -62,6 +62,9 @@ export const adminApi = {
 
   deleteInviteCode: (id: string) =>
     api.delete(`/admin/invite-codes/${id}`),
+
+  setFamilyRating: (id: string, level: string, series = false) =>
+    api.put(`/admin/${series ? `series/${id}/rating` : `rating/${id}`}`, { level }),
 
   systemInfo: () =>
     api.get<{ data: SystemInfo }>('/admin/system'),
