@@ -25,6 +25,27 @@ func familyClock(t *testing.T) (*FamilyPlaybackService, *time.Time) {
 	return s, &now
 }
 
+func TestFamilyFinalHeartbeatReportsExhaustedBudget(t *testing.T) {
+	s, now := familyClock(t)
+	grant, err := s.Start("child", "safe-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for elapsed := 5; elapsed <= 55; elapsed += 5 {
+		*now = now.Add(5 * time.Second)
+		if _, err = s.Renew("child", grant.LeaseID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	*now = now.Add(5*time.Second + time.Millisecond)
+	if _, err = s.Renew("child", grant.LeaseID); !errors.Is(err, ErrTimeLimitExceeded) {
+		t.Fatalf("final heartbeat reported %v instead of budget exhaustion", err)
+	}
+	if err = s.CheckAccess("child", "safe-a"); !errors.Is(err, ErrFamilyLeaseExpired) {
+		t.Fatalf("expired grant can access content: %v", err)
+	}
+}
+
 func TestFamilyBudgetCountsServerTimeAcrossSeeksPausesAndRestarts(t *testing.T) {
 	s, now := familyClock(t)
 	grant, err := s.Start("child", "safe-a")

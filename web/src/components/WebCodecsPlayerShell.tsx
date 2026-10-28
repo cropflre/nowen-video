@@ -1,4 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
+import { shouldIgnorePlaybackShortcut } from '@/utils/playbackShortcuts'
 /**
  * WebCodecsPlayerShell —— 基于 WebCodecsPlayer 的完整播放 UI
  *
@@ -203,6 +204,7 @@ export default function WebCodecsPlayerShell({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (shouldIgnorePlaybackShortcut(e)) return
       if (e.target instanceof HTMLInputElement) return
       switch (e.code) {
         case 'Space':

@@ -6,6 +6,7 @@ import { prepareChildViewing } from '@/hooks/useChildViewing'
 import { usePlaybackSessionSource } from '@/hooks/usePlaybackSessionSource'
 import { usePlayerStore } from '@/stores/player'
 import { clearPlaybackSessionRuntime, setPlaybackSessionRuntime } from '@/playback/sessionRuntime'
+import { shouldIgnorePlaybackShortcut } from '@/utils/playbackShortcuts'
 
 interface SessionVideoPlayerProps {
   mediaId: string
@@ -199,6 +200,7 @@ export default function SessionVideoPlayer({
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (shouldIgnorePlaybackShortcut(event)) return
       if (!playback.sessionId || playback.loading) return
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const target = event.target as HTMLElement | null

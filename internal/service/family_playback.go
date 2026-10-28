@@ -152,6 +152,17 @@ func (s *FamilyPlaybackService) mutate(userID, mediaID, leaseID, action string) 
 			} // Idempotent; stale stop cannot close a new lease.
 		} else if action == "renew" {
 			if lease.ID != leaseID || leaseID == "" || !now.Before(lease.ExpiresAt) || now.Before(lease.StartedAt) || lease.TokenVersion != user.TokenVersion {
+				// The last heartbeat can arrive just after the final grant expires.
+				// Report the exhausted daily budget rather than a recoverable lease error.
+				if lease.ID == leaseID && leaseID != "" && lease.TokenVersion == user.TokenVersion && !now.Before(lease.ExpiresAt) && perm.DailyTimeLimit > 0 {
+					status, statusErr := s.status(tx, user, perm, now)
+					if statusErr != nil {
+						return statusErr
+					}
+					if status.RemainingSeconds == 0 {
+						return ErrTimeLimitExceeded
+					}
+				}
 				return ErrFamilyLeaseExpired
 			}
 			mediaID = lease.MediaID

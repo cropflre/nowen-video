@@ -7,6 +7,7 @@ import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
 import { ViewingPreferenceBridge } from '@/components/ViewingPreferences'
 import DeviceSessionBridge from '@/components/DeviceSessionBridge'
+import ViewerAssistant from '@/components/ViewerAssistant'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
@@ -132,6 +133,7 @@ export default function App() {
           <ServerProfileLoader />
           <ViewingPreferenceBridge />
           <DeviceSessionBridge />
+          <ViewerAssistant />
           <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />

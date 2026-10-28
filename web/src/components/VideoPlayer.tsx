@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import Hls from 'hls.js'
+import { shouldIgnorePlaybackShortcut } from '@/utils/playbackShortcuts'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { mediaApi, userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
@@ -773,6 +774,7 @@ export default function VideoPlayer({
 
   useEffect(() => {
     const handleKeydown = (event: KeyboardEvent) => {
+      if (shouldIgnorePlaybackShortcut(event)) return
       switch (event.key) {
         case ' ':
         case 'k':

@@ -725,6 +725,9 @@ func (s *ScannerService) SetOnScanComplete(fn func(libraryID string)) {
 }
 
 type ScanLibraryOptions struct {
+	// AddOnly registers new movie files without updating/removing existing rows
+	// or invoking post-processing. Used by explicitly approved Agent tasks.
+	AddOnly bool
 	// SuppressCompletedEvent 用于多阶段扫描链路，避免文件扫描完成时提前通知前端“全部完成”。
 	SuppressCompletedEvent bool
 	// SuppressCompletionCallback 用于把 onScanComplete 延后到多阶段流程真正结束后执行。
@@ -745,15 +748,20 @@ func (s *ScannerService) NotifyScanComplete(libraryID string) {
 
 // ScanLibraryWithOptions 扫描媒体库目录，可由多阶段调用方控制是否广播最终扫描完成事件。
 func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, opts ScanLibraryOptions) (int, error) {
+	if opts.AddOnly && library.Type != "movie" && library.Type != "other" {
+		return 0, fmt.Errorf("只登记新影片暂仅支持电影库")
+	}
 	s.logger.Infof("开始扫描媒体库: %s (路径数: %d)", library.Name, len(library.AllPaths()))
 
 	// 发送扫描开始事件
-	s.broadcastScanEvent(EventScanStarted, &ScanProgressData{
-		LibraryID:   library.ID,
-		LibraryName: library.Name,
-		Phase:       "scanning",
-		Message:     fmt.Sprintf("开始扫描媒体库: %s", library.Name),
-	})
+	if !opts.AddOnly {
+		s.broadcastScanEvent(EventScanStarted, &ScanProgressData{
+			LibraryID:   library.ID,
+			LibraryName: library.Name,
+			Phase:       "scanning",
+			Message:     fmt.Sprintf("开始扫描媒体库: %s", library.Name),
+		})
+	}
 
 	// 根据媒体库类型采用不同的扫描策略
 	var count int
@@ -765,10 +773,13 @@ func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, opts Sca
 	case "mixed":
 		count, err = s.scanMixedLibrary(library)
 	default:
-		count, err = s.scanMovieLibrary(library)
+		count, err = s.scanMovieLibraryWithOptions(library, opts)
 	}
 
-	if err != nil {
+	if opts.AddOnly {
+		// Owner-scoped Agent receipts carry progress; do not broadcast private
+		// scan names, errors or new titles to the global viewer channel.
+	} else if err != nil {
 		s.broadcastScanEvent(EventScanFailed, &ScanProgressData{
 			LibraryID:   library.ID,
 			LibraryName: library.Name,
@@ -789,7 +800,7 @@ func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, opts Sca
 	s.logger.Infof("扫描完成: %s, 新增 %d 个媒体", library.Name, count)
 
 	// 触发预处理回调（如果已配置）
-	if !opts.SuppressCompletionCallback {
+	if !opts.SuppressCompletionCallback && !opts.AddOnly {
 		s.NotifyScanComplete(library.ID)
 	}
 
@@ -798,6 +809,10 @@ func (s *ScannerService) ScanLibraryWithOptions(library *model.Library, opts Sca
 
 // scanMovieLibrary 扫描电影库（支持增量扫描 + P2 性能优化）
 func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
+	return s.scanMovieLibraryWithOptions(library, ScanLibraryOptions{})
+}
+
+func (s *ScannerService) scanMovieLibraryWithOptions(library *model.Library, opts ScanLibraryOptions) (int, error) {
 	var count int
 	var totalFiles int     // 遍历到的总文件数
 	var videoFiles int     // 识别到的视频文件数
@@ -816,6 +831,9 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	// P2: 文件路径预加载到内存 Set（避免 N+1 查询）
 	existingPaths, err := s.mediaRepo.GetAllFilePathsByLibrary(library.ID)
 	if err != nil {
+		if opts.AddOnly {
+			return 0, err
+		}
 		s.logger.Warnf("预加载文件路径失败，回退到逐个查询: %v", err)
 		existingPaths = nil
 	} else {
@@ -835,6 +853,9 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			if opts.AddOnly {
+				return err
+			}
 			s.logger.Warnf("访问文件失败: %s, 错误: %v", path, err)
 			return nil
 		}
@@ -889,11 +910,22 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		if existingPaths != nil {
 			existingMu.Lock()
 			hit := existingPaths[path]
-			if hit {
+			if opts.AddOnly && !hit {
+				existingPaths[path] = true
+			}
+			if hit && !opts.AddOnly {
 				delete(existingPaths, path)
 			}
 			existingMu.Unlock()
 			if hit {
+				if opts.AddOnly {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
+					skippedExist++
+					collectMu.Unlock()
+					return nil
+				}
 				// 文件已存在：增量扫描模式下，如果文件未修改则跳过
 				if !lastScanTime.IsZero() && info.ModTime().Before(lastScanTime) {
 					collectMu.Lock()
@@ -933,6 +965,14 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			// 回退：逐个查询
 			existing, findErr := s.mediaRepo.FindByFilePath(path)
 			if findErr == nil && existing != nil {
+				if opts.AddOnly {
+					collectMu.Lock()
+					totalFiles++
+					videoFiles++
+					skippedExist++
+					collectMu.Unlock()
+					return nil
+				}
 				if s.deleteSourceDuplicateIfOrganized(library, existing, path, info) {
 					collectMu.Lock()
 					totalFiles++
@@ -1019,7 +1059,7 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 	// 之前串行 for 导致多媒体库 / 多根目录只能一个个扫，
 	// 遇到慢盘（网络挂载、WebDAV、外置 USB）会拖死整体进度。
 	// 改为每条根路径一个 goroutine，IO 并行打满。
-	if len(allPaths) <= 1 {
+	if len(allPaths) <= 1 || opts.AddOnly {
 		for _, root := range allPaths {
 			if walkErr := s.walkLibraryPath(root, walkFn); walkErr != nil {
 				s.logger.Warnf("扫描路径失败: %s, 错误: %v", root, walkErr)
@@ -1064,7 +1104,13 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		combined = append(combined, updateList...)
 		s.logger.Infof("开始并行 FFprobe 探测 %d 个文件 (新增: %d, 更新: %d)",
 			len(combined), len(pendingList), len(updateList))
-		s.parallelProbe(combined)
+		if opts.AddOnly {
+			for _, item := range combined {
+				s.probeMediaInfo(item.media)
+			}
+		} else {
+			s.parallelProbe(combined)
+		}
 	}
 
 	// 【火力全开 A】处理已更新文件：probe 已在上面并行完成，这里只做字幕扫描 + DB 更新
@@ -1134,25 +1180,30 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			}
 
 			if err := s.mediaRepo.Create(pm.media); err != nil {
+				if opts.AddOnly {
+					return count, err
+				}
 				s.logger.Warnf("保存媒体失败: %s, 错误: %v", pm.path, err)
 				continue
 			}
 			count++
 			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)
-			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-				LibraryID:   library.ID,
-				LibraryName: library.Name,
-				Phase:       "scanning",
-				NewFound:    count,
-				Message:     fmt.Sprintf("发现: %s [%s]", pm.media.Title, pm.media.Resolution),
-			})
+			if !opts.AddOnly {
+				s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+					LibraryID:   library.ID,
+					LibraryName: library.Name,
+					Phase:       "scanning",
+					NewFound:    count,
+					Message:     fmt.Sprintf("发现: %s [%s]", pm.media.Title, pm.media.Resolution),
+				})
+			}
 		}
 	}
 
 	// 清理失效记录：walk 正常完成后，existingPaths 里剩余的路径可能是磁盘已不存在的记录，
 	// 也可能是 AI 整理后指向虚拟化/硬链接输出目录的记录。因此必须先 stat，不能直接删除。
 	staleRemoved := 0
-	if err == nil && existingPaths != nil && len(existingPaths) > 0 {
+	if !opts.AddOnly && err == nil && existingPaths != nil && len(existingPaths) > 0 {
 		for stalePath := range existingPaths {
 			if _, statErr := s.statLibraryPath(stalePath); !os.IsNotExist(statErr) {
 				continue

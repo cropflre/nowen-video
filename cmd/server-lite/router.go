@@ -30,7 +30,8 @@ func buildRouter(
 	if !cfg.App.Debug {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r := gin.Default()
+	r := gin.New()
+	r.Use(middleware.RequestLogger(gin.DefaultWriter), gin.Recovery())
 	corsOrigins := append([]string{
 		"tauri://localhost",
 		"http://tauri.localhost",
@@ -133,12 +134,7 @@ func buildRouter(
 	r.GET("/pulse/*path", redirectLegacyPulse)
 
 	r.Static("/assets", cfg.App.WebDir+"/assets")
-	r.NoRoute(func(c *gin.Context) {
-		c.Header("Cache-Control", "no-store, no-cache, must-revalidate")
-		c.Header("Pragma", "no-cache")
-		c.Header("Expires", "0")
-		c.File(cfg.App.WebDir + "/index.html")
-	})
+	r.NoRoute(handler.SPAFallback(cfg.App.WebDir))
 	return r
 }
 

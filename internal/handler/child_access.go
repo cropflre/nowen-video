@@ -113,6 +113,9 @@ func (h childRequest) dispatch() bool {
 	method := c.Request.Method
 	page, size := h.page()
 	filter := h.filter()
+	if route == "/api/agent/chat" && method == http.MethodPost {
+		return true // ViewerAgent independently scopes every query and context reference.
+	}
 	if (route == "/api/users/me/family-controls" && method == http.MethodGet) ||
 		((route == "/api/users/me/viewing/start" || route == "/api/users/me/viewing/renew" || route == "/api/users/me/viewing/stop") && method == http.MethodPost) {
 		return true

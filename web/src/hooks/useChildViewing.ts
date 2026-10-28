@@ -56,12 +56,17 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
       if (id) await userApi.stopViewing(id)
     }
     const fail = (message: string) => {
-      if (disposed) return
+      if (disposed || halted) return
       halted = true; desiredPlaying = false; resumeVideo = undefined
       pause(); setError(message)
       window.clearTimeout(watchdog)
     }
     const accept = (grant: FamilyViewingStatus, requestStarted: number) => {
+      if (halted || disposed) return
+      if (grant.daily_limit_seconds > 0 && grant.remaining_seconds <= 0) {
+        fail('今天的观看时间已用完，休息一下吧')
+        return
+      }
       lease = grant.lease_id || ''
       lastGrant = grant
       // Measure from request dispatch, not response arrival or the user's clock.

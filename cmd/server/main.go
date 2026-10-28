@@ -126,7 +126,8 @@ func main() {
 	if !cfg.App.Debug {
 		gin.SetMode(gin.ReleaseMode)
 	}
-	r := gin.Default()
+	r := gin.New()
+	r.Use(middleware.RequestLogger(gin.DefaultWriter), gin.Recovery())
 
 	// 全局中间件
 	// 默认放行 Tauri 桌面端的两种 webview origin：
@@ -255,6 +256,7 @@ func main() {
 	api := r.Group("/api")
 	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
 	handler.RegisterFamilyPlayback(api, repos.DB())
+	handler.RegisterViewerAgent(api, repos.DB(), services.AI, services.Library)
 	handlers.Auth.RegisterDeviceManagement(api)
 	{
 		// 媒体库
@@ -1007,9 +1009,7 @@ func main() {
 
 	// 静态文件（前端构建产物）
 	r.Static("/assets", cfg.App.WebDir+"/assets")
-	r.NoRoute(func(c *gin.Context) {
-		c.File(cfg.App.WebDir + "/index.html")
-	})
+	r.NoRoute(handler.SPAFallback(cfg.App.WebDir))
 
 	addr := fmt.Sprintf(":%d", cfg.App.Port)
 	sugar.Infof("nowen-video 启动于 %s", addr)

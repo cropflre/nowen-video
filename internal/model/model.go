@@ -878,6 +878,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&FamilyViewingLease{},
 		&DeviceSession{},
 		&DevicePairing{},
+		&AgentRun{},
 		&PlaybackStats{},
 		&ScrapeTask{},
 		&ScrapeHistory{},
