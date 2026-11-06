@@ -256,8 +256,8 @@ func TestAgentMetadataFailuresNeverWriteAndCandidateCommandsAreScoped(t *testing
 		t.Fatal("unmatched movie accepted", e)
 	}
 	out, e = agent.Chat(ctx, "owner", ViewerAgentRequest{Message: "补全资料"})
-	if e != nil || len(out.Cards) != 0 {
-		t.Fatal("unmatched candidate included")
+	if e != nil || len(out.Cards) != 1 || !out.MatchCandidates || out.MetadataCandidates {
+		t.Fatal("unmatched movie was not routed to matching")
 	}
 }
 

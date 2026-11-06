@@ -33,6 +33,7 @@ type agentMetadataSnapshot struct {
 	LibraryID string            `json:"library_id"`
 	Title     string            `json:"title"`
 	TMDbID    int               `json:"tmdb_id"`
+	Year      int               `json:"year"`
 	UpdatedAt time.Time         `json:"updated_at"`
 	Values    map[string]string `json:"values"`
 	Nulls     map[string]bool   `json:"nulls"`
@@ -50,9 +51,16 @@ func metadataValues(m model.Media) map[string]string {
 	return map[string]string{"overview": m.Overview, "orig_title": m.OrigTitle, "genres": m.Genres, "premiered": m.Premiered}
 }
 func loadAgentMetadata(db *gorm.DB, id string) (model.Media, model.Library, error) {
+	m, lib, err := loadAgentMovie(db, id)
+	if err == nil && m.TMDbID <= 0 {
+		err = ErrAgentMetadataUnsupported
+	}
+	return m, lib, err
+}
+func loadAgentMovie(db *gorm.DB, id string) (model.Media, model.Library, error) {
 	var m model.Media
 	// Do not persist stream headers/cookies in an approval snapshot.
-	err := db.Select("id", "library_id", "title", "tm_db_id", "media_type", "overview", "orig_title", "genres", "premiered", "updated_at").First(&m, "id = ?", id).Error
+	err := db.Select("id", "library_id", "title", "year", "tm_db_id", "media_type", "overview", "orig_title", "genres", "premiered", "updated_at").First(&m, "id = ?", id).Error
 	if err != nil {
 		return m, model.Library{}, err
 	}
@@ -60,14 +68,14 @@ func loadAgentMetadata(db *gorm.DB, id string) (model.Media, model.Library, erro
 	if err = db.First(&lib, "id = ?", m.LibraryID).Error; err != nil {
 		return m, lib, err
 	}
-	if m.MediaType != "movie" || m.TMDbID <= 0 || (lib.Type != "movie" && lib.Type != "other") {
+	if m.MediaType != "movie" || (lib.Type != "movie" && lib.Type != "other") {
 		return m, lib, ErrAgentMetadataUnsupported
 	}
 	return m, lib, nil
 }
 func metadataSnapshot(db *gorm.DB, m model.Media, lib model.Library) (string, error) {
 	var stored map[string]interface{}
-	if err := db.Model(&model.Media{}).Select("overview", "orig_title", "genres", "premiered").Take(&stored, "id = ?", m.ID).Error; err != nil {
+	if err := db.Model(&model.Media{}).Select("overview", "orig_title", "genres", "premiered", "tm_db_id").Take(&stored, "id = ?", m.ID).Error; err != nil {
 		return "", err
 	}
 	nulls := map[string]bool{}
@@ -76,7 +84,10 @@ func metadataSnapshot(db *gorm.DB, m model.Media, lib model.Library) (string, er
 			nulls[f.field] = true
 		}
 	}
-	raw, _ := json.Marshal(agentMetadataSnapshot{Library: scanSnapshot(lib), ID: m.ID, LibraryID: m.LibraryID, Title: m.Title, TMDbID: m.TMDbID, UpdatedAt: m.UpdatedAt, Values: metadataValues(m), Nulls: nulls})
+	if stored["tm_db_id"] == nil {
+		nulls["tm_db_id"] = true
+	}
+	raw, _ := json.Marshal(agentMetadataSnapshot{Library: scanSnapshot(lib), ID: m.ID, LibraryID: m.LibraryID, Title: m.Title, Year: m.Year, TMDbID: m.TMDbID, UpdatedAt: m.UpdatedAt, Values: metadataValues(m), Nulls: nulls})
 	return string(raw), nil
 }
 func metadataRunView(run model.AgentRun) AgentRunView {
@@ -162,6 +173,13 @@ func (s *AgentScanService) PreviewMetadata(ctx context.Context, uid, id string) 
 	return metadataRunView(run), nil
 }
 func (s *AgentScanService) UndoMetadata(ctx context.Context, uid, id, digest string) (AgentRunView, error) {
+	var run model.AgentRun
+	if err := s.db.WithContext(ctx).Select("kind").Where("id = ? AND user_id = ?", id, uid).First(&run).Error; err != nil {
+		return AgentRunView{}, err
+	}
+	if run.Kind == "match_movie" {
+		return s.confirmMovieMatch(ctx, uid, id, digest, true)
+	}
 	return s.confirmMetadata(ctx, uid, id, digest, true)
 }
 func (s *AgentScanService) confirmMetadata(ctx context.Context, uid, id, digest string, undo bool) (AgentRunView, error) {

@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "test:family": "node --test scripts/family-viewing.test.mjs",
-    "test:family:browser": "node scripts/family-viewing.browser.cjs"
+    "test:family:browser": "node scripts/family-viewing.browser.cjs",
+    "test:agent-match:browser": "node scripts/agent-movie-match.browser.cjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.73.8",

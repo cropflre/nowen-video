@@ -57,6 +57,7 @@ type AgentAction struct {
 	LibraryID string    `json:"library_id,omitempty"`
 }
 type ViewerAgentResponse struct {
+	MatchCandidates    bool                    `json:"match_candidates,omitempty"`
 	MetadataCandidates bool                    `json:"metadata_candidates,omitempty"`
 	ScanLibraries      []AgentLibrarySummary   `json:"scan_libraries,omitempty"`
 	Management         *AgentManagementSummary `json:"management,omitempty"`
@@ -158,6 +159,10 @@ func (s *ViewerAgent) card(uid string, ref AgentRef) (AgentCard, error) {
 	return mediaAgentCard(m), err
 }
 
+// The ordinal is only an index into the cards the client just saw; the movie
+// itself still comes from the database lookup behind that id.
+var agentMatchOrdinal = regexp.MustCompile(`^匹配第[一二三四五六1-6]部$`)
+
 func (s *ViewerAgent) Chat(ctx context.Context, uid string, req ViewerAgentRequest) (*ViewerAgentResponse, error) {
 	message := strings.TrimSpace(req.Message)
 	if len([]rune(message)) == 0 || len([]rune(message)) > 500 || len(req.Context) > 6 || len(req.CurrentMediaID) > 128 {
@@ -169,6 +174,37 @@ func (s *ViewerAgent) Chat(ctx context.Context, uid string, req ViewerAgentReque
 		return nil, err
 	}
 	out := &ViewerAgentResponse{Cards: []AgentCard{}, Mode: "basic"}
+	if message == "匹配影片" || message == "影片匹配" || message == "匹配这部" || agentMatchOrdinal.MatchString(message) {
+		if _, err := agentScanAdmin(s.db, uid); err != nil {
+			return nil, err
+		}
+		if message != "匹配影片" && message != "影片匹配" {
+			var target AgentRef
+			if message == "匹配这部" {
+				target = AgentRef{ID: req.CurrentMediaID, Kind: "media"}
+				if target.ID == "" && len(req.Context) == 1 {
+					target = req.Context[0]
+				}
+			}
+			for i, ordinal := range []string{"第一", "第二", "第三", "第四", "第五", "第六"} {
+				if (message == "匹配"+ordinal+"部" || message == "匹配第"+strconv.Itoa(i+1)+"部") && i < len(req.Context) {
+					target = req.Context[i]
+				}
+			}
+			if target.ID == "" || target.Kind != "media" {
+				out.Message = "请说“匹配影片”选择电影，或说“匹配第二部”搜索上次结果的候选。"
+				return out, nil
+			}
+			m, _, err := loadAgentMovie(s.db, target.ID)
+			if err != nil || m.TMDbID > 0 {
+				out.Message = "这部影片已有匹配或暂不支持此操作。已匹配的电影可以说“补全这部资料”。"
+				return out, nil
+			}
+			out.Action = &AgentAction{Kind: "prepare_match", Target: &target}
+			return out, nil
+		}
+		return out, s.unmatchedMovies(out)
+	}
 	if strings.Contains(message, "补全") && strings.Contains(message, "资料") {
 		if _, err := agentScanAdmin(s.db, uid); err != nil {
 			return nil, err
@@ -190,11 +226,16 @@ func (s *ViewerAgent) Chat(ctx context.Context, uid string, req ViewerAgentReque
 				out.Message = "目前需要逐部确认。请说“补全资料”选择电影，或说“补全第二部资料”预览上次结果中的影片。"
 				return out, nil
 			}
-			if _, _, err := loadAgentMetadata(s.db, target.ID); err != nil {
+			m, _, err := loadAgentMovie(s.db, target.ID)
+			if err != nil {
 				out.Message = "这部影片尚不支持补全，请先在影片资料页面确认电影的 TMDb 匹配。"
 				return out, nil
 			}
-			out.Action = &AgentAction{Kind: "prepare_metadata", Target: &target}
+			kind := "prepare_metadata"
+			if m.TMDbID <= 0 {
+				kind = "prepare_match"
+			}
+			out.Action = &AgentAction{Kind: kind, Target: &target}
 			return out, nil
 		}
 		var movies []model.Media
@@ -207,7 +248,7 @@ func (s *ViewerAgent) Chat(ctx context.Context, uid string, req ViewerAgentReque
 		}
 		out.Message = "请选择一部电影，先预览资料来源和每项变化，再确认补全。这里最多显示六部已关联 TMDb 且有空缺文字资料的电影；其他影片请先在资料页面确认匹配。"
 		if len(movies) == 0 {
-			out.Message = "没有找到已关联 TMDb 且有空缺文字资料的电影。尚未匹配的影片，请先在影片资料页面确认匹配。"
+			return out, s.unmatchedMovies(out)
 		}
 		return out, nil
 	}
@@ -613,4 +654,22 @@ func (s *ViewerAgent) search(uid string, f AgentSearch, exclude []AgentRef) ([]A
 		cards = append(cards, card)
 	}
 	return cards, nil
+}
+
+// An ordinary title search plus “匹配第二部” reaches movies beyond this short list.
+func (s *ViewerAgent) unmatchedMovies(out *ViewerAgentResponse) error {
+	out.MetadataCandidates = false
+	out.MatchCandidates = true
+	var movies []model.Media
+	if err := s.db.Where("media_type = ? AND COALESCE(tm_db_id,0) <= 0", "movie").Where("library_id IN (?)", s.db.Model(&model.Library{}).Select("id").Where("type IN ?", []string{"movie", "other"})).Order("title ASC,id ASC").Limit(6).Find(&movies).Error; err != nil {
+		return err
+	}
+	for _, m := range movies {
+		out.Cards = append(out.Cards, mediaAgentCard(m))
+	}
+	out.Message = "这些电影还没有资料关联。请选择一部搜索候选，核对后再确认匹配。也可以先按片名找片，再说“匹配第二部”。"
+	if len(movies) == 0 {
+		out.Message = "没有找到尚未关联 TMDb 的电影。已匹配的影片可说“补全资料”预览空缺字段。"
+	}
+	return nil
 }

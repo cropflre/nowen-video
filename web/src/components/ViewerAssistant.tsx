@@ -12,7 +12,7 @@ import { Button, Modal, ModalBody, ModalHeader } from '@/components/design-syste
 import type { ViewingPreferences } from '@/types'
 import AgentScanTasks, { useAgentScanTasks } from '@/components/AgentScanTasks'
 
-interface Turn { role: 'user' | 'assistant'; text: string; cards?: AgentCard[]; search?: AgentSearch; management?: AgentManagement; metadataCandidates?: boolean; scanLibraries?: { id: string; name: string }[] }
+interface Turn { role: 'user' | 'assistant'; text: string; cards?: AgentCard[]; search?: AgentSearch; management?: AgentManagement; metadataCandidates?: boolean; matchCandidates?: boolean; scanLibraries?: { id: string; name: string }[] }
 
 function describeSearch(search: AgentSearch) {
   const years = search.year_min ? search.year_max === search.year_min ? `${search.year_min}年` : search.year_max ? `${search.year_min}–${search.year_max}年` : `${search.year_min}年起` : search.year_max ? `${search.year_max}年以前` : ''
@@ -57,6 +57,11 @@ function Assistant() {
   const execute = async (action: AgentAction): Promise<string> => {
     if (!active()) throw new Error('账号已切换，请重新操作')
     const target = action.target
+    if (action.kind === 'prepare_match') {
+      if (!target || target.kind !== 'media') throw new Error('请先选择电影')
+      await scanTasks.prepareMatch(target.id)
+      return '已搜索影片候选。请核对片名、年份和简介，选择候选后再明确确认匹配。'
+    }
     if (action.kind === 'prepare_metadata') {
       if (!target || target.kind !== 'media') throw new Error('请先选择电影')
       await scanTasks.prepareMetadata(target.id)
@@ -158,7 +163,7 @@ function Assistant() {
     const abort = new AbortController(); abortRef.current = abort
     const startingMedia = currentID()
     try {
-      const metadataTarget = message.includes('补全') && message.includes('资料') ? /^\/media\/([^/]+)$/.exec(routeRef.current)?.[1] || startingMedia : startingMedia
+      const metadataTarget = (message.includes('补全') && message.includes('资料')) || message.startsWith('匹配') ? /^\/media\/([^/]+)$/.exec(routeRef.current)?.[1] || startingMedia : startingMedia
       const { data } = await viewerAgentApi.chat(message, cardsRef.current.map(({ id, kind }) => ({ id, kind })), metadataTarget, searchRef.current, abort.signal)
       if (!active()) return
       const reply = data.data
@@ -168,7 +173,7 @@ function Assistant() {
       if (reply.search || reply.cards.length) cardsRef.current = reply.cards
       let text = reply.message
       if (reply.action) text = await execute(reply.action)
-      add({ role: 'assistant', text, cards: reply.cards, search: reply.search, management: reply.management, scanLibraries: reply.scan_libraries, metadataCandidates: reply.metadata_candidates })
+      add({ role: 'assistant', text, cards: reply.cards, search: reply.search, management: reply.management, scanLibraries: reply.scan_libraries, metadataCandidates: reply.metadata_candidates, matchCandidates: reply.match_candidates })
     } catch (error) { if (!abort.signal.aborted) reportFailure(error) }
     finally { busyRef.current = false; if (active()) setBusy(false) }
   }
@@ -185,9 +190,9 @@ function Assistant() {
       <ModalHeader title="观影助手" onClose={() => setOpen(false)} />
       <ModalBody>
         {!turns.length && <>{!scanTasks.runs.length && <p className="mb-3 text-sm text-[var(--nv-text-secondary)]">说说想看什么，也可以让我帮你续播、加入想看或调整这个网页的播放。</p>}
-        <div className="mb-3 flex flex-wrap gap-2">{(admin && scanTasks.runs.length ? ['帮我找一部喜剧', '查找新影片', '补全资料'] : ['帮我找一部喜剧', '继续看', '我的想看', '字体大一点', ...(admin ? ['检查影视库', '检查任务', '查找新影片', '补全资料'] : []), ...(currentID() ? ['暂停', '继续播放', '中文字幕'] : [])]).map(text => <Button key={text} disabled={busy || scanTasks.pending} onClick={() => void send(text)}>{text}</Button>)}</div></>}
+        <div className="mb-3 flex flex-wrap gap-2">{(admin && scanTasks.runs.length ? ['帮我找一部喜剧', '查找新影片', '匹配影片', '补全资料'] : ['帮我找一部喜剧', '继续看', '我的想看', '字体大一点', ...(admin ? ['检查影视库', '检查任务', '查找新影片', '匹配影片', '补全资料'] : []), ...(currentID() ? ['暂停', '继续播放', '中文字幕'] : [])]).map(text => <Button key={text} disabled={busy || scanTasks.pending} onClick={() => void send(text)}>{text}</Button>)}</div></>}
         {mode === 'fallback' && <p className="mb-2 text-sm text-[var(--nv-text-tertiary)]">智能理解暂时不可用，已使用基础找片。可以简化条件或输入片名。</p>}
-        <div role="log" aria-label="观影对话" aria-live="polite" className={`${admin && scanTasks.expanded && scanTasks.runs.length ? 'max-h-[16dvh]' : 'max-h-[42dvh]'} space-y-4 overflow-y-auto overscroll-contain pr-1`}>
+        <div role="log" aria-label="观影对话" aria-live="polite" className={`${admin && scanTasks.expanded && scanTasks.runs.length ? scanTasks.runs.some(run => run.kind === 'match_movie' && run.status === 'draft') ? 'max-h-[8dvh]' : 'max-h-[16dvh]' : 'max-h-[42dvh]'} space-y-4 overflow-y-auto overscroll-contain pr-1`}>
           {turns.length === 0 && <p className="py-4 text-[var(--nv-text-tertiary)]">试试：“找一部 90 分钟以内、没看过的喜剧”。</p>}
           {turns.map((turn, index) => <div key={index} className="space-y-2 rounded-xl bg-[var(--nv-bg-surface-soft)] p-3">
             <p className="text-xs text-[var(--nv-text-tertiary)]">{turn.role === 'user' ? '你' : '助手'}</p>
@@ -203,7 +208,7 @@ function Assistant() {
             {turn.cards?.map((card, i) => <div key={`${card.kind}:${card.id}`} className="rounded-lg border border-[var(--nv-border-default)] p-3">
               <p className="font-medium">{i + 1}. {card.title}</p>
               <p className="my-2 text-sm text-[var(--nv-text-secondary)]">{[card.kind === 'series' ? '剧集' : '影片', card.year || '', card.rating > 0 ? `${card.rating} 分` : '', card.duration ? `${Math.ceil(card.duration / 60)} 分钟` : '', card.position ? `已看到 ${Math.floor(card.position / 60)} 分钟` : ''].filter(Boolean).join(' · ')}</p>
-              <div className="flex flex-wrap gap-2">{admin && turn.metadataCandidates && card.kind === 'media' && <Button disabled={busy || scanTasks.pending} onClick={() => { void scanTasks.prepareMetadata(card.id).catch(reportFailure) }}>预览资料补全</Button>}<Button disabled={busy} onClick={() => void act(card, 'play')}>{card.kind === 'series' ? '选集播放' : card.position ? '接着看' : '播放'}</Button>{card.kind === 'media' && <Button disabled={busy} onClick={() => void act(card, 'favorite')}>加入想看</Button>}</div>
+              <div className="flex flex-wrap gap-2">{admin && turn.matchCandidates && card.kind === 'media' && <Button disabled={busy || scanTasks.pending} onClick={() => { void scanTasks.prepareMatch(card.id).catch(reportFailure) }}>查找影片候选</Button>}{admin && turn.metadataCandidates && card.kind === 'media' && <Button disabled={busy || scanTasks.pending} onClick={() => { void scanTasks.prepareMetadata(card.id).catch(reportFailure) }}>预览资料补全</Button>}<Button disabled={busy} onClick={() => void act(card, 'play')}>{card.kind === 'series' ? '选集播放' : card.position ? '接着看' : '播放'}</Button>{card.kind === 'media' && <Button disabled={busy} onClick={() => void act(card, 'favorite')}>加入想看</Button>}</div>
             </div>)}
           </div>)}
           {busy && <p role="status" className="py-2 text-sm">正在处理，请稍等…</p>}

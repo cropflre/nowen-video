@@ -10,6 +10,9 @@ fnpack-*
 # TypeScript 增量编译缓存
 *.tsbuildinfo
 
+# Vite 加载配置时留下的中间文件（进程被中断会残留）
+*.timestamp-*.mjs
+
 # 数据文件
 /data/
 /cmd/server/data/

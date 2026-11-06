@@ -36,11 +36,42 @@ func registerAgentScanRoutes(api *gin.RouterGroup, runs *service.AgentScanServic
 			status, message = 400, err.Error()
 		case errors.Is(err, service.ErrAgentMetadataSource):
 			status, message = 503, err.Error()
+		case errors.Is(err, service.ErrAgentMatchInput), errors.Is(err, service.ErrAgentMatchUnsupported), errors.Is(err, service.ErrAgentMatchSelection):
+			status, message = 400, err.Error()
+		case errors.Is(err, service.ErrAgentMatchUndo):
+			status, message = 409, err.Error()
 		}
 		c.JSON(status, gin.H{"error": message})
 	}
 	group.GET("", func(c *gin.Context) {
 		value, err := runs.List(c.Request.Context(), c.GetString("user_id"))
+		respond(c, value, err)
+	})
+	group.POST("/matches", func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
+		var input struct {
+			MediaID string `json:"media_id" binding:"required,max=128"`
+			Query   string `json:"query" binding:"max=120"`
+			Year    *int   `json:"year"`
+		}
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(400, gin.H{"error": "请选择电影，搜索词最多 120 字"})
+			return
+		}
+		value, err := runs.PreviewMovieMatch(c.Request.Context(), c.GetString("user_id"), input.MediaID, input.Query, input.Year)
+		respond(c, value, err)
+	})
+	group.POST("/:runID/select", func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2048)
+		var input struct {
+			Digest      string `json:"approval_digest" binding:"required,len=64"`
+			CandidateID int    `json:"candidate_id" binding:"required,gt=0"`
+		}
+		if c.ShouldBindJSON(&input) != nil {
+			c.JSON(400, gin.H{"error": "请从本次结果中选择候选影片"})
+			return
+		}
+		value, err := runs.SelectMovieMatch(c.Request.Context(), c.GetString("user_id"), c.Param("runID"), input.Digest, input.CandidateID)
 		respond(c, value, err)
 	})
 	group.POST("/metadata", func(c *gin.Context) {

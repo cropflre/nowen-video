@@ -25,20 +25,26 @@ type AgentScanExecutor interface {
 }
 type AgentRunView struct {
 	model.AgentRun
-	Paths       []string              `json:"paths"`
-	Effect      string                `json:"effect"`
-	MinFileSize int                   `json:"min_file_size_mb"`
-	FileFilter  bool                  `json:"file_filter"`
-	MediaID     string                `json:"media_id,omitempty"`
-	MediaTitle  string                `json:"media_title,omitempty"`
-	SourceTitle string                `json:"source_title,omitempty"`
-	SourceURL   string                `json:"source_url,omitempty"`
-	Changes     []AgentMetadataChange `json:"changes,omitempty"`
+	Paths           []string                   `json:"paths"`
+	Effect          string                     `json:"effect"`
+	MinFileSize     int                        `json:"min_file_size_mb"`
+	FileFilter      bool                       `json:"file_filter"`
+	MediaID         string                     `json:"media_id,omitempty"`
+	MediaTitle      string                     `json:"media_title,omitempty"`
+	SourceTitle     string                     `json:"source_title,omitempty"`
+	SourceURL       string                     `json:"source_url,omitempty"`
+	Changes         []AgentMetadataChange      `json:"changes,omitempty"`
+	MatchCandidates []AgentMovieMatchCandidate `json:"match_candidates,omitempty"`
+	SelectedMatch   *AgentMovieMatchCandidate  `json:"selected_match,omitempty"`
+	MatchQuery      string                     `json:"match_query,omitempty"`
+	MatchYear       int                        `json:"match_year"`
+	MediaYear       int                        `json:"media_year"`
 }
 type AgentScanService struct {
 	db       *gorm.DB
 	executor AgentScanExecutor
 	metadata AgentMetadataProvider
+	matcher  AgentMovieMatchProvider
 	worker   string
 	now      func() time.Time
 }
@@ -47,6 +53,9 @@ func NewAgentScanService(db *gorm.DB, executor AgentScanExecutor) *AgentScanServ
 	s := &AgentScanService{db: db, executor: executor, worker: uuid.NewString(), now: time.Now}
 	if provider, ok := executor.(AgentMetadataProvider); ok {
 		s.metadata = provider
+	}
+	if provider, ok := executor.(AgentMovieMatchProvider); ok {
+		s.matcher = provider
 	}
 	return s
 }
@@ -70,6 +79,9 @@ func scanDigest(run model.AgentRun) string {
 	return hex.EncodeToString(sum[:])
 }
 func scanRunView(run model.AgentRun) AgentRunView {
+	if run.Kind == "match_movie" {
+		return movieMatchRunView(run)
+	}
 	if run.Kind == "fill_movie_metadata" {
 		return metadataRunView(run)
 	}
@@ -162,6 +174,9 @@ func (s *AgentScanService) Confirm(ctx context.Context, uid, id, digest string) 
 	}
 	if kind == "fill_movie_metadata" {
 		return s.confirmMetadata(ctx, uid, id, digest, false)
+	}
+	if kind == "match_movie" {
+		return s.confirmMovieMatch(ctx, uid, id, digest, false)
 	}
 	if s.executor == nil {
 		return AgentRunView{}, ErrAgentRunUnavailable
