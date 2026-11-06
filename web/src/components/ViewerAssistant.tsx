@@ -77,6 +77,19 @@ function Assistant() {
   useEffect(() => { alive.current = true; return () => { alive.current = false; abortRef.current?.abort() } }, [])
   useEffect(() => { if (open) endRef.current?.scrollIntoView({ block: 'nearest' }) }, [turns, busy, open])
 
+  // The pill is content sized: measure it and pull it back inside the viewport
+  // before paint, otherwise a wide label overflows the right edge.
+  useLayoutEffect(() => {
+    if (preferences.visibility !== 'minimized') return
+    const element = launcherRef.current
+    if (!element) return
+    const rect = element.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const size = { width: rect.width, height: rect.height }
+    const next = clampAssistantLauncher(preferences.launcher, assistantViewport(), size)
+    if (next.x !== preferences.launcher.x || next.y !== preferences.launcher.y) setLauncher(next, size)
+  }, [preferences.launcher, preferences.visibility, setLauncher])
+
   // Keep the launcher keyboard reachable after minimising.
   const previousVisibility = useRef(preferences.visibility)
   useEffect(() => {
@@ -84,13 +97,14 @@ function Assistant() {
     previousVisibility.current = preferences.visibility
   }, [preferences.visibility])
 
-  const launcherDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: AssistantPoint; latest: AssistantPoint; moved: boolean } | null>(null)
+  const launcherDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: AssistantPoint; latest: AssistantPoint; size: { width: number; height: number }; moved: boolean } | null>(null)
   const suppressLauncherClick = useRef(false)
   const startLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     suppressLauncherClick.current = false
     event.currentTarget.setPointerCapture(event.pointerId)
-    launcherDrag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, origin: preferences.launcher, latest: preferences.launcher, moved: false }
+    const rect = event.currentTarget.getBoundingClientRect()
+    launcherDrag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, origin: preferences.launcher, latest: preferences.launcher, size: { width: rect.width, height: rect.height }, moved: false }
   }
   const moveLauncher = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const current = launcherDrag.current
@@ -100,7 +114,7 @@ function Assistant() {
     if (!current.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
     current.moved = true
     event.currentTarget.dataset.dragging = 'true'
-    current.latest = clampAssistantLauncher({ x: current.origin.x + dx, y: current.origin.y + dy }, assistantViewport())
+    current.latest = clampAssistantLauncher({ x: current.origin.x + dx, y: current.origin.y + dy }, assistantViewport(), current.size)
     event.currentTarget.style.left = `${current.latest.x}px`
     event.currentTarget.style.top = `${current.latest.y}px`
   }
@@ -110,7 +124,7 @@ function Assistant() {
     delete event.currentTarget.dataset.dragging
     if (!current || current.pointerId !== event.pointerId || !current.moved) return
     suppressLauncherClick.current = true
-    setLauncher(current.latest)
+    setLauncher(current.latest, current.size)
   }
   const expand = () => {
     if (suppressLauncherClick.current) { suppressLauncherClick.current = false; return }
@@ -272,7 +286,7 @@ function Assistant() {
       style={{ left: preferences.launcher.x, top: preferences.launcher.y }}
       aria-label="打开观影助手"
       aria-haspopup="dialog"
-    ><MessageCircle size={20} aria-hidden="true" /><span>问问助手</span></button>}
+    ><MessageCircle size={20} aria-hidden="true" /><span>问问助手</span>{busy && <span className="nv-assistant-launcher__dot" aria-hidden="true" />}</button>}
     <AssistantWindow
       open={open}
       position={preferences.position}
@@ -287,8 +301,8 @@ function Assistant() {
         {!turns.length && <div className="shrink-0">{!scanTasks.runs.length && <p className="mb-3 text-sm text-[var(--nv-text-secondary)]">说说想看什么，也可以让我帮你续播、加入想看或调整这个网页的播放。</p>}
         <div className="mb-3 flex flex-wrap gap-2">{(admin && scanTasks.runs.length ? ['帮我找一部喜剧', '查找新影片', '匹配影片', '补全资料'] : ['帮我找一部喜剧', '继续看', '我的想看', '字体大一点', ...(admin ? ['检查影视库', '检查任务', '查找新影片', '匹配影片', '补全资料'] : []), ...(currentID() ? ['暂停', '继续播放', '中文字幕'] : [])]).map(text => <Button key={text} disabled={busy || scanTasks.pending} onClick={() => void send(text)}>{text}</Button>)}</div></div>}
         {mode === 'fallback' && <p className="mb-2 shrink-0 text-sm text-[var(--nv-text-tertiary)]">智能理解暂时不可用，已使用基础找片。可以简化条件或输入片名。</p>}
-        <div role="log" aria-label="观影对话" aria-live="polite" className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
-          {turns.length === 0 && <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-[var(--nv-text-tertiary)]"><MessageCircle size={22} aria-hidden="true" /><p>试试：“找一部 90 分钟以内、没看过的喜剧”。</p></div>}
+        <div role="log" aria-label="观影对话" aria-live="polite" className="min-h-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
+          {turns.length === 0 && <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-3 text-center text-sm text-[var(--nv-text-tertiary)]"><MessageCircle size={22} aria-hidden="true" /><p className="w-full break-words">试试：“找一部 90 分钟以内、没看过的喜剧”。</p></div>}
           {turns.map((turn, index) => <div key={index} className="space-y-2 rounded-xl bg-[var(--nv-bg-surface-soft)] p-3">
             <p className="text-xs text-[var(--nv-text-tertiary)]">{turn.role === 'user' ? '你' : '助手'}</p>
             <p className="whitespace-pre-wrap break-words leading-relaxed">{turn.text}</p>
@@ -314,7 +328,7 @@ function Assistant() {
           <input aria-label="告诉助手你想做什么" placeholder="想看什么，直接说" maxLength={500} value={input} disabled={busy} onChange={event => setInput(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] px-3" />
           <Button type="submit" disabled={busy || !input.trim()} aria-label="发送消息"><Send size={18} aria-hidden="true" />发送</Button>
         </form>
-        <div className="mt-2 flex shrink-0 flex-col items-start gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"><span className="text-[var(--nv-text-tertiary)]">{admin && scanTasks.runs.length ? '任务记录会保留。' : '对话仅保留在本次页面会话，切换账号后清空。'}</span><Button disabled={busy || !turns.length} onClick={() => { setTurns([]); cardsRef.current = []; searchRef.current = undefined; setMode('') }}>清空对话</Button></div>
+        <div className="mt-2 flex shrink-0 flex-col items-start gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"><span className="min-w-0 break-words text-[var(--nv-text-tertiary)]">{admin && scanTasks.runs.length ? '任务记录会保留。' : '对话仅保留在本次页面会话，切换账号后清空。'}</span><Button disabled={busy || !turns.length} onClick={() => { setTurns([]); cardsRef.current = []; searchRef.current = undefined; setMode('') }}>清空对话</Button></div>
       </div>
     </AssistantWindow>
   </>

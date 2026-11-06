@@ -43,7 +43,13 @@ export const ASSISTANT_MAX_WIDTH = 720
 export const ASSISTANT_MIN_HEIGHT = 300
 export const ASSISTANT_EDGE = 12
 export const ASSISTANT_MIN_VISIBLE = 96
-export const ASSISTANT_LAUNCHER_SIZE = 52
+export const ASSISTANT_LAUNCHER_WIDTH = 52
+export const ASSISTANT_LAUNCHER_HEIGHT = 44
+
+export interface AssistantLauncherSize {
+  width: number
+  height: number
+}
 
 const VISIBILITIES: AssistantVisibility[] = ['expanded', 'minimized', 'hidden']
 
@@ -149,20 +155,25 @@ export function resizeAssistant(start: AssistantSize, delta: AssistantPoint, vie
   return clampAssistantSize({ width: start.width + delta.x, height: start.height + delta.y }, viewport)
 }
 
-export function clampAssistantLauncher(position: AssistantPoint, viewport: AssistantViewport): AssistantPoint {
+/**
+ * The launcher is content sized, so callers pass its measured box; the defaults
+ * only cover the first paint and the case where nothing has been measured yet.
+ */
+export function clampAssistantLauncher(position: AssistantPoint, viewport: AssistantViewport, size: AssistantLauncherSize = { width: ASSISTANT_LAUNCHER_WIDTH, height: ASSISTANT_LAUNCHER_HEIGHT }): AssistantPoint {
   const insets = assistantInsets(viewport)
-  const size = ASSISTANT_LAUNCHER_SIZE
+  const width = Math.max(1, finite(size.width) ?? ASSISTANT_LAUNCHER_WIDTH)
+  const height = Math.max(1, finite(size.height) ?? ASSISTANT_LAUNCHER_HEIGHT)
   const minX = insets.left
-  const maxX = viewport.width - insets.right - size
+  const maxX = Math.max(minX, viewport.width - insets.right - width)
   const minY = insets.top
-  const maxY = viewport.height - insets.bottom - size
+  const maxY = Math.max(minY, viewport.height - insets.bottom - height)
   const x = finite(position.x) ?? maxX
   const y = finite(position.y) ?? maxY
   return { x: Math.round(clamp(x, minX, maxX)), y: Math.round(clamp(y, minY, maxY)) }
 }
 
-export function defaultAssistantLauncherPosition(viewport: AssistantViewport): AssistantPoint {
-  return clampAssistantLauncher({ x: Number.NaN, y: Number.NaN }, viewport)
+export function defaultAssistantLauncherPosition(viewport: AssistantViewport, size?: AssistantLauncherSize): AssistantPoint {
+  return clampAssistantLauncher({ x: Number.NaN, y: Number.NaN }, viewport, size)
 }
 
 export function defaultAssistantPreferences(viewport: AssistantViewport): AssistantWindowPreferences {

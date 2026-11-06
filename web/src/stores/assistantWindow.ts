@@ -13,6 +13,7 @@ import {
   type AssistantSize,
   type AssistantViewport,
   type AssistantVisibility,
+  type AssistantLauncherSize,
   type AssistantWindowPreferences,
 } from '@/utils/assistantWindow'
 
@@ -54,7 +55,7 @@ interface AssistantWindowState {
   setVisibility: (visibility: AssistantVisibility) => void
   setPosition: (position: AssistantPoint) => void
   setSize: (size: AssistantSize) => void
-  setLauncher: (position: AssistantPoint) => void
+  setLauncher: (position: AssistantPoint, size?: AssistantLauncherSize) => void
   resetWindow: () => void
   syncViewport: (viewport?: AssistantViewport) => void
 }
@@ -104,9 +105,9 @@ export const useAssistantWindowStore = create<AssistantWindowState>((set, get) =
     persist(userId, next)
   },
 
-  setLauncher: (position) => {
+  setLauncher: (position, size) => {
     const { userId, preferences } = get()
-    const next = { ...preferences, launcher: clampAssistantLauncher(position, assistantViewport()) }
+    const next = { ...preferences, launcher: clampAssistantLauncher(position, assistantViewport(), size) }
     set({ preferences: next })
     persist(userId, next)
   },

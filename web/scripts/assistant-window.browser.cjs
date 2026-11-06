@@ -104,7 +104,14 @@ async function touchDrag(page, dx, dy) {
   // 1 · default state: launcher only, no dialog
   await launcher(owner).waitFor({ state: 'visible' })
   assert.equal(await dialog(owner).count(), 0)
-  checks.push('默认只显示悬浮按钮')
+  const launcherBox = await launcher(owner).boundingBox()
+  assert(launcherBox && launcherBox.width >= 96, `launcher collapsed to ${launcherBox?.width}px`)
+  assert(launcherBox.height <= 60, `launcher grew to ${launcherBox.height}px tall`)
+  const labelBox = await launcher(owner).locator('span').first().boundingBox()
+  assert(labelBox && labelBox.height < 26, `launcher label wrapped into ${labelBox?.height}px`)
+  assert(launcherBox.x + launcherBox.width <= 1280 - 11, `launcher clipped by the right edge: ${launcherBox.x + launcherBox.width}`)
+  await owner.screenshot({ path: path.join(output, 'assistant-window-launcher.png') })
+  checks.push('默认只显示悬浮按钮，入口文案不折行')
 
   // 2 · open: non-modal, no backdrop, no scroll lock
   const bodyOverflowBefore = await owner.evaluate(() => getComputedStyle(document.body).overflow)
@@ -117,6 +124,15 @@ async function touchDrag(page, dx, dy) {
   })
   assert.equal(outside, false, 'the window must not cover the page')
   assert.equal(await owner.locator('.nv-assistant-window').count(), 1)
+  const textFits = await owner.evaluate(() => {
+    const root = document.querySelector('.nv-assistant-window')
+    const empty = root?.querySelector('[role="log"] p')
+    const hint = Array.from(root?.querySelectorAll('span') || []).find(element => element.className.includes('min-w-0'))
+    const fits = element => !element || element.scrollWidth <= element.clientWidth + 1
+    return { empty: fits(empty), hint: fits(hint) }
+  })
+  assert.deepEqual(textFits, { empty: true, hint: true }, 'assistant text is clipped horizontally')
+  await owner.screenshot({ path: path.join(output, 'assistant-window-dark.png') })
   checks.push('点击按钮展开，且不出现全屏遮罩或滚动锁')
 
   // 3 · drag by the title bar
@@ -234,13 +250,20 @@ async function touchDrag(page, dx, dy) {
   await launcher(other).waitFor({ state: 'visible' })
   assert.equal(await dialog(other).count(), 0, 'another account inherited the expanded state')
   const otherSaved = await other.evaluate(() => localStorage.getItem('nowen-assistant-window:v1:window-other'))
-  assert.equal(otherSaved, null, 'another account reused the first account preferences')
+  assert(otherSaved, 'the second account should keep its own record')
+  const otherPreferences = JSON.parse(otherSaved)
+  assert.equal(otherPreferences.visibility, 'minimized', 'another account inherited the expanded state')
+  assert.deepEqual(otherPreferences.position, { x: 848, y: 268 }, 'another account inherited a moved position')
+  assert.deepEqual(otherPreferences.size, { width: 420, height: 620 }, 'another account inherited a resized window')
   checks.push('切换账号后不复用前一个账号的显示状态')
 
   // 15 · touch drag on a phone viewport
   const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, locale: 'zh-CN' })
   const touchPage = await login(touchContext, OWNER)
   await launcher(touchPage).waitFor({ state: 'visible' })
+  const touchLauncher = await launcher(touchPage).boundingBox()
+  assert(touchLauncher && touchLauncher.x + touchLauncher.width <= 390 - 11, `phone launcher clipped: ${JSON.stringify(touchLauncher)}`)
+  assert(touchLauncher.y + touchLauncher.height <= 844 - 82 + 1, 'phone launcher overlaps the bottom navigation')
   await openAssistant(touchPage)
   await touchPage.getByRole('button', { name: '恢复默认位置和大小', exact: true }).click()
   await touchPage.waitForTimeout(120)

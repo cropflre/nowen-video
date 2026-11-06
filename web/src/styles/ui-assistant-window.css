@@ -149,16 +149,70 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 44px;
-  padding: 10px 16px;
+  /* A fixed element anchored by `left` is shrink-to-fit against the remaining
+     viewport width; without max-content the label collapses into a column. */
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  height: 46px;
+  padding: 0 18px;
   border: 1px solid var(--nv-border-default);
   border-radius: 999px;
   background: var(--nv-bg-elevated);
   color: var(--nv-text-primary);
-  box-shadow: var(--nv-shadow-elevated);
+  box-shadow: var(--nv-shadow-elevated), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
   cursor: grab;
   touch-action: none;
   user-select: none;
+  transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
+}
+
+.nv-assistant-launcher:hover {
+  border-color: var(--nv-border-hover);
+  box-shadow: var(--nv-shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+.nv-assistant-launcher:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.nv-assistant-launcher:focus-visible {
+  outline: 2px solid var(--nv-focus-ring);
+  outline-offset: 2px;
+}
+
+.nv-assistant-launcher[data-dragging="true"] {
+  transform: none;
+  cursor: grabbing;
+}
+
+.nv-assistant-launcher > svg {
+  flex: 0 0 auto;
+  color: var(--nv-action-muted);
+  transition: color 160ms ease;
+}
+
+.nv-assistant-launcher:hover > svg {
+  color: var(--nv-text-primary);
+}
+
+.nv-assistant-launcher__dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--nv-action-primary);
+  animation: nv-assistant-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes nv-assistant-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
 }
 
 @supports (background: color-mix(in srgb, white 50%, transparent)) {
@@ -193,7 +247,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .nv-assistant-window__control {
+  .nv-assistant-window__control,
+  .nv-assistant-launcher {
     transition: none;
+  }
+
+  .nv-assistant-launcher__dot {
+    animation: none;
+    opacity: 0.8;
   }
 }

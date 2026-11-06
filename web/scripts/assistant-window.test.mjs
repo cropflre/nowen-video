@@ -7,7 +7,8 @@ const bundle = await build({
   bundle: true, platform: 'node', format: 'esm', write: false,
 })
 const {
-  ASSISTANT_LAUNCHER_SIZE,
+  ASSISTANT_LAUNCHER_HEIGHT,
+  ASSISTANT_LAUNCHER_WIDTH,
   assistantPreferencesKey,
   clampAssistantLauncher,
   clampAssistantPosition,
@@ -40,7 +41,7 @@ test('default window sits at the bottom-right and stays inside the viewport', ()
   assert.equal(preferences.visibility, 'minimized')
   assert.deepEqual(preferences.size, { width: 420, height: 620 })
   assert.deepEqual(preferences.position, { x: 848, y: 268 })
-  assert.deepEqual(preferences.launcher, { x: 1216, y: 836 })
+  assert.deepEqual(preferences.launcher, { x: 1216, y: 844 })
 })
 
 test('a 320px phone gets a panel narrow enough to avoid horizontal scrolling', () => {
@@ -48,14 +49,14 @@ test('a 320px phone gets a panel narrow enough to avoid horizontal scrolling', (
   assert.equal(size.width, phone.width - 24)
   assert.deepEqual(defaultAssistantPosition(size, phone), { x: 12, y: 18 })
   // The launcher keeps clear of the bottom navigation.
-  assert.equal(defaultAssistantLauncherPosition(phone).y, phone.height - 82 - ASSISTANT_LAUNCHER_SIZE)
+  assert.equal(defaultAssistantLauncherPosition(phone).y, phone.height - 82 - ASSISTANT_LAUNCHER_HEIGHT)
 })
 
 test('a notch safe area pushes the phone panel and launcher higher', () => {
   const notch = { width: 390, height: 844, safeBottom: 34 }
   const size = defaultAssistantSize(notch)
   assert.deepEqual(defaultAssistantPosition(size, notch), { x: 12, y: 844 - 116 - size.height })
-  assert.equal(defaultAssistantLauncherPosition(notch).y, 844 - 116 - ASSISTANT_LAUNCHER_SIZE)
+  assert.equal(defaultAssistantLauncherPosition(notch).y, 844 - 116 - ASSISTANT_LAUNCHER_HEIGHT)
   // Desktop ignores the phone bottom inset.
   assert.deepEqual(defaultAssistantPosition({ width: 420, height: 620 }, desktop), { x: 848, y: 268 })
 })
@@ -87,8 +88,12 @@ test('resizing stops at the minimum size and the viewport edge', () => {
 
 test('the launcher stays on screen and keeps a default spot', () => {
   assert.deepEqual(clampAssistantLauncher({ x: -80, y: -80 }, desktop), { x: 12, y: 12 })
-  assert.deepEqual(clampAssistantLauncher({ x: 9999, y: 9999 }, desktop), { x: 1216, y: 836 })
-  assert.deepEqual(clampAssistantLauncher({ x: Number.NaN, y: Number.NaN }, desktop), { x: 1216, y: 836 })
+  assert.deepEqual(clampAssistantLauncher({ x: 9999, y: 9999 }, desktop), { x: 1216, y: 844 })
+  assert.deepEqual(clampAssistantLauncher({ x: Number.NaN, y: Number.NaN }, desktop), { x: 1216, y: 844 })
+  // A measured, content-sized pill must fit inside the right edge too.
+  const wide = clampAssistantLauncher({ x: 9999, y: 9999 }, desktop, { width: 132, height: 44 })
+  assert.equal(wide.x, 1280 - 12 - 132)
+  assert.equal(wide.y, 900 - 12 - 44)
 })
 
 test('stored state is validated field by field instead of trusted', () => {
@@ -116,7 +121,7 @@ test('a smaller viewport pulls a saved window back into reach', () => {
   assert.equal(normalized.size.height <= 576, true)
   assert.equal(normalized.position.x + normalized.size.width <= 800, true)
   assert.equal(normalized.position.y + 96 <= 600, true)
-  assert.equal(normalized.launcher.x + ASSISTANT_LAUNCHER_SIZE <= 800, true)
+  assert.equal(normalized.launcher.x + ASSISTANT_LAUNCHER_WIDTH <= 800, true)
 })
 
 test('preferences are per user and storage failures never break the window', () => {
