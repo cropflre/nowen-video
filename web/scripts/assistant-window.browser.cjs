@@ -244,26 +244,31 @@ async function touchDrag(page, dx, dy) {
   await owner.evaluate(theme => { document.documentElement.dataset.theme = theme }, previousTheme || 'dark')
   checks.push('浅色模式下玻璃面板保持浅底深字')
 
-  // 14 · playing a movie collapses the panel, leaving the player restores it
+  // 14 · playing a movie hides the panel and its launcher, leaving restores both
   await owner.setViewportSize({ width: 1280, height: 900 })
   await owner.goto(input.frontend + '/profile')
   if (!(await dialog(owner).isVisible())) await owner.getByRole('button', { name: '重新开启问问助手', exact: true }).click()
   await dialog(owner).waitFor({ state: 'visible' })
   await owner.goto(input.frontend + '/play/missing-media')
-  await dialog(owner).waitFor({ state: 'hidden' })
-  await launcher(owner).waitFor({ state: 'visible' })
+  await owner.waitForTimeout(300)
+  assert.equal(await dialog(owner).count(), 0, 'the panel is still on the player')
+  assert.equal(await launcher(owner).count(), 0, 'the launcher is still on the player')
+  assert.equal(await owner.locator('.nv-assistant-window').count(), 0)
+  await owner.screenshot({ path: path.join(output, 'assistant-hidden-on-player.png') })
   await owner.goto(input.frontend + '/profile')
   await dialog(owner).waitFor({ state: 'visible' })
-  checks.push('进入播放页自动收起，离开后恢复原状态')
+  checks.push('播放页完全隐藏窗口和入口，离开后恢复展开')
 
-  // 15 · opening it by hand while watching is respected
+  // 15 · a minimized state comes back minimized, not expanded
+  await owner.getByRole('button', { name: '最小化助手', exact: true }).click()
+  await launcher(owner).waitFor({ state: 'visible' })
   await owner.goto(input.frontend + '/play/missing-media')
-  await dialog(owner).waitFor({ state: 'hidden' })
-  await launcher(owner).click()
-  await dialog(owner).waitFor({ state: 'visible' })
-  await owner.waitForTimeout(400)
-  assert.equal(await dialog(owner).isVisible(), true, 'the panel collapsed itself while watching')
-  checks.push('播放页手动展开后不会被强制收起')
+  await owner.waitForTimeout(300)
+  assert.equal(await launcher(owner).count(), 0, 'the launcher is still on the player')
+  await owner.goto(input.frontend + '/profile')
+  await launcher(owner).waitFor({ state: 'visible' })
+  assert.equal(await dialog(owner).count(), 0)
+  checks.push('播放页隐藏后按原来的最小化状态恢复')
 
   // 16 · account isolation
   const otherContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'zh-CN' })

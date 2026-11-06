@@ -71,8 +71,12 @@ export function isAssistantPlayerPath(pathname: string) {
   return /^\/play\/[^/]+$/.test(pathname)
 }
 
-export function shouldCollapseForRoute(pathname: string, visibility: AssistantVisibility) {
-  return visibility === 'expanded' && isAssistantPlayerPath(pathname)
+/**
+ * On the player the assistant disappears completely, launcher included, so the
+ * picture stays clean; the previous visibility is restored when leaving.
+ */
+export function shouldHideForRoute(pathname: string, visibility: AssistantVisibility) {
+  return visibility !== 'hidden' && isAssistantPlayerPath(pathname)
 }
 
 export function assistantPreferencesKey(userId: string) {

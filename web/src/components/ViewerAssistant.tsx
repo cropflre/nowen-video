@@ -8,7 +8,7 @@ import { useServerProfileStore } from '@/stores/serverProfile'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useAssistantWindowStore, assistantViewport } from '@/stores/assistantWindow'
-import { clampAssistantLauncher, isAssistantPlayerPath, shouldCollapseForRoute, type AssistantPoint } from '@/utils/assistantWindow'
+import { clampAssistantLauncher, isAssistantPlayerPath, shouldHideForRoute, type AssistantPoint, type AssistantVisibility } from '@/utils/assistantWindow'
 import { prepareChildViewing } from '@/hooks/useChildViewing'
 import { Button } from '@/components/design-system'
 import { useToast } from '@/components/Toast'
@@ -74,27 +74,27 @@ function Assistant() {
     }
   }, [syncViewport])
 
-  // Playing a movie should not have the panel sitting on the picture: entering
-  // the player collapses it to the launcher, and leaving restores the state the
-  // user had before, unless they changed it themselves while watching.
+  // Watching a movie should be nothing but the movie: entering the player hides
+  // the panel and its launcher, and leaving restores whatever was there before.
   const playerRoute = isAssistantPlayerPath(location.pathname)
   const playerRouteRef = useRef(false)
-  // Session scoped so a navigation that reloads the document still restores the
-  // panel when the film ends, without leaking into another tab or account.
-  const autoCollapseKey = `nowen-assistant-window:auto-collapsed:${userId}`
-  const rememberAutoCollapse = (collapsed: boolean) => {
+  // Persisted per account so a crash or reload on the player still restores the
+  // panel next time; it only stores which state to bring back, never content.
+  const playbackKey = `nowen-assistant-window:hidden-for-playback:${userId}`
+  const rememberPlaybackVisibility = (previous: AssistantVisibility | null) => {
     try {
-      if (collapsed) sessionStorage.setItem(autoCollapseKey, '1')
-      else sessionStorage.removeItem(autoCollapseKey)
+      if (previous) localStorage.setItem(playbackKey, previous)
+      else localStorage.removeItem(playbackKey)
     } catch {
-      // Session storage can be unavailable; the panel still collapses.
+      // Storage can be unavailable; the panel still hides.
     }
   }
-  const wasAutoCollapsed = () => {
+  const previousPlaybackVisibility = (): AssistantVisibility | null => {
     try {
-      return sessionStorage.getItem(autoCollapseKey) === '1'
+      const saved = localStorage.getItem(playbackKey)
+      return saved === 'expanded' || saved === 'minimized' ? saved : null
     } catch {
-      return false
+      return null
     }
   }
   useLayoutEffect(() => {
@@ -102,19 +102,19 @@ function Assistant() {
     // Read the live value: on a direct load of /play the hydration effect above
     // has just written the saved state without a re-render yet.
     const visibilityNow = useAssistantWindowStore.getState().preferences.visibility
-    if (enteringPlayer && shouldCollapseForRoute(location.pathname, visibilityNow)) {
-      rememberAutoCollapse(true)
-      setVisibility('minimized')
-    } else if (playerRoute && visibilityNow === 'expanded') {
-      // Opened by hand on the player page: never collapse it again on its own.
-      rememberAutoCollapse(false)
-    } else if (!playerRoute && wasAutoCollapsed()) {
+    if (enteringPlayer && shouldHideForRoute(location.pathname, visibilityNow)) {
+      rememberPlaybackVisibility(visibilityNow)
+      setVisibility('hidden')
+    } else if (!playerRoute) {
       // Works for an in-app navigation and for one that reloads the document.
-      if (visibilityNow === 'minimized') setVisibility('expanded')
-      rememberAutoCollapse(false)
+      const previous = previousPlaybackVisibility()
+      if (previous) {
+        if (visibilityNow === 'hidden') setVisibility(previous)
+        rememberPlaybackVisibility(null)
+      }
     }
     playerRouteRef.current = playerRoute
-  }, [location.pathname, playerRoute, preferences.visibility, setVisibility, autoCollapseKey])
+  }, [location.pathname, playerRoute, preferences.visibility, setVisibility, playbackKey])
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; abortRef.current?.abort() } }, [])
   useEffect(() => { if (open) endRef.current?.scrollIntoView({ block: 'nearest' }) }, [turns, busy, open])
@@ -216,7 +216,8 @@ function Assistant() {
     if (action.kind === 'play') {
       if (!target || !['media', 'series'].includes(target.kind)) throw new Error('请先选择一部影片')
       navigate(`/${target.kind === 'series' ? 'series' : 'play'}/${encodeURIComponent(target.id)}`)
-      setVisibility('minimized')
+      // The player route hides the assistant by itself; series keeps the launcher.
+      if (target.kind === 'series') setVisibility('minimized')
       return target.kind === 'series' ? '已打开剧集详情，请选择一集播放。' : '已打开播放器；播放状态以播放器为准。'
     }
     if (action.kind === 'favorite' || action.kind === 'unfavorite') {

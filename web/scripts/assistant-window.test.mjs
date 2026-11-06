@@ -22,7 +22,7 @@ const {
   isAssistantPlayerPath,
   readAssistantPreferences,
   resizeAssistant,
-  shouldCollapseForRoute,
+  shouldHideForRoute,
   writeAssistantPreferences,
 } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`)
 
@@ -126,16 +126,16 @@ test('a smaller viewport pulls a saved window back into reach', () => {
   assert.equal(normalized.launcher.x + ASSISTANT_LAUNCHER_WIDTH <= 800, true)
 })
 
-test('only the player route collapses an expanded assistant', () => {
+test('the player route hides the assistant completely, other routes never do', () => {
   assert.equal(isAssistantPlayerPath('/play/abc'), true)
   assert.equal(isAssistantPlayerPath('/play'), false)
   assert.equal(isAssistantPlayerPath('/play/a/b'), false)
   assert.equal(isAssistantPlayerPath('/player/abc'), false)
-  assert.equal(shouldCollapseForRoute('/play/abc', 'expanded'), true)
-  assert.equal(shouldCollapseForRoute('/play/abc', 'minimized'), false)
-  assert.equal(shouldCollapseForRoute('/play/abc', 'hidden'), false)
-  assert.equal(shouldCollapseForRoute('/media/abc', 'expanded'), false)
-  assert.equal(shouldCollapseForRoute('/', 'expanded'), false)
+  assert.equal(shouldHideForRoute('/play/abc', 'expanded'), true)
+  assert.equal(shouldHideForRoute('/play/abc', 'minimized'), true)
+  assert.equal(shouldHideForRoute('/play/abc', 'hidden'), false)
+  assert.equal(shouldHideForRoute('/media/abc', 'expanded'), false)
+  assert.equal(shouldHideForRoute('/', 'expanded'), false)
 })
 
 test('preferences are per user and storage failures never break the window', () => {
