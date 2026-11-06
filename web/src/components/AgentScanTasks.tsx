@@ -71,7 +71,7 @@ export default function AgentScanTasks({ tasks }: { tasks: ReturnType<typeof use
     <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-medium">任务预览与回执</h3><Button onClick={() => tasks.setExpanded(!tasks.expanded)}>{tasks.expanded ? '收起任务记录' : '展开任务记录'}</Button></div>
     {tasks.error && <p role="alert" className="text-sm">{tasks.error}</p>}
     {tasks.expanded && tasks.runs.some(run => run.status === 'draft') && <p className="text-xs text-[var(--nv-text-secondary)]">向下核对操作范围和确认按钮。</p>}
-    {tasks.expanded && <div className={`${tasks.runs.some(run => run.kind === 'match_movie' && run.status === 'draft') ? 'max-h-[34dvh]' : 'max-h-[26dvh]'} space-y-3 overflow-y-auto overscroll-contain`}>
+    {tasks.expanded && <div className="space-y-3">
       {(expanded ? tasks.runs : tasks.runs.slice(0, 3)).map(run => <article key={run.id} className="space-y-2 rounded-lg border border-[var(--nv-border-default)] p-3" aria-label={run.kind === 'match_movie' ? `${run.media_title}影片匹配任务` : run.kind === 'fill_movie_metadata' ? `${run.media_title}资料补全任务` : `${run.library_name}查找任务`}>
         <p className="font-medium">{run.kind === 'match_movie' ? `匹配影片 · ${run.media_title}` : run.kind === 'fill_movie_metadata' ? `补全资料 · ${run.media_title}` : `查找新影片 · ${run.library_name}`} · {labels[run.status]}</p>
         <p className="text-sm leading-relaxed" role={run.status === 'running' ? 'status' : undefined}>{run.message}</p>

@@ -63,7 +63,7 @@ const base = '/admin/agent/runs';
  await card.getByRole('button', { name: '预览资料补全', exact: true }).click(); await page.getByRole('button', { name: '确认补全资料', exact: true }).waitFor(); p = await newest(owner.token);
  await page.setViewportSize({ width: 320, height: 720 }); await page.screenshot({ path: path.join(output, 'metadata-preview-mobile.png'), fullPage: true });
  assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
- const inputBox = await page.getByRole('textbox', { name: '告诉助手你想做什么', exact: true }).boundingBox(); assert(inputBox && inputBox.y + inputBox.height <= 720);
+ const inputBox = await page.getByRole('textbox', { name: '告诉助手你想做什么', exact: true }).boundingBox(); const viewport = page.viewportSize(); assert(inputBox && viewport && inputBox.y + inputBox.height <= viewport.height && inputBox.x + inputBox.width <= viewport.width);
  const callsBefore = await sourceCalls(); await page.getByRole('button', { name: '确认补全资料', exact: true }).click();
  await page.getByText(/已补全《手工片名》的 3 项空缺资料/).first().waitFor();
  assert.equal((await api('POST', `${base}/${p.id}/confirm`, owner.token, { approval_digest: p.approval_digest })).data.status, 'completed');

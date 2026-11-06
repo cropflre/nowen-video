@@ -13,7 +13,9 @@
     "lint": "eslint .",
     "test:family": "node --test scripts/family-viewing.test.mjs",
     "test:family:browser": "node scripts/family-viewing.browser.cjs",
-    "test:agent-match:browser": "node scripts/agent-movie-match.browser.cjs"
+    "test:agent-match:browser": "node scripts/agent-movie-match.browser.cjs",
+    "test:assistant-window": "node --test scripts/assistant-window.test.mjs",
+    "test:assistant-window:browser": "node scripts/assistant-window.browser.cjs"
   },
   "dependencies": {
     "@fluentui/react-components": "^9.73.8",

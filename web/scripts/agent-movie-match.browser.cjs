@@ -62,7 +62,7 @@ async function stats() { return (await (await fetch(input.source + '/stats')).js
  checks.push('same-name candidates expose year differences; no default selection or forged IDs');
  await page.setViewportSize({width:320,height:720});await page.screenshot({path:path.join(output,'match-candidates-mobile.png'),fullPage:true});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
- const box=await page.getByRole('textbox',{name:'告诉助手你想做什么',exact:true}).boundingBox();assert(box && box.y+box.height<=720);
+ const box=await page.getByRole('textbox',{name:'告诉助手你想做什么',exact:true}).boundingBox();const viewport=page.viewportSize();assert(box && viewport && box.y+box.height<=viewport.height && box.x+box.width<=viewport.width);
  const oldDigest=p.approval_digest;
  await row.locator('[aria-label="匹配候选 手工片名 2020"]').getByRole('button',{name:'选择此候选',exact:true}).click();
  await row.getByRole('button',{name:'确认匹配此影片',exact:true}).waitFor();p=await newest(owner.token);

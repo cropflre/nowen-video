@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { MessageCircle, Send } from 'lucide-react'
 import { viewerAgentApi, type AgentAction, type AgentCard, type AgentSearch, type AgentManagement } from '@/api/viewerAgent'
@@ -7,8 +7,12 @@ import { taskCenterApi } from '@/api/tasks'
 import { useServerProfileStore } from '@/stores/serverProfile'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
+import { useAssistantWindowStore, assistantViewport } from '@/stores/assistantWindow'
+import { clampAssistantLauncher, type AssistantPoint } from '@/utils/assistantWindow'
 import { prepareChildViewing } from '@/hooks/useChildViewing'
-import { Button, Modal, ModalBody, ModalHeader } from '@/components/design-system'
+import { Button } from '@/components/design-system'
+import { useToast } from '@/components/Toast'
+import AssistantWindow from '@/components/AssistantWindow'
 import type { ViewingPreferences } from '@/types'
 import AgentScanTasks, { useAgentScanTasks } from '@/components/AgentScanTasks'
 
@@ -28,7 +32,16 @@ export default function ViewerAssistant() {
 }
 
 function Assistant() {
-  const [open, setOpen] = useState(false)
+  const toast = useToast()
+  const userId = useAuthStore(state => state.user?.id) || ''
+  const preferences = useAssistantWindowStore(state => state.preferences)
+  const hydrate = useAssistantWindowStore(state => state.hydrate)
+  const setVisibility = useAssistantWindowStore(state => state.setVisibility)
+  const setPosition = useAssistantWindowStore(state => state.setPosition)
+  const setSize = useAssistantWindowStore(state => state.setSize)
+  const setLauncher = useAssistantWindowStore(state => state.setLauncher)
+  const resetWindow = useAssistantWindowStore(state => state.resetWindow)
+  const syncViewport = useAssistantWindowStore(state => state.syncViewport)
   const [input, setInput] = useState('')
   const [turns, setTurns] = useState<Turn[]>([])
   const [busy, setBusy] = useState(false)
@@ -39,15 +52,76 @@ function Assistant() {
   const alive = useRef(true)
   const abortRef = useRef<AbortController>()
   const endRef = useRef<HTMLDivElement>(null)
+  const launcherRef = useRef<HTMLButtonElement>(null)
   const routeRef = useRef('')
   const location = useLocation()
   const navigate = useNavigate()
   routeRef.current = location.pathname
   const owner = useAuthStore.getState().user?.id
   const admin = useAuthStore(state => state.user?.role === 'admin' && !state.user.child_mode)
+  const open = preferences.visibility === 'expanded'
   const scanTasks = useAgentScanTasks(open, admin, owner)
+
+  // The saved state is read before paint so the window never jumps on load.
+  useLayoutEffect(() => { hydrate(userId) }, [hydrate, userId])
+  useEffect(() => {
+    const onViewportChange = () => syncViewport()
+    window.addEventListener('resize', onViewportChange)
+    window.addEventListener('orientationchange', onViewportChange)
+    return () => {
+      window.removeEventListener('resize', onViewportChange)
+      window.removeEventListener('orientationchange', onViewportChange)
+    }
+  }, [syncViewport])
+
   useEffect(() => { alive.current = true; return () => { alive.current = false; abortRef.current?.abort() } }, [])
   useEffect(() => { if (open) endRef.current?.scrollIntoView({ block: 'nearest' }) }, [turns, busy, open])
+
+  // Keep the launcher keyboard reachable after minimising.
+  const previousVisibility = useRef(preferences.visibility)
+  useEffect(() => {
+    if (previousVisibility.current === 'expanded' && preferences.visibility === 'minimized') launcherRef.current?.focus()
+    previousVisibility.current = preferences.visibility
+  }, [preferences.visibility])
+
+  const launcherDrag = useRef<{ pointerId: number; startX: number; startY: number; origin: AssistantPoint; latest: AssistantPoint; moved: boolean } | null>(null)
+  const suppressLauncherClick = useRef(false)
+  const startLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    suppressLauncherClick.current = false
+    event.currentTarget.setPointerCapture(event.pointerId)
+    launcherDrag.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, origin: preferences.launcher, latest: preferences.launcher, moved: false }
+  }
+  const moveLauncher = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const current = launcherDrag.current
+    if (!current || current.pointerId !== event.pointerId) return
+    const dx = event.clientX - current.startX
+    const dy = event.clientY - current.startY
+    if (!current.moved && Math.abs(dx) < 3 && Math.abs(dy) < 3) return
+    current.moved = true
+    event.currentTarget.dataset.dragging = 'true'
+    current.latest = clampAssistantLauncher({ x: current.origin.x + dx, y: current.origin.y + dy }, assistantViewport())
+    event.currentTarget.style.left = `${current.latest.x}px`
+    event.currentTarget.style.top = `${current.latest.y}px`
+  }
+  const finishLauncherDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const current = launcherDrag.current
+    launcherDrag.current = null
+    delete event.currentTarget.dataset.dragging
+    if (!current || current.pointerId !== event.pointerId || !current.moved) return
+    suppressLauncherClick.current = true
+    setLauncher(current.latest)
+  }
+  const expand = () => {
+    if (suppressLauncherClick.current) { suppressLauncherClick.current = false; return }
+    setVisibility('expanded')
+  }
+  const minimize = useCallback(() => setVisibility('minimized'), [setVisibility])
+  const hideAssistant = () => {
+    setVisibility('hidden')
+    toast.info('问问助手已隐藏。可以在「我的 → 个人设置」重新开启。')
+  }
+
   const active = () => alive.current && useAuthStore.getState().isAuthenticated && useAuthStore.getState().user?.id === owner
   const add = (turn: Turn) => { if (active()) setTurns(previous => [...previous, turn].slice(-30)) }
   const currentID = () => /^\/play\/([^/]+)$/.exec(routeRef.current)?.[1] || ''
@@ -86,7 +160,7 @@ function Assistant() {
     if (action.kind === 'play') {
       if (!target || !['media', 'series'].includes(target.kind)) throw new Error('请先选择一部影片')
       navigate(`/${target.kind === 'series' ? 'series' : 'play'}/${encodeURIComponent(target.id)}`)
-      setOpen(false)
+      setVisibility('minimized')
       return target.kind === 'series' ? '已打开剧集详情，请选择一集播放。' : '已打开播放器；播放状态以播放器为准。'
     }
     if (action.kind === 'favorite' || action.kind === 'unfavorite') {
@@ -99,20 +173,20 @@ function Assistant() {
       const response = await userApi.profile()
       if (!active() || response.data.data?.id !== owner) throw new Error('账号已切换，请重新操作')
       const previous = response.data.data.viewing_preferences
-      const preferences: ViewingPreferences = { large_text: previous?.large_text ?? false, subtitle_language: previous?.subtitle_language || 'auto', auto_play_next: previous?.auto_play_next ?? true }
-      if (action.kind === 'large_text_on' || action.kind === 'large_text_off') preferences.large_text = action.kind === 'large_text_on'
+      const nextPreferences: ViewingPreferences = { large_text: previous?.large_text ?? false, subtitle_language: previous?.subtitle_language || 'auto', auto_play_next: previous?.auto_play_next ?? true }
+      if (action.kind === 'large_text_on' || action.kind === 'large_text_off') nextPreferences.large_text = action.kind === 'large_text_on'
       else {
         const language = action.kind.slice('subtitle_'.length)
         if (!['zh', 'en', 'ja', 'auto', 'off'].includes(language)) throw new Error('暂不支持这个字幕设置')
-        preferences.subtitle_language = language as ViewingPreferences['subtitle_language']
+        nextPreferences.subtitle_language = language as ViewingPreferences['subtitle_language']
       }
-      const saved = await userApi.updateProfile({ viewing_preferences: preferences })
+      const saved = await userApi.updateProfile({ viewing_preferences: nextPreferences })
       if (!active() || saved.data.data?.id !== owner) throw new Error('无法确认设置结果，请重新打开我的页面')
       useAuthStore.getState().updateUser(saved.data.data)
       if (action.kind.startsWith('large_text_')) return saved.data.data.viewing_preferences?.large_text ? '已开启大字模式。' : '已恢复正常字体。'
-      if (saved.data.data.viewing_preferences?.subtitle_language !== preferences.subtitle_language) throw new Error('字幕偏好未能保存，请在我的页面重试')
+      if (saved.data.data.viewing_preferences?.subtitle_language !== nextPreferences.subtitle_language) throw new Error('字幕偏好未能保存，请在我的页面重试')
       const labels = { zh: '中文', en: '英文', ja: '日文', auto: '自动', off: '关闭' }
-      return `字幕偏好已保存为${labels[preferences.subtitle_language]}。${preferences.subtitle_language === 'off' ? '' : '实际显示取决于影片是否有可用字幕。'}`
+      return `字幕偏好已保存为${labels[nextPreferences.subtitle_language]}。${nextPreferences.subtitle_language === 'off' ? '' : '实际显示取决于影片是否有可用字幕。'}`
     }
     const mediaID = currentID()
     const videos = document.querySelectorAll<HTMLVideoElement>('video')
@@ -184,16 +258,37 @@ function Assistant() {
     catch (error) { reportFailure(error) }
     finally { busyRef.current = false; if (active()) setBusy(false) }
   }
+
   return <>
-    <button type="button" onClick={() => setOpen(true)} className="nv-viewer-assistant-launcher fixed z-40 flex min-h-11 items-center gap-2 rounded-full border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] px-4 py-3 text-[var(--nv-text-primary)] shadow-lg" style={{ right: 'max(16px, env(safe-area-inset-right))', bottom: 'max(88px, calc(env(safe-area-inset-bottom) + 76px))' }} aria-label="打开观影助手" aria-haspopup="dialog"><MessageCircle size={20} aria-hidden="true" /><span>问问助手</span></button>
-    <Modal open={open} onClose={() => setOpen(false)} size="md" ariaLabel="观影助手">
-      <ModalHeader title="观影助手" onClose={() => setOpen(false)} />
-      <ModalBody>
-        {!turns.length && <>{!scanTasks.runs.length && <p className="mb-3 text-sm text-[var(--nv-text-secondary)]">说说想看什么，也可以让我帮你续播、加入想看或调整这个网页的播放。</p>}
-        <div className="mb-3 flex flex-wrap gap-2">{(admin && scanTasks.runs.length ? ['帮我找一部喜剧', '查找新影片', '匹配影片', '补全资料'] : ['帮我找一部喜剧', '继续看', '我的想看', '字体大一点', ...(admin ? ['检查影视库', '检查任务', '查找新影片', '匹配影片', '补全资料'] : []), ...(currentID() ? ['暂停', '继续播放', '中文字幕'] : [])]).map(text => <Button key={text} disabled={busy || scanTasks.pending} onClick={() => void send(text)}>{text}</Button>)}</div></>}
-        {mode === 'fallback' && <p className="mb-2 text-sm text-[var(--nv-text-tertiary)]">智能理解暂时不可用，已使用基础找片。可以简化条件或输入片名。</p>}
-        <div role="log" aria-label="观影对话" aria-live="polite" className={`${admin && scanTasks.expanded && scanTasks.runs.length ? scanTasks.runs.some(run => run.kind === 'match_movie' && run.status === 'draft') ? 'max-h-[8dvh]' : 'max-h-[16dvh]' : 'max-h-[42dvh]'} space-y-4 overflow-y-auto overscroll-contain pr-1`}>
-          {turns.length === 0 && <p className="py-4 text-[var(--nv-text-tertiary)]">试试：“找一部 90 分钟以内、没看过的喜剧”。</p>}
+    {preferences.visibility === 'minimized' && <button
+      ref={launcherRef}
+      type="button"
+      onClick={expand}
+      onPointerDown={startLauncherDrag}
+      onPointerMove={moveLauncher}
+      onPointerUp={finishLauncherDrag}
+      onPointerCancel={finishLauncherDrag}
+      className="nv-assistant-launcher"
+      style={{ left: preferences.launcher.x, top: preferences.launcher.y }}
+      aria-label="打开观影助手"
+      aria-haspopup="dialog"
+    ><MessageCircle size={20} aria-hidden="true" /><span>问问助手</span></button>}
+    <AssistantWindow
+      open={open}
+      position={preferences.position}
+      size={preferences.size}
+      onMove={setPosition}
+      onResize={setSize}
+      onMinimize={minimize}
+      onHide={hideAssistant}
+      onReset={resetWindow}
+    >
+      <div className="flex min-h-0 flex-1 flex-col">
+        {!turns.length && <div className="shrink-0">{!scanTasks.runs.length && <p className="mb-3 text-sm text-[var(--nv-text-secondary)]">说说想看什么，也可以让我帮你续播、加入想看或调整这个网页的播放。</p>}
+        <div className="mb-3 flex flex-wrap gap-2">{(admin && scanTasks.runs.length ? ['帮我找一部喜剧', '查找新影片', '匹配影片', '补全资料'] : ['帮我找一部喜剧', '继续看', '我的想看', '字体大一点', ...(admin ? ['检查影视库', '检查任务', '查找新影片', '匹配影片', '补全资料'] : []), ...(currentID() ? ['暂停', '继续播放', '中文字幕'] : [])]).map(text => <Button key={text} disabled={busy || scanTasks.pending} onClick={() => void send(text)}>{text}</Button>)}</div></div>}
+        {mode === 'fallback' && <p className="mb-2 shrink-0 text-sm text-[var(--nv-text-tertiary)]">智能理解暂时不可用，已使用基础找片。可以简化条件或输入片名。</p>}
+        <div role="log" aria-label="观影对话" aria-live="polite" className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain pr-1">
+          {turns.length === 0 && <div className="flex h-full min-h-[120px] flex-col items-center justify-center gap-2 px-4 text-center text-sm text-[var(--nv-text-tertiary)]"><MessageCircle size={22} aria-hidden="true" /><p>试试：“找一部 90 分钟以内、没看过的喜剧”。</p></div>}
           {turns.map((turn, index) => <div key={index} className="space-y-2 rounded-xl bg-[var(--nv-bg-surface-soft)] p-3">
             <p className="text-xs text-[var(--nv-text-tertiary)]">{turn.role === 'user' ? '你' : '助手'}</p>
             <p className="whitespace-pre-wrap break-words leading-relaxed">{turn.text}</p>
@@ -202,7 +297,7 @@ function Assistant() {
             {turn.management && <div className="space-y-2">
               <p>{turn.management.library_count} 个影视库 · {turn.management.media_count} 部影片</p>
               <p>资料待补：{turn.management.needs_metadata} 部 · 分级待审核：{turn.management.needs_rating} 部</p>
-              {turn.management.libraries.map(library => <Button key={library.id} disabled={busy} onClick={() => { navigate(`/library/${encodeURIComponent(library.id)}`); setOpen(false) }}>{library.name}（{library.media_count} 部）</Button>)}
+              {turn.management.libraries.map(library => <Button key={library.id} disabled={busy} onClick={() => { navigate(`/library/${encodeURIComponent(library.id)}`); setVisibility('minimized') }}>{library.name}（{library.media_count} 部）</Button>)}
               {turn.management.library_count > turn.management.libraries.length && <p className="text-sm text-[var(--nv-text-tertiary)]">这里显示前 {turn.management.libraries.length} 个库，其余可在家庭管理中查看。</p>}
             </div>}
             {turn.cards?.map((card, i) => <div key={`${card.kind}:${card.id}`} className="rounded-lg border border-[var(--nv-border-default)] p-3">
@@ -214,13 +309,13 @@ function Assistant() {
           {busy && <p role="status" className="py-2 text-sm">正在处理，请稍等…</p>}
           <div ref={endRef} />
         </div>
-        {admin && <AgentScanTasks tasks={scanTasks} />}
-        <form className="mt-4 flex gap-2" onSubmit={event => { event.preventDefault(); void send(input.trim()) }}>
+        {admin && <div className="mt-3 max-h-[38%] shrink-0 overflow-y-auto overscroll-contain pr-1"><AgentScanTasks tasks={scanTasks} /></div>}
+        <form className="mt-3 flex shrink-0 gap-2 border-t border-[var(--nv-border-subtle)] pt-3" onSubmit={event => { event.preventDefault(); void send(input.trim()) }}>
           <input aria-label="告诉助手你想做什么" placeholder="想看什么，直接说" maxLength={500} value={input} disabled={busy} onChange={event => setInput(event.target.value)} className="min-h-11 min-w-0 flex-1 rounded-lg border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] px-3" />
           <Button type="submit" disabled={busy || !input.trim()} aria-label="发送消息"><Send size={18} aria-hidden="true" />发送</Button>
         </form>
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm"><span className="text-[var(--nv-text-tertiary)]">{admin && scanTasks.runs.length ? '任务记录会保留。' : '对话仅保留在本次页面会话，切换账号后清空。'}</span><Button disabled={busy || !turns.length} onClick={() => { setTurns([]); cardsRef.current = []; searchRef.current = undefined; setMode('') }}>清空对话</Button></div>
-      </ModalBody>
-    </Modal>
+        <div className="mt-2 flex shrink-0 flex-col items-start gap-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"><span className="text-[var(--nv-text-tertiary)]">{admin && scanTasks.runs.length ? '任务记录会保留。' : '对话仅保留在本次页面会话，切换账号后清空。'}</span><Button disabled={busy || !turns.length} onClick={() => { setTurns([]); cardsRef.current = []; searchRef.current = undefined; setMode('') }}>清空对话</Button></div>
+      </div>
+    </AssistantWindow>
   </>
 }

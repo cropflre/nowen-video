@@ -1,0 +1,47 @@
+# 观影助手：非模态悬浮窗
+
+分支：`codex/family-viewing-platform`。把「问问助手」从模态 `Modal` 改成可自由移动的非模态悬浮窗，窗口外壳与聊天业务分离，Agent 侧代码未改动。
+
+## 交互
+
+三种可持久化状态：`expanded`（完整窗口）、`minimized`（入口按钮）、`hidden`（两者都不渲染）。
+
+- 展开：桌面默认 420×620，右下角 12px 边距；移动端取 `视口宽 - 24`，底部让出主导航与安全区。无遮罩、不锁页面滚动、不声明 `aria-modal`，影片照常播放。
+- 最小化：标题栏「—」收起为右下角胶囊按钮，对话与任务状态留在内存；恢复后仍在。处理中的请求不会被取消，也不会重复提交。
+- 隐藏：标题栏「隐藏助手」同时移除窗口与入口，落库状态为 `hidden`。恢复入口固定在「我的 → 个人设置 → 问问助手」，不会出现隐藏后无法找回。
+- Escape 收起窗口；有真实模态框在上层时让位给它。最小化后焦点回到入口按钮。
+
+拖拽只用 Pointer Events，鼠标、触摸、触控笔同一套路径。拖动时直接写节点 `left/top`，松手才提交 React 状态与 `localStorage`，中途不触发聊天重渲染；拖出边界松手后整体收回视口，避免标题栏跑出屏幕。
+
+桌面端右下角有缩放手柄，宽度 320–720（受视口约束），高度 300 起；移动端与 `pointer: coarse` 隐藏手柄，改由响应式面板自适应。标题栏另有「恢复默认位置和大小」。
+
+## 状态
+
+```ts
+interface AssistantWindowPreferences { visibility: 'expanded' | 'minimized' | 'hidden'; position: { x: number; y: number }; size: { width: number; height: number }; launcher: { x: number; y: number } }
+```
+
+- 键为 `nowen-assistant-window:v1:<userId>`，按账号隔离，站点由 origin 天然隔离；同一账号换设备不会带坐标。
+- 只存窗口几何与可见性，不存对话、令牌或账号信息；鉴权仍走原有 store。
+- 读取时逐字段校验并重新收敛：非法 JSON、类型错误、超出视口的旧坐标都回落到默认值；`localStorage` 抛错（隐私模式、配额）时窗口照常工作，只是不记忆。
+- 视口 `resize` / `orientationchange` 后重新收敛；恢复、缩放、旋转都会把窗口整体拉回可视区，拖拽过程中则只保证至少 96px 可触。
+
+## 业务保留
+
+`ViewerAssistant` 仅替换外壳：`scanTasks`、`execute`、`send`、账号隔离、路由失效、儿童账号权限、播放器命令校验全部沿用原实现。播放跳转与库跳转由「关闭弹窗」改为「最小化」。管理员任务列表的滚动交给窗口，`AgentScanTasks` 不再用 `dvh` 限高，避免在固定高度的窗口里溢出。
+
+## 验证
+
+- `npm --prefix web run build`：`tsc -b` + Vite 构建 + `verify:retired-ui` + `audit:ui` 全部通过。
+- `npm --prefix web run test:family`（5）、`test:media-tech`（5）通过。
+- 新增 `test:assistant-window`（10 项）：默认几何、320px 面板、尺寸钳制、拖拽边界、缩放边界、入口收敛、存储逐字段校验、小视口回收、按账号隔离与存储异常、刘海安全区。
+- 新增 `test:assistant-window:browser`（16 项，隔离后端 + Chromium，真实账号登录）：展开无遮罩无滚动锁、拖拽位移、拖出边界后收敛、缩放后无横向滚动、最小化保留对话、恢复、刷新还原位置尺寸、隐藏后无入口、个人设置重新开启、Escape 收起、320px 无横向滚动且输入框可见、浏览器窗口缩小自动校正、浅色主题浅底深字、账号隔离、手机触摸拖拽。
+- 既有 `agent-metadata` / `agent-movie-match` 浏览器脚本中硬编码的 `y <= 720` 布局断言改为按当前视口比较，未删除任何用例。
+
+## 残余风险
+
+- 全屏播放时悬浮窗仍在文档层，浏览器全屏元素会盖住它；本轮未接管 `fullscreenchange`。
+- 移动端不提供手动缩放，仅自适应，符合本轮范围。
+- 多标签页之间不同步窗口状态，最后一个写入者生效。
+- 隐藏只影响当前设备的该账号；换设备仍是该设备上次的状态。
+- 悬浮窗层级为 `--nv-z-assistant: 70`，低于模态框（100）与 toast（120），高于移动端导航（55）。

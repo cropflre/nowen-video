@@ -1,0 +1,199 @@
+/* Nowen Video · 问问助手悬浮窗
+ * A non-modal shell: no backdrop, no scroll lock, no aria-modal. The glass
+ * surface reuses the Aurora/Neo Glass tokens so both themes keep contrast.
+ */
+
+:root {
+  --nv-z-assistant: 70;
+}
+
+.nv-assistant-window {
+  position: fixed;
+  z-index: var(--nv-z-assistant);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--nv-border-default);
+  border-radius: var(--nv-radius-modal, 18px);
+  background: var(--nv-bg-elevated);
+  color: var(--nv-text-primary);
+  box-shadow: var(--nv-shadow-elevated);
+  isolation: isolate;
+}
+
+@supports (background: color-mix(in srgb, white 50%, transparent)) {
+  .nv-assistant-window {
+    background: color-mix(in srgb, var(--nv-bg-elevated) 92%, transparent);
+    backdrop-filter: blur(18px) saturate(1.12);
+    -webkit-backdrop-filter: blur(18px) saturate(1.12);
+  }
+}
+
+.nv-assistant-window[data-dragging="true"],
+.nv-assistant-window[data-resizing="true"] {
+  user-select: none;
+  box-shadow: var(--nv-shadow-card-hover);
+}
+
+.nv-assistant-window__bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 8px 8px 8px 7px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+  background: linear-gradient(180deg, var(--nv-fill-hover), transparent);
+  cursor: grab;
+  touch-action: none;
+}
+
+.nv-assistant-window[data-dragging="true"] .nv-assistant-window__bar {
+  cursor: grabbing;
+}
+
+.nv-assistant-window__grip {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 32px;
+  color: var(--nv-text-tertiary);
+}
+
+.nv-assistant-window__titles {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.nv-assistant-window__title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--nv-text-primary);
+  font-size: 0.875rem;
+  font-weight: 650;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-assistant-window__hint {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--nv-text-tertiary);
+  font-size: 0.6875rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-assistant-window__controls {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
+.nv-assistant-window__control {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--nv-text-secondary);
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.nv-assistant-window__control:hover {
+  background: var(--nv-fill-hover);
+  color: var(--nv-text-primary);
+}
+
+.nv-assistant-window__control:focus-visible {
+  border-color: var(--nv-border-strong);
+  outline: 2px solid var(--nv-focus-ring);
+  outline-offset: 1px;
+}
+
+.nv-assistant-window__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 14px;
+}
+
+.nv-assistant-window__resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 46%, var(--nv-text-tertiary) 46%, var(--nv-text-tertiary) 54%, transparent 54%) 100% 0 / 7px 7px no-repeat,
+    linear-gradient(135deg, transparent 46%, var(--nv-text-disabled) 46%, var(--nv-text-disabled) 54%, transparent 54%) 100% 100% / 11px 11px no-repeat;
+  opacity: 0.75;
+}
+
+.nv-assistant-launcher {
+  position: fixed;
+  z-index: calc(var(--nv-z-assistant) - 1);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: 999px;
+  background: var(--nv-bg-elevated);
+  color: var(--nv-text-primary);
+  box-shadow: var(--nv-shadow-elevated);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+@supports (background: color-mix(in srgb, white 50%, transparent)) {
+  .nv-assistant-launcher {
+    background: color-mix(in srgb, var(--nv-bg-elevated) 92%, transparent);
+    backdrop-filter: blur(14px) saturate(1.1);
+    -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  }
+}
+
+.nv-assistant-launcher[data-dragging="true"] {
+  cursor: grabbing;
+}
+
+/* Manual resizing is a pointer device affordance. Touch devices get the
+   responsive panel instead, so the handle never competes with swipes. */
+@media (max-width: 47.999rem), (pointer: coarse) {
+  .nv-assistant-window__resize {
+    display: none;
+  }
+}
+
+@media (max-width: 47.999rem) {
+  .nv-assistant-window__control {
+    width: 36px;
+    height: 36px;
+  }
+
+  .nv-assistant-window__hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-assistant-window__control {
+    transition: none;
+  }
+}
