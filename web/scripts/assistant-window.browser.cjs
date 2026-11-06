@@ -244,7 +244,28 @@ async function touchDrag(page, dx, dy) {
   await owner.evaluate(theme => { document.documentElement.dataset.theme = theme }, previousTheme || 'dark')
   checks.push('浅色模式下玻璃面板保持浅底深字')
 
-  // 14 · account isolation
+  // 14 · playing a movie collapses the panel, leaving the player restores it
+  await owner.setViewportSize({ width: 1280, height: 900 })
+  await owner.goto(input.frontend + '/profile')
+  if (!(await dialog(owner).isVisible())) await owner.getByRole('button', { name: '重新开启问问助手', exact: true }).click()
+  await dialog(owner).waitFor({ state: 'visible' })
+  await owner.goto(input.frontend + '/play/missing-media')
+  await dialog(owner).waitFor({ state: 'hidden' })
+  await launcher(owner).waitFor({ state: 'visible' })
+  await owner.goto(input.frontend + '/profile')
+  await dialog(owner).waitFor({ state: 'visible' })
+  checks.push('进入播放页自动收起，离开后恢复原状态')
+
+  // 15 · opening it by hand while watching is respected
+  await owner.goto(input.frontend + '/play/missing-media')
+  await dialog(owner).waitFor({ state: 'hidden' })
+  await launcher(owner).click()
+  await dialog(owner).waitFor({ state: 'visible' })
+  await owner.waitForTimeout(400)
+  assert.equal(await dialog(owner).isVisible(), true, 'the panel collapsed itself while watching')
+  checks.push('播放页手动展开后不会被强制收起')
+
+  // 16 · account isolation
   const otherContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'zh-CN' })
   const other = await login(otherContext, OTHER)
   await launcher(other).waitFor({ state: 'visible' })
@@ -257,7 +278,7 @@ async function touchDrag(page, dx, dy) {
   assert.deepEqual(otherPreferences.size, { width: 420, height: 620 }, 'another account inherited a resized window')
   checks.push('切换账号后不复用前一个账号的显示状态')
 
-  // 15 · touch drag on a phone viewport
+  // 17 · touch drag on a phone viewport
   const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, locale: 'zh-CN' })
   const touchPage = await login(touchContext, OWNER)
   await launcher(touchPage).waitFor({ state: 'visible' })

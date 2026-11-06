@@ -8,7 +8,7 @@ import { useServerProfileStore } from '@/stores/serverProfile'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
 import { useAssistantWindowStore, assistantViewport } from '@/stores/assistantWindow'
-import { clampAssistantLauncher, type AssistantPoint } from '@/utils/assistantWindow'
+import { clampAssistantLauncher, isAssistantPlayerPath, shouldCollapseForRoute, type AssistantPoint } from '@/utils/assistantWindow'
 import { prepareChildViewing } from '@/hooks/useChildViewing'
 import { Button } from '@/components/design-system'
 import { useToast } from '@/components/Toast'
@@ -73,6 +73,48 @@ function Assistant() {
       window.removeEventListener('orientationchange', onViewportChange)
     }
   }, [syncViewport])
+
+  // Playing a movie should not have the panel sitting on the picture: entering
+  // the player collapses it to the launcher, and leaving restores the state the
+  // user had before, unless they changed it themselves while watching.
+  const playerRoute = isAssistantPlayerPath(location.pathname)
+  const playerRouteRef = useRef(false)
+  // Session scoped so a navigation that reloads the document still restores the
+  // panel when the film ends, without leaking into another tab or account.
+  const autoCollapseKey = `nowen-assistant-window:auto-collapsed:${userId}`
+  const rememberAutoCollapse = (collapsed: boolean) => {
+    try {
+      if (collapsed) sessionStorage.setItem(autoCollapseKey, '1')
+      else sessionStorage.removeItem(autoCollapseKey)
+    } catch {
+      // Session storage can be unavailable; the panel still collapses.
+    }
+  }
+  const wasAutoCollapsed = () => {
+    try {
+      return sessionStorage.getItem(autoCollapseKey) === '1'
+    } catch {
+      return false
+    }
+  }
+  useLayoutEffect(() => {
+    const enteringPlayer = playerRoute && !playerRouteRef.current
+    // Read the live value: on a direct load of /play the hydration effect above
+    // has just written the saved state without a re-render yet.
+    const visibilityNow = useAssistantWindowStore.getState().preferences.visibility
+    if (enteringPlayer && shouldCollapseForRoute(location.pathname, visibilityNow)) {
+      rememberAutoCollapse(true)
+      setVisibility('minimized')
+    } else if (playerRoute && visibilityNow === 'expanded') {
+      // Opened by hand on the player page: never collapse it again on its own.
+      rememberAutoCollapse(false)
+    } else if (!playerRoute && wasAutoCollapsed()) {
+      // Works for an in-app navigation and for one that reloads the document.
+      if (visibilityNow === 'minimized') setVisibility('expanded')
+      rememberAutoCollapse(false)
+    }
+    playerRouteRef.current = playerRoute
+  }, [location.pathname, playerRoute, preferences.visibility, setVisibility, autoCollapseKey])
 
   useEffect(() => { alive.current = true; return () => { alive.current = false; abortRef.current?.abort() } }, [])
   useEffect(() => { if (open) endRef.current?.scrollIntoView({ block: 'nearest' }) }, [turns, busy, open])

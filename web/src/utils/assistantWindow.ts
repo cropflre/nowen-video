@@ -66,6 +66,15 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max)
 }
 
+/** The player route is the one place where an expanded panel covers content. */
+export function isAssistantPlayerPath(pathname: string) {
+  return /^\/play\/[^/]+$/.test(pathname)
+}
+
+export function shouldCollapseForRoute(pathname: string, visibility: AssistantVisibility) {
+  return visibility === 'expanded' && isAssistantPlayerPath(pathname)
+}
+
 export function assistantPreferencesKey(userId: string) {
   return `nowen-assistant-window:v1:${userId}`
 }

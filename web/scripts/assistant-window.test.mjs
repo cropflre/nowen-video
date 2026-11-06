@@ -19,8 +19,10 @@ const {
   defaultAssistantSize,
   moveAssistant,
   normalizeAssistantPreferences,
+  isAssistantPlayerPath,
   readAssistantPreferences,
   resizeAssistant,
+  shouldCollapseForRoute,
   writeAssistantPreferences,
 } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`)
 
@@ -122,6 +124,18 @@ test('a smaller viewport pulls a saved window back into reach', () => {
   assert.equal(normalized.position.x + normalized.size.width <= 800, true)
   assert.equal(normalized.position.y + 96 <= 600, true)
   assert.equal(normalized.launcher.x + ASSISTANT_LAUNCHER_WIDTH <= 800, true)
+})
+
+test('only the player route collapses an expanded assistant', () => {
+  assert.equal(isAssistantPlayerPath('/play/abc'), true)
+  assert.equal(isAssistantPlayerPath('/play'), false)
+  assert.equal(isAssistantPlayerPath('/play/a/b'), false)
+  assert.equal(isAssistantPlayerPath('/player/abc'), false)
+  assert.equal(shouldCollapseForRoute('/play/abc', 'expanded'), true)
+  assert.equal(shouldCollapseForRoute('/play/abc', 'minimized'), false)
+  assert.equal(shouldCollapseForRoute('/play/abc', 'hidden'), false)
+  assert.equal(shouldCollapseForRoute('/media/abc', 'expanded'), false)
+  assert.equal(shouldCollapseForRoute('/', 'expanded'), false)
 })
 
 test('preferences are per user and storage failures never break the window', () => {
