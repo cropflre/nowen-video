@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	llmprices "github.com/Mattbusel/llm-prices/go"
 )
 
 // ==================== AI 模型 Catalog ====================
@@ -57,7 +59,7 @@ var builtinAIModelCatalog = []AIModelInfo{
 	{Provider: "zhipu", ID: "glm-4-plus", Label: "GLM-4 Plus", ContextLength: 128000, InputPrice: 0.0070, OutputPrice: 0.0070, Notes: "旗舰"},
 
 	// ===== Anthropic Claude =====
-	{Provider: "anthropic", ID: "claude-3-5-haiku-20241022", Label: "Claude 3.5 Haiku", ContextLength: 200000, InputPrice: 0.001, OutputPrice: 0.005, Recommended: true, Notes: "快、便宜、上下文长"},
+	{Provider: "anthropic", ID: "claude-3-5-haiku-20241022", Label: "Claude 3.5 Haiku", ContextLength: 200000, InputPrice: 0.0008, OutputPrice: 0.004, Recommended: true, Notes: "快、便宜、上下文长"},
 	{Provider: "anthropic", ID: "claude-3-5-sonnet-20241022", Label: "Claude 3.5 Sonnet", ContextLength: 200000, InputPrice: 0.003, OutputPrice: 0.015, Notes: "通用旗舰"},
 
 	// ===== 本地（占位，价格 0） =====
@@ -171,6 +173,11 @@ func (s *AICostService) Estimate(provider, modelID string, promptTokens, complet
 		if est.Provider == "" {
 			est.Provider = m.Provider
 		}
+	} else if in, out, checked, ok := listedPrice(est.Provider, est.Model); ok {
+		// catalog 外的 OpenAI / Anthropic 型号：按官方标价（llm-prices，离线数据）估算
+		est.InputPrice = in
+		est.OutputPrice = out
+		est.Note = fmt.Sprintf("模型 %q 不在内置 catalog，已按官方标价估算（%s 核对）", est.Model, checked)
 	} else {
 		// fallback：按 provider 平均价
 		if p, ok := providerFallbackPrice[est.Provider]; ok {
@@ -189,6 +196,19 @@ func (s *AICostService) Estimate(provider, modelID string, promptTokens, complet
 		float64(completionTokens)/1000.0*est.OutputPrice
 	est.CostCNY = est.CostUSD * usdToCnyRate
 	return est, nil
+}
+
+// listedPrice 返回 OpenAI / Anthropic 型号的官方标价（USD per 1K tokens）及核对日期。
+// 数据来自 llm-prices：编译进二进制、不联网，每行注明官方价格页与核对日期。
+func listedPrice(provider, modelID string) (in, out float64, checked string, ok bool) {
+	if provider != "openai" && provider != "anthropic" {
+		return 0, 0, "", false
+	}
+	p, found := llmprices.LookupProvider(provider, modelID)
+	if !found || p.Input == nil || p.Output == nil {
+		return 0, 0, "", false
+	}
+	return *p.Input / 1000, *p.Output / 1000, p.Checked, true
 }
 
 // CostSummary 累计花费汇总（取自 AIService 的运行期统计）
