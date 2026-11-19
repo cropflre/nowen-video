@@ -10,6 +10,7 @@ import { formatProgress } from '@/utils/format'
 import type { Library, WatchHistory, RecommendedMedia, MixedItem } from '@/types'
 import MediaCard from '@/components/MediaCard'
 import SuggestOne from '@/components/SuggestOne'
+import FamilyRemainingChip from '@/components/FamilyRemainingChip'
 import HeroCarousel from '@/components/HeroCarousel'
 import { Button, EmptyState, Section } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
@@ -138,7 +139,12 @@ export default function HomePage() {
   return (
     <div className="nv-home-page">
       <div className="nv-home-content-flow">
-        {user?.child_mode && <p className="text-sm text-[var(--nv-text-tertiary)]">儿童空间 · 只显示家长已确认的影片</p>}
+        {user?.child_mode && (
+          <div className="flex flex-wrap items-center gap-2">
+            <FamilyRemainingChip />
+            <p className="text-sm text-[var(--nv-text-tertiary)]">儿童空间 · 只显示家长已确认的影片</p>
+          </div>
+        )}
         {continueList.length > 0 && (
           <ContinueWatchingRow items={continueList} title={t('home.continueWatching')} locale={locale}
             remainingLabel={(minutes) => minutes === null ? t('family.resume') : t('family.remaining', { minutes })} />
@@ -151,7 +157,7 @@ export default function HomePage() {
         )}
         {(recommendations.length > 0 || recentItems.length > 0) && (
           <section aria-label={t('family.today')}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{t('family.today')}</h2><SuggestOne key={user?.id} items={recentItems} /></div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{t('family.today')}</h2><SuggestOne key={user?.id} items={recentItems} childMode={Boolean(user?.child_mode)} /></div>
             <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} watchStateByMediaId={watchStateByMediaId} />
           </section>
         )}

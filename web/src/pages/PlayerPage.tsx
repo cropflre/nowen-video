@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import qrcode from 'qrcode-generator'
 import { mediaApi, streamApi, seriesApi, userApi } from '@/api'
 import type { Media, MediaPlayInfo } from '@/types'
 import AdaptiveWebVideoPlayer, { type BrowserPlaybackMode } from '@/components/AdaptiveWebVideoPlayer'
@@ -9,8 +10,10 @@ import { useToast } from '@/components/Toast'
 import { usePlayerStore } from '@/stores/player'
 import { useChildViewing } from '@/hooks/useChildViewing'
 import { useAuthStore } from '@/stores/auth'
+import { useTranslation } from '@/i18n'
 import { episodeLabel, resumePosition } from '@/utils/viewing'
-import { Zap, Loader2, Cpu, Clapperboard } from 'lucide-react'
+import { isLowRemaining } from '@/utils/familyRating'
+import { Zap, Loader2, Cpu, Clapperboard, Clock } from 'lucide-react'
 import { detectWebCodecs, canUseWebCodecs, type WebCodecsCapability } from '@/utils/webcodecs'
 import { DesktopPlayer, useDesktop } from '@/desktop'
 import { getMediaCapabilities, type BrowserMediaCapability } from '@/utils/media-capabilities'
@@ -36,6 +39,7 @@ export default function PlayerPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const toast = useToast()
+  const { t } = useTranslation()
   const desktopRuntime = useDesktop()
 
   const query = new URLSearchParams(window.location.search)
@@ -72,6 +76,35 @@ export default function PlayerPage() {
 
   useEffect(() => { currentTimeRef.current = currentTime }, [currentTime])
   useEffect(() => { detectWebCodecs().then(setWebcodecsCap).catch(() => setWebcodecsCap(null)) }, [])
+
+  // 桌面端儿童限时引导用的网页播放链接与二维码。桌面端拿不到可用的
+  // http(s) 服务地址时只显示文字说明，不生成错误的二维码。
+  const webPlayUrl = useMemo(() => {
+    if (!id) return ''
+    const base = desktopRuntime.serverBaseUrl || (typeof window !== 'undefined' ? window.location.origin : '')
+    if (!base || !/^https?:\/\//.test(base)) return ''
+    return `${base.replace(/\/+$/, '')}/play/${id}`
+  }, [desktopRuntime.serverBaseUrl, id])
+  const webPlayQr = useMemo(() => {
+    if (!webPlayUrl) return ''
+    try {
+      const code = qrcode(0, 'M'); code.addData(webPlayUrl); code.make()
+      return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(code.createSvgTag({ scalable: true }))
+    } catch { return '' }
+  }, [webPlayUrl])
+
+  // 剩余时间 5 分钟预警：只发一次，换片或时间回升到 5 分钟以上后重置。
+  const warnedLowRef = useRef(false)
+  useEffect(() => { warnedLowRef.current = false }, [id])
+  useEffect(() => {
+    if (!childMode) return
+    const remaining = childViewing.remainingSeconds
+    if (remaining === null || remaining === undefined) return
+    if (remaining > 300) { warnedLowRef.current = false; return }
+    if (remaining <= 0 || warnedLowRef.current) return
+    warnedLowRef.current = true
+    toast.warning(t('family.remainingLowWarning', { minutes: Math.ceil(remaining / 60) }))
+  }, [childMode, childViewing.remainingSeconds, toast, t])
 
   // Windows Render Surface 位于透明 Tauri WebView 下方。只在 Desktop 普通播放路由临时
   // 清除浏览器根节点的全局 Aurora 背景，离开播放页后完整恢复，不影响 Web/其他页面。
@@ -199,6 +232,18 @@ export default function PlayerPage() {
   }, [toast])
 
   if (loadError || childViewing.error) {
+    // 桌面端儿童限时观看：不是死路，给出去网页端继续的办法。
+    if (childViewing.nativeChildLimited) {
+      return (
+        <div data-testid="native-child-guidance" className="group/player flex h-full flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
+          <h1 className="text-lg font-semibold">{t('player.nativeChildTitle')}</h1>
+          <p className="max-w-md text-sm leading-6 text-[var(--nv-player-text-secondary)]">{t('player.nativeChildHint')}</p>
+          {webPlayQr && <img src={webPlayQr} alt={t('player.nativeChildQrAlt')} className="h-40 w-40 rounded-lg bg-white p-2" />}
+          {webPlayUrl && <a href={webPlayUrl} target="_blank" rel="noreferrer" className="nv-button" data-variant="primary">{t('player.openInBrowser')}</a>}
+          <button type="button" className="nv-button" data-variant="secondary" onClick={handleBack}>返回</button>
+        </div>
+      )
+    }
     return (
       <div className="group/player flex h-full flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
         <h1 className="text-lg font-semibold">{childViewing.error || (accessRevoked ? '这部影片暂未向儿童账号开放' : '暂时无法准备这部影片')}</h1>
@@ -288,27 +333,30 @@ export default function PlayerPage() {
     ? `${episodeLabel(nextEpisode.season_num, nextEpisode.episode_num)}${nextEpisode.episode_title ? ` ${nextEpisode.episode_title}` : ''}`
     : undefined
 
+  // label 留给管理员的“播放信息”诊断区；publicLabel 是给所有人看的一句话状态。
   const statusContent = useDesktopPlayer
-    ? { icon: <Cpu size={12} />, label: '原生播放', tone: 'accent' as const }
+    ? { icon: <Cpu size={12} />, label: '原生播放', publicLabel: t('player.statusNative'), tone: 'accent' as const }
     : highlightMode
-      ? { icon: <Clapperboard size={12} />, label: `精彩片段 ${formatClipTime(clipStart)}–${formatClipTime(clipEnd)}`, tone: 'accent' as const }
+      ? { icon: <Clapperboard size={12} />, label: `精彩片段 ${formatClipTime(clipStart)}–${formatClipTime(clipEnd)}`, publicLabel: `精彩片段 ${formatClipTime(clipStart)}–${formatClipTime(clipEnd)}`, tone: 'accent' as const }
       : mode === 'webcodecs'
-        ? { icon: <Cpu size={12} />, label: 'WebCodecs 硬解播放', tone: 'accent' as const }
+        ? { icon: <Cpu size={12} />, label: 'WebCodecs 硬解播放', publicLabel: t('player.statusWebCodecs'), tone: 'accent' as const }
         : isPreprocessed
-          ? { icon: <Zap size={12} />, label: '秒开播放', tone: 'success' as const }
+          ? { icon: <Zap size={12} />, label: '秒开播放', publicLabel: t('player.statusInstant'), tone: 'success' as const }
           : effectiveBrowserMode === 'direct' && canDirectHEVC
-            ? { icon: <Zap size={12} />, label: 'HEVC 直接播放', tone: 'accent' as const }
-            : effectiveBrowserMode === 'remux'
-              ? { icon: <Cpu size={12} />, label: 'Remux 兼容播放', tone: 'accent' as const }
-              : effectiveBrowserMode === 'smart_remux'
-                ? { icon: <Cpu size={12} />, label: 'Smart Remux（音频转码）', tone: 'success' as const }
-                : effectiveBrowserMode === 'hls'
-                  ? { icon: <Cpu size={12} />, label: 'HLS 转码播放', tone: 'warning' as const }
-                  : playInfo.preprocess_status === 'running'
-                    ? { icon: <Loader2 size={12} className="animate-spin" />, label: '正在预处理中...', tone: 'accent' as const }
-                    : playInfo.preprocess_status === 'pending' || playInfo.preprocess_status === 'queued'
-                      ? { icon: <Loader2 size={12} />, label: '等待预处理', tone: 'warning' as const }
-                      : null
+            ? { icon: <Zap size={12} />, label: 'HEVC 直接播放', publicLabel: t('player.statusDirect'), tone: 'accent' as const }
+            : effectiveBrowserMode === 'direct'
+              ? { icon: <Zap size={12} />, label: '直接播放', publicLabel: t('player.statusDirect'), tone: 'success' as const }
+              : effectiveBrowserMode === 'remux'
+                ? { icon: <Cpu size={12} />, label: 'Remux 兼容播放', publicLabel: t('player.statusRemux'), tone: 'accent' as const }
+                : effectiveBrowserMode === 'smart_remux'
+                  ? { icon: <Cpu size={12} />, label: 'Smart Remux（音频转码）', publicLabel: t('player.statusSmartRemux'), tone: 'success' as const }
+                  : effectiveBrowserMode === 'hls'
+                    ? { icon: <Cpu size={12} />, label: 'HLS 转码播放', publicLabel: t('player.statusTranscoding'), tone: 'warning' as const }
+                    : playInfo.preprocess_status === 'running'
+                      ? { icon: <Loader2 size={12} className="animate-spin" />, label: '正在预处理中...', publicLabel: '正在预处理中…', tone: 'accent' as const }
+                      : playInfo.preprocess_status === 'pending' || playInfo.preprocess_status === 'queued'
+                        ? { icon: <Loader2 size={12} />, label: '等待预处理', publicLabel: '等待预处理', tone: 'warning' as const }
+                        : null
 
   const statusColor = statusContent?.tone === 'success'
     ? 'var(--nv-player-success)'
@@ -342,6 +390,30 @@ export default function PlayerPage() {
           </button>
         )}
       </div>}
+
+      {/* 全员可见的播放状态：一句话，不含诊断信息。不放在 nv-player-runtime-status
+          容器里，那个容器会随播放器控制栏一起淡出；这里常驻可见。 */}
+      {!highlightMode && statusContent && (
+        <div data-testid="player-status-pill" role="status" className="absolute left-3 top-16 z-40 flex min-h-11 items-center gap-2 rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 py-1.5 text-xs text-[var(--nv-player-text-secondary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md">
+          <span style={{ color: statusColor }}>{statusContent.icon}</span>
+          <span>{statusContent.publicLabel}</span>
+        </div>
+      )}
+
+      {/* 儿童剩余时间：常驻右上角，少于 5 分钟变琥珀色；到期前的预警见上方的 toast effect。 */}
+      {childMode && childViewing.metered && childViewing.remainingSeconds !== null && (
+        <div
+          data-testid="family-remaining-pill"
+          role="status"
+          className="absolute right-3 top-16 z-40 flex min-h-11 items-center gap-2 rounded-full border px-3 py-1.5 text-xs shadow-[var(--nv-shadow-card)] backdrop-blur-md"
+          style={isLowRemaining(childViewing.remainingSeconds)
+            ? { borderColor: 'var(--nv-player-warning)', color: 'var(--nv-player-warning)', background: 'var(--nv-player-surface-soft)' }
+            : { borderColor: 'var(--nv-player-border)', color: 'var(--nv-player-text-primary)', background: 'var(--nv-player-surface-soft)' }}
+        >
+          <Clock size={12} aria-hidden="true" />
+          <span>{childViewing.remainingSeconds <= 0 ? t('family.remainingExhausted') : t('family.remaining', { minutes: Math.ceil(childViewing.remainingSeconds / 60) })}</span>
+        </div>
+      )}
 
       {useDesktopPlayer ? (
         <DesktopPlayer

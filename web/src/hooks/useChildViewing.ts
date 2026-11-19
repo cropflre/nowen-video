@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { userApi } from '@/api/user'
 import type { FamilyViewingStatus } from '@/api/user'
 import { useAuthStore } from '@/stores/auth'
@@ -26,9 +26,17 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
   const [ready, setReady] = useState(!child)
   const [error, setError] = useState('')
   const [metered, setMetered] = useState(false)
+  // 剩余秒数只做展示用：每次拿到服务端授权（familyControls / start / renew）
+  // 就记下当时的 remaining_seconds 与 performance.now()，再用 1 秒 tick 本地递减。
+  // lease / watchdog 的到期逻辑完全不动，仍以服务端授权为准。
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null)
+  // 桌面端（原生播放器）不支持儿童限时观看时为 true，调用方据此渲染
+  // “去网页端继续”的引导，而不是整页报错。
+  const [nativeChildLimited, setNativeChildLimited] = useState(false)
+  const grantBaseRef = useRef<{ remaining: number; started: number } | null>(null)
   useEffect(() => {
-    if (!child || !mediaID) { setReady(true); setError(''); setMetered(false); return }
-    if (!enabled) { setReady(false); setError(''); setMetered(false); return }
+    if (!child || !mediaID) { setReady(true); setError(''); setMetered(false); setRemainingSeconds(null); setNativeChildLimited(false); grantBaseRef.current = null; return }
+    if (!enabled) { setReady(false); setError(''); setMetered(false); setRemainingSeconds(null); setNativeChildLimited(false); grantBaseRef.current = null; return }
     const owner = useAuthStore.getState().user?.id
     const token = useAuthStore.getState().token
     let disposed = false
@@ -69,6 +77,8 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
       }
       lease = grant.lease_id || ''
       lastGrant = grant
+      grantBaseRef.current = { remaining: grant.remaining_seconds, started: requestStarted }
+      setRemainingSeconds(grant.remaining_seconds)
       // Measure from request dispatch, not response arrival or the user's clock.
       // A slow response shortens the usable grant instead of extending it.
       deadline = requestStarted + (grant.expires_in_ms || 0)
@@ -146,6 +156,13 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
         useAuthStore.getState().updateUser({ ...current, viewing_preferences: { ...current.viewing_preferences, auto_play_next: data.data.allow_auto_play_next } })
         limited = data.data.daily_limit_seconds > 0
         setMetered(limited)
+        if (limited) {
+          grantBaseRef.current = { remaining: data.data.remaining_seconds, started: performance.now() }
+          setRemainingSeconds(data.data.remaining_seconds)
+        } else {
+          grantBaseRef.current = null
+          setRemainingSeconds(null)
+        }
         if (limited && native) throw new Error('儿童限时观看请使用网页端')
         if (limited) {
           const started = performance.now()
@@ -154,10 +171,16 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
         }
         if (!disposed) setReady(true)
       }).catch((cause: { message?: string; response?: { data?: { error?: string } } }) => {
+        if (cause.message === '儿童限时观看请使用网页端') setNativeChildLimited(true)
         fail(cause.response?.data?.error || (cause.message === '儿童限时观看请使用网页端' ? cause.message : '暂时无法确认家长设置，请检查连接后重试'))
       })
     }, 0)
     const interval = window.setInterval(() => { if (lease && desiredPlaying) void run(true) }, 5000)
+    const remainingTick = window.setInterval(() => {
+      const base = grantBaseRef.current
+      if (!base) return
+      setRemainingSeconds(Math.max(0, base.remaining - Math.floor((performance.now() - base.started) / 1000)))
+    }, 1000)
     document.addEventListener('play', onPlay, true)
     document.addEventListener('pause', onPause, true)
     document.addEventListener('ended', onPause, true)
@@ -166,7 +189,7 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
     window.addEventListener('pagehide', pagehide)
     window.addEventListener(PREPARE_EVENT, prepare)
     return () => {
-      disposed = true; window.clearTimeout(initialize); window.clearTimeout(watchdog); window.clearInterval(interval)
+      disposed = true; window.clearTimeout(initialize); window.clearTimeout(watchdog); window.clearInterval(interval); window.clearInterval(remainingTick)
       document.removeEventListener('play', onPlay, true); document.removeEventListener('pause', onPause, true)
       document.removeEventListener('ended', onPause, true); document.removeEventListener('visibilitychange', hide)
       window.removeEventListener('focus', focus); window.removeEventListener('pagehide', pagehide)
@@ -176,5 +199,5 @@ export function useChildViewing(mediaID: string | undefined, child: boolean, att
   // The route and retry own the grant, independently of player re-renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaID, child, attempt, native, enabled])
-  return { ready, error, metered }
+  return { ready, error, metered, remainingSeconds, nativeChildLimited }
 }

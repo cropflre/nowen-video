@@ -2,8 +2,11 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { MixedItem } from '@/types'
 import { Button, Modal, ModalBody, ModalFooter, ModalHeader, buttonClassName } from '@/components/design-system'
+import { useTranslation } from '@/i18n'
+import { isMpaaAllowedForChild } from '@/utils/familyRating'
 
-export default function SuggestOne({ items }: { items: MixedItem[] }) {
+export default function SuggestOne({ items, childMode = false }: { items: MixedItem[]; childMode?: boolean }) {
+  const { t } = useTranslation()
   const candidates = useMemo(() => {
     const seen = new Set<string>()
     return items.filter((item) => {
@@ -11,9 +14,13 @@ export default function SuggestOne({ items }: { items: MixedItem[] }) {
       const key = `${item.type}:${id}`
       if (!id || seen.has(key)) return false
       seen.add(key)
+      // 儿童模式：服务端已经只推家长确认过的影片，这里再按元数据分级挡掉
+      // 明确的成人内容（R / NC-17 及等价分级）。剧集没有单条 mpaa 字段，
+      // 且已由服务端确认过滤，直接保留；分级未知时也不挡，交给服务端结果。
+      if (childMode && item.type === 'movie' && !isMpaaAllowedForChild(item.media?.mpaa)) return false
       return true
     })
-  }, [items])
+  }, [items, childMode])
   const [selected, setSelected] = useState<MixedItem | null>(null)
   if (!candidates.length) return null
   const choose = () => {
@@ -29,7 +36,7 @@ export default function SuggestOne({ items }: { items: MixedItem[] }) {
         <ModalBody>
           {media && <div className="space-y-3">
             <h2 className="text-xl font-semibold">{media.title}</h2>
-            <p className="text-sm text-[var(--nv-text-tertiary)]">从最近添加的影片中选出</p>
+            <p className="text-sm text-[var(--nv-text-tertiary)]">{childMode ? t('family.suggestFiltered') : '从最近添加的影片中选出'}</p>
             <p className="line-clamp-4 text-base leading-7">{media.overview || '暂时没有简介，可以先查看详情。'}</p>
           </div>}
         </ModalBody>

@@ -495,6 +495,12 @@ export default function MediaDetailPage() {
         onDelete={() => setShowDeleteConfirm(true)}
       />
 
+      {isAdmin && (
+        <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5">
+          <FamilyRatingEditor id={media.id} />
+        </div>
+      )}
+
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
@@ -545,7 +551,6 @@ export default function MediaDetailPage() {
             <details className="nv-detail-tech-details mt-6">
               <summary>更多信息与片段</summary>
               <div className="nv-detail-tech-details-body space-y-6">
-                {isAdmin && <FamilyRatingEditor id={media.id} />}
                 <MediaHighlightsPanel mediaId={media.id} isAdmin={isAdmin} />
                 <details className="nv-detail-tech-details">
                   <summary>技术信息</summary>

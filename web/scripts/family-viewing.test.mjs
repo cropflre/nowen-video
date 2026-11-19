@@ -8,6 +8,12 @@ const bundle = await build({
 })
 const { episodeLabel, remainingMinutes, resumePosition, subtitleMatchesLanguage } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].contents).toString('base64')}`)
 
+const familyBundle = await build({
+  entryPoints: [new URL('../src/utils/familyRating.ts', import.meta.url).pathname],
+  bundle: true, platform: 'node', format: 'esm', write: false,
+})
+const { FAMILY_RATING_AGE_KEY, mpaaToRatingLevel, isMpaaAllowedForChild, remainingMinutesFromSeconds, isLowRemaining } = await import(`data:text/javascript;base64,${Buffer.from(familyBundle.outputFiles[0].contents).toString('base64')}`)
+
 test('saved progress resumes unfinished media, but completed media restarts', () => {
   assert.equal(resumePosition({ position: 450, duration: 1200, completed: false }), 450)
   assert.equal(resumePosition({ position: 450, duration: 1200, completed: true }), 0)
@@ -40,6 +46,51 @@ test('episode labels distinguish specials from regular seasons in supported loca
   assert.equal(episodeLabel(NaN, NaN), '')
 })
 
+
+test('family rating age bands keep the backend enum values', () => {
+  assert.equal(FAMILY_RATING_AGE_KEY.G, 'family.ratingAgeG')
+  assert.equal(FAMILY_RATING_AGE_KEY.PG, 'family.ratingAgePG')
+  assert.equal(FAMILY_RATING_AGE_KEY['PG-13'], 'family.ratingAgePG13')
+  assert.equal(FAMILY_RATING_AGE_KEY.R, 'family.ratingAgeR')
+  assert.equal(FAMILY_RATING_AGE_KEY['NC-17'], 'family.ratingAgeNC17')
+})
+
+test('mpaa strings normalize to the family rating enum', () => {
+  assert.equal(mpaaToRatingLevel('G'), 'G')
+  assert.equal(mpaaToRatingLevel('PG'), 'PG')
+  assert.equal(mpaaToRatingLevel('PG-13'), 'PG-13')
+  assert.equal(mpaaToRatingLevel('R'), 'R')
+  assert.equal(mpaaToRatingLevel('NC-17'), 'NC-17')
+  assert.equal(mpaaToRatingLevel('TV-MA'), 'R')
+  assert.equal(mpaaToRatingLevel('TV-Y7'), 'PG')
+  assert.equal(mpaaToRatingLevel(''), '')
+  assert.equal(mpaaToRatingLevel(undefined), '')
+  assert.equal(mpaaToRatingLevel('Unrated'), '')
+})
+
+test('child suggestions only drop clearly adult mpaa labels', () => {
+  assert.equal(isMpaaAllowedForChild('R'), false)
+  assert.equal(isMpaaAllowedForChild('NC-17'), false)
+  assert.equal(isMpaaAllowedForChild('TV-MA'), false)
+  assert.equal(isMpaaAllowedForChild('PG-13'), true)
+  assert.equal(isMpaaAllowedForChild('PG'), true)
+  assert.equal(isMpaaAllowedForChild('G'), true)
+  assert.equal(isMpaaAllowedForChild(''), true)
+  assert.equal(isMpaaAllowedForChild(undefined), true)
+})
+
+test('remaining seconds convert to display minutes and low-time detection', () => {
+  assert.equal(remainingMinutesFromSeconds(3600), 60)
+  assert.equal(remainingMinutesFromSeconds(61), 2)
+  assert.equal(remainingMinutesFromSeconds(60), 1)
+  assert.equal(remainingMinutesFromSeconds(30), 1)
+  assert.equal(remainingMinutesFromSeconds(0), null)
+  assert.equal(remainingMinutesFromSeconds(null), null)
+  assert.equal(isLowRemaining(300), true)
+  assert.equal(isLowRemaining(301), false)
+  assert.equal(isLowRemaining(0), false)
+  assert.equal(isLowRemaining(null), false)
+})
 
 test('subtitle preference matches language names and codes without accepting unrelated words', () => {
   for (const label of ['zho', 'chi', 'zh-CN', '中文', 'Chinese', 'movie.zh.srt']) assert.equal(subtitleMatchesLanguage(label, 'zh'), true, label)
