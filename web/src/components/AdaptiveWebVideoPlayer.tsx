@@ -320,7 +320,7 @@ export default function AdaptiveWebVideoPlayer({
       )}
 
       {transitioning && (
-        <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-[color-mix(in_srgb,var(--nv-player-canvas)_80%,transparent)] text-[var(--nv-player-text-primary)] backdrop-blur-sm">
+        <div className="absolute inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-[color-mix(in_srgb,var(--nv-player-canvas)_80%,transparent)] text-[var(--nv-player-text-primary)] backdrop-blur-sm" role="status">
           <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={32} aria-hidden="true" />
           <p className="text-sm text-[var(--nv-player-text-secondary)]">正在尝试另一种播放方式，请稍候…</p>
         </div>

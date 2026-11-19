@@ -125,7 +125,11 @@
 .nv-admin-tab svg { flex: 0 0 auto; color: currentColor; }
 
 .nv-admin-content-enter { animation: nv-admin-content-in var(--nv-motion-fast) var(--nv-ease-standard); }
-@keyframes nv-admin-content-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes nv-admin-content-in { from { opacity: .88; } to { opacity: 1; } }
+
+@media (pointer: coarse) {
+  .nv-admin-page :is(.nv-admin-tab, .nv-admin-simple-header .nv-button) { min-height: 44px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .nv-admin-tab, .nv-admin-content-enter { transition: none; animation: none; }

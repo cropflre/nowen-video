@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react'
 import {
   Grid3X3,
   LayoutList,
@@ -55,12 +55,13 @@ function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; 
         {icon}
         {label}
       </span>
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">{children}</div>
+      <div className="nv-search-filter-options">{children}</div>
     </div>
   )
 }
 
 export default function CollectionsPage() {
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const [searchParams, setSearchParams] = useSearchParams()
   const page = Number(searchParams.get('page')) || 1
   const pageSize = Number(searchParams.get('size')) || 24
@@ -119,6 +120,7 @@ export default function CollectionsPage() {
   const clearSearch = useCallback(() => {
     setSearchKeyword('')
     setSearchResults(null)
+    searchInputRef.current?.focus()
   }, [])
 
   const runMaintenance = useCallback(async (operation: 'rematch' | 'merge' | 'cleanup') => {
@@ -198,6 +200,7 @@ export default function CollectionsPage() {
         <form className="nv-search-workspace-form" role="search" onSubmit={handleSearchSubmit}>
           <div className="nv-search-workspace-field-wrap">
             <SearchField
+              ref={searchInputRef}
               value={searchKeyword}
               onChange={(event) => {
                 setSearchKeyword(event.target.value)
@@ -209,15 +212,14 @@ export default function CollectionsPage() {
               autoComplete="off"
               wrapperClassName="nv-search-workspace-field"
             />
+            {searchKeyword.length > 0 && (
+              <Button type="button" variant="ghost" iconOnly className="nv-search-clear" onClick={clearSearch} aria-label="清空搜索">
+                <X size={16} aria-hidden="true" />
+              </Button>
+            )}
           </div>
 
-          {searchKeyword.length > 0 && (
-            <Button type="button" variant="ghost" size="md" iconOnly onClick={clearSearch} aria-label="清空搜索">
-              <X size={16} aria-hidden="true" />
-            </Button>
-          )}
-
-          <Button type="submit" variant="primary" size="md" disabled={!searchKeyword.trim()}>
+          <Button type="submit" variant="primary" size="md" disabled={!searchKeyword.trim()} aria-busy={loading || undefined}>
             <SearchIcon size={15} aria-hidden="true" />
             搜索
           </Button>
@@ -236,9 +238,9 @@ export default function CollectionsPage() {
           </Button>
         </form>
 
-        <div className="nv-search-workspace-summary" aria-live="polite">
-          <span>{resultSummary}</span>
-          <div className="flex flex-wrap items-center justify-end gap-1">
+        <div className="nv-search-workspace-summary">
+          <span className="nv-search-summary-text" aria-live="polite">{resultSummary}</span>
+          <div className="nv-collections-actions">
             <Button type="button" variant="ghost" size="sm" onClick={() => runMaintenance('rematch')} loading={operating} title="清除所有自动匹配的合集并重新匹配，手动创建的合集不受影响">
               <RefreshCw size={13} aria-hidden="true" />重新匹配
             </Button>
@@ -314,7 +316,7 @@ export default function CollectionsPage() {
       {operationMsg && (
         <Surface variant="raised" className="nv-collection-notice flex items-center gap-3 px-4 py-3 text-sm text-[var(--nv-text-secondary)]" role="status">
           <Tag tone="brand">操作完成</Tag>
-          <span className="min-w-0 flex-1">{operationMsg}</span>
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{operationMsg}</span>
           <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setOperationMsg('')} aria-label="关闭提示"><X size={14} /></Button>
         </Surface>
       )}

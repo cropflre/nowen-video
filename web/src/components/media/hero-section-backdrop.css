@@ -16,6 +16,7 @@
   object-position: center 32%;
   pointer-events: none;
   opacity: 0;
+  transition: opacity var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 .nv-detail-hero-local-backdrop.is-ready {
@@ -50,16 +51,9 @@
   /* Let the detail artwork scale with the available page width instead of
      pinning it to a fixed viewport-height clamp. */
   .nv-media-detail-page .nv-detail-hero-backdrop-shell {
-    aspect-ratio: 16 / 6.4;
     border: 0;
     outline: 0;
     box-shadow: none;
-  }
-
-  .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero,
-  .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
-    height: 100%;
-    min-height: 0;
   }
 
   .nv-media-detail-page .nv-detail-hero-backdrop-shell .nv-detail-hero-inner {
@@ -119,4 +113,8 @@
   .nv-detail-subtitle-action {
     min-width: 44px;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nv-detail-hero-local-backdrop { transition: none; }
 }

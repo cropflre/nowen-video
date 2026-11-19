@@ -465,12 +465,17 @@ export default function SeriesDetailPage() {
 
   if (loading || !series) {
     return (
-      <div className="nv-media-detail-page nv-series-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8" aria-label="剧集详情加载中">
-        <div className="skeleton h-[52px]" />
-        <div className="skeleton h-[360px]" />
-        <div className="mx-auto grid w-full max-w-[var(--nv-content-max)] gap-6 px-[var(--nv-page-gutter)] py-6 lg:grid-cols-[minmax(0,1fr)_328px]">
-          <div className="space-y-4"><div className="skeleton h-12 rounded-[var(--nv-radius-card)]" /><div className="skeleton h-80 rounded-[var(--nv-radius-card)]" /></div>
-          <div className="space-y-4"><div className="skeleton h-52 rounded-[var(--nv-radius-card)]" /><div className="skeleton h-44 rounded-[var(--nv-radius-card)]" /></div>
+      <div className="nv-media-detail-page nv-series-detail-page nv-detail-loading" role="status" aria-label="剧集详情加载中">
+        <div className="skeleton nv-detail-toolbar-skeleton" aria-hidden="true" />
+        <div className="skeleton nv-detail-hero-skeleton" aria-hidden="true" />
+        <div className="nv-detail-content-shell px-[var(--nv-page-gutter)]" aria-hidden="true">
+          <div className="nv-detail-body-grid">
+            <div className="space-y-4">
+              <div className="skeleton h-11 rounded-[var(--nv-radius-card)]" />
+              <div className="skeleton h-44 rounded-[var(--nv-radius-card)]" />
+            </div>
+            <div className="skeleton h-44 rounded-[var(--nv-radius-card)] max-lg:hidden" />
+          </div>
         </div>
       </div>
     )
@@ -480,7 +485,7 @@ export default function SeriesDetailPage() {
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
 
   return (
-    <div className="nv-media-detail-page nv-series-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+    <div className="nv-media-detail-page nv-series-detail-page nv-detail-content-ready relative">
       <div className="nv-detail-local-toolbar">
         <Button type="button" variant="ghost" size="sm" className="nv-detail-back-button" onClick={handleBack} aria-label="返回">
           <ChevronLeft size={15} aria-hidden="true" />
@@ -542,7 +547,7 @@ export default function SeriesDetailPage() {
               ]}
             />
 
-            <section id="series-episodes" className="nv-detail-content-section nv-detail-tab-panel nv-series-episodes-panel" role="tabpanel" aria-labelledby="series-tab-episodes" hidden={activeTab !== 'episodes'}>
+            <section id="series-episodes" className="nv-detail-content-section nv-detail-tab-panel nv-series-episodes-panel" role="tabpanel" tabIndex={0} aria-labelledby="series-tab-episodes" hidden={activeTab !== 'episodes'}>
               <div className="nv-series-tab-heading">
                 <div>
                   <span className="nv-series-tab-eyebrow">EPISODES</span>
@@ -560,7 +565,7 @@ export default function SeriesDetailPage() {
               />
             </section>
 
-            <section id="series-overview" className="nv-detail-content-section nv-detail-tab-panel nv-series-overview-panel" role="tabpanel" aria-labelledby="series-tab-overview" hidden={activeTab !== 'overview'}>
+            <section id="series-overview" className="nv-detail-content-section nv-detail-tab-panel nv-series-overview-panel" role="tabpanel" tabIndex={0} aria-labelledby="series-tab-overview" hidden={activeTab !== 'overview'}>
               {series.overview ? (
                 <div className="nv-series-overview-copy">
                   <span className="nv-series-tab-eyebrow">OVERVIEW</span>
@@ -590,7 +595,7 @@ export default function SeriesDetailPage() {
               )}
             </section>
 
-            <section id="series-cast" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="series-tab-cast" hidden={activeTab !== 'cast'}>
+            <section id="series-cast" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="series-tab-cast" hidden={activeTab !== 'cast'}>
               <CastGrid persons={persons} />
             </section>
           </main>

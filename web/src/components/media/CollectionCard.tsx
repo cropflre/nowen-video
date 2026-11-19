@@ -90,7 +90,7 @@ function CollectionListCard({ collection }: { collection: MovieCollection }) {
   return (
     <Link
       to={`/collections/${collection.id}`}
-      className="nv-browse-list-item group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]"
+      className="nv-collection-list-card flex min-w-0 items-center gap-3 px-1 py-2.5"
     >
       <MediaArtwork
         src={collection.poster_path ? streamApi.getCollectionPosterUrl(collection.id) : null}
@@ -102,8 +102,8 @@ function CollectionListCard({ collection }: { collection: MovieCollection }) {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{collection.name}</h3>
-          <Tag>{collection.auto_matched ? '自动匹配' : '手动创建'}</Tag>
+          <h3 className="min-w-0 truncate text-xs font-medium text-[var(--nv-text-primary)]" title={collection.name}>{collection.name}</h3>
+          <Tag className="shrink-0">{collection.auto_matched ? '自动匹配' : '手动创建'}</Tag>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">
           {collection.year_range && <span>{collection.year_range}</span>}
@@ -116,7 +116,7 @@ function CollectionListCard({ collection }: { collection: MovieCollection }) {
 
       <ChevronRight
         size={15}
-        className="shrink-0 text-[var(--nv-text-tertiary)] transition-transform duration-150 group-hover:translate-x-0.5"
+        className="nv-collection-list-chevron shrink-0 text-[var(--nv-text-tertiary)]"
         aria-hidden="true"
       />
     </Link>

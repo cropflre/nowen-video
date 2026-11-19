@@ -9,6 +9,7 @@ import CollectionDetailHero from '@/components/media/CollectionDetailHero'
 import CollectionMovieBrowser from '@/components/media/CollectionMovieBrowser'
 import { Button, EmptyState, Surface } from '@/components/design-system'
 import { MediaGrid } from '@/ui'
+import '@/styles/ui-collection-detail.css'
 
 export default function CollectionDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -28,10 +29,10 @@ export default function CollectionDetailPage() {
 
   if (loading && !data) {
     return (
-      <div className="nv-collection-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
-        <div className="skeleton nv-collection-detail-hero-skeleton w-full" />
+      <div className="nv-collection-detail-page" role="status" aria-label="合集内容加载中">
+        <div className="skeleton nv-collection-detail-hero-skeleton" aria-hidden="true" />
         <div className="nv-collection-detail-body">
-          <MediaGrid aria-busy="true" aria-label="合集内容加载中">
+          <MediaGrid aria-hidden="true">
             {Array.from({ length: 12 }).map((_, index) => <div key={index} className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />)}
           </MediaGrid>
         </div>
@@ -53,7 +54,7 @@ export default function CollectionDetailPage() {
   }
 
   return (
-    <div className="nv-collection-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8">
+    <div className="nv-collection-detail-page nv-detail-content-ready">
       <CollectionDetailHero
         data={data}
         movieCount={movieCount}

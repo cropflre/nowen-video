@@ -6,7 +6,7 @@ import { authApi, userApi } from '@/api'
 import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { logoutDevice } from '@/utils/logoutDevice'
-import { Button, Input, PageContainer, Section, Tag } from '@/components/design-system'
+import { Button, Input, Section, Tag } from '@/components/design-system'
 
 export default function ProfilePage() {
   const { user, setAuth, updateUser } = useAuthStore()
@@ -85,7 +85,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <PageContainer className="max-w-3xl">
+    <div className="nv-profile-page mx-auto max-w-3xl">
       <div className="space-y-7">
         <header className="border-b border-[var(--nv-border-subtle)] pb-5">
           <div className="mb-1.5 flex items-center gap-2 text-xs font-medium text-[var(--nv-text-tertiary)]">
@@ -138,7 +138,8 @@ export default function ProfilePage() {
             <Button
               type="submit"
               variant="primary"
-              disabled={savingUsername || !newUsername.trim() || newUsername.trim() === user?.username}
+              loading={savingUsername}
+              disabled={!newUsername.trim() || newUsername.trim() === user?.username}
             >
               {savingUsername ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
               {t('profile.saveUsername')}
@@ -187,7 +188,7 @@ export default function ProfilePage() {
                 autoComplete="new-password"
               />
             </FormField>
-            <Button type="submit" variant="primary" disabled={changingPwd || !oldPassword || !newPassword}>
+            <Button type="submit" variant="primary" loading={changingPwd} disabled={!oldPassword || !newPassword}>
               {changingPwd ? <Loader2 size={15} className="animate-spin motion-reduce:animate-none" aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
               {t('profile.verifyAndChange')}
             </Button>
@@ -195,7 +196,7 @@ export default function ProfilePage() {
         </Section>
 
         <Section title={t('profile.logout')} description={t('profile.logoutHint')}>
-          <div className="flex items-center justify-between gap-4 border-y border-[var(--nv-border-subtle)] py-3">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--nv-border-subtle)] py-3">
             <div className="min-w-0">
               <div className="text-sm font-medium text-[var(--nv-text-primary)]">结束当前会话</div>
               <p className="mt-0.5 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">退出后需要重新登录才能访问媒体库。</p>
@@ -207,7 +208,7 @@ export default function ProfilePage() {
           </div>
         </Section>
       </div>
-    </PageContainer>
+    </div>
   )
 }
 

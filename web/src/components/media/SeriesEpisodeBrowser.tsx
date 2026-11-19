@@ -110,19 +110,19 @@ export default function SeriesEpisodeBrowser({ seasons, seriesTitle, historyMap,
   return (
     <section className="nv-series-episode-browser space-y-5">
       <div className="nv-series-episode-toolbar flex flex-col gap-3 border-b border-[var(--nv-border-subtle)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2" role="tablist" aria-label="剧集视图">
-          <Button type="button" variant={viewMode === 'season' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('season')}>季视图</Button>
-          <Button type="button" variant={viewMode === 'all' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('all')}>全部剧集</Button>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="剧集视图">
+          <Button type="button" variant={viewMode === 'season' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('season')} aria-pressed={viewMode === 'season'}>季视图</Button>
+          <Button type="button" variant={viewMode === 'all' ? 'primary' : 'ghost'} size="sm" onClick={() => setViewMode('all')} aria-pressed={viewMode === 'all'}>全部剧集</Button>
           {watchedCount > 0 && <Tag tone="success">已看 {watchedCount}/{allEpisodes.length}</Tag>}
           {inProgressCount > 0 && <Tag tone="brand">进行中 {inProgressCount}</Tag>}
         </div>
 
         {viewMode === 'season' && (
-          <div className="flex items-center gap-1 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-1">
-            <Button type="button" variant={displayMode === 'slide' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('slide')} aria-label="幻灯片模式" title="幻灯片模式">
+          <div className="flex items-center gap-1 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-1 self-start sm:self-auto" role="group" aria-label="剧集显示方式">
+            <Button type="button" variant={displayMode === 'slide' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('slide')} aria-pressed={displayMode === 'slide'} aria-label="幻灯片模式" title="幻灯片模式">
               <GalleryHorizontal size={15} aria-hidden="true" />
             </Button>
-            <Button type="button" variant={displayMode === 'list' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('list')} aria-label="列表模式" title="列表模式">
+            <Button type="button" variant={displayMode === 'list' ? 'secondary' : 'ghost'} size="sm" iconOnly onClick={() => setDisplayMode('list')} aria-pressed={displayMode === 'list'} aria-label="列表模式" title="列表模式">
               <LayoutList size={15} aria-hidden="true" />
             </Button>
           </div>
@@ -233,19 +233,19 @@ function EpisodeSlider({
   posterVersion: number
 }) {
   const sliderRef = useRef<HTMLDivElement>(null)
-  const scrollBy = (left: number) => sliderRef.current?.scrollBy({ left, behavior: 'smooth' })
+  const scrollBy = (left: number) => sliderRef.current?.scrollBy({ left, behavior: 'auto' })
 
   if (episodes.length === 0) {
     return <EmptyState title="暂无单集" description="这一季暂时没有可展示的单集。" className="min-h-44" />
   }
 
   return (
-    <div className="group/series-slider relative">
+    <div className="nv-episode-slider group/series-slider relative">
       <Button type="button" variant="secondary" size="sm" iconOnly onClick={() => scrollBy(-360)} className="absolute -left-2 top-1/2 z-10 -translate-y-1/2 opacity-0 shadow-[var(--nv-shadow-card)] transition-opacity group-hover/series-slider:opacity-100" aria-label="向左滚动">
         <ChevronLeft size={16} aria-hidden="true" />
       </Button>
 
-      <div ref={sliderRef} className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 scrollbar-hide" style={{ scrollbarWidth: 'none' }}>
+      <div ref={sliderRef} className="nv-episode-slider-track flex snap-x snap-mandatory gap-3 overflow-x-auto pb-2 scrollbar-hide" aria-label="单集卡片">
         {episodes.map((episode) => (
           <EpisodeSlideCard key={episode.id} episode={episode} seriesTitle={seriesTitle} historyRecord={historyMap[episode.id]} posterVersion={posterVersion} />
         ))}
@@ -274,9 +274,9 @@ function EpisodeListCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="nv-episode-list-card group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3 transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-px hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-list-card group flex items-center gap-3 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] p-3"
     >
-      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="h-16 w-28" />
+      <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="nv-episode-list-thumb h-16 w-28" />
 
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -318,7 +318,7 @@ function EpisodeSlideCard({
   return (
     <Link
       to={`/media/${episode.id}`}
-      className="nv-episode-slide-card group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] transition-[background-color,border-color,box-shadow,transform] hover:-translate-y-0.5 hover:border-[var(--nv-border-hover)] hover:shadow-[var(--nv-shadow-card-hover)]"
+      className="nv-episode-slide-card group w-[13.5rem] shrink-0 snap-start overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)]"
     >
       <EpisodeThumb episode={episode} status={status} posterVersion={posterVersion} className="aspect-video w-full !rounded-none !border-0" showEpisodeLabel />
 
@@ -356,10 +356,9 @@ function EpisodeThumb({
       alt={episode.title}
       ratio="landscape"
       className={`nv-episode-thumb shrink-0 ${className}`}
-      imageClassName="transition-transform duration-300 group-hover:scale-[1.025]"
       fallback={<Play size={22} aria-hidden="true" />}
     >
-      <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/35 opacity-0 transition-opacity group-hover:opacity-100">
+      <div className="nv-episode-action-overlay absolute inset-0 z-20 flex items-center justify-center bg-black/35 opacity-0">
         <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)] shadow-[var(--nv-shadow-card)]">
           <Play size={16} fill="currentColor" className="ml-0.5" aria-hidden="true" />
         </div>

@@ -111,7 +111,7 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
       type="button"
       onClick={onClick}
       aria-pressed={selected}
-      className="nv-button !min-h-[30px] !rounded-[9px] !px-2.5 !text-[11px]"
+      className="nv-button nv-browser-filter-chip"
       data-variant={selected ? 'secondary' : 'ghost'}
       data-size="sm"
     >
@@ -122,13 +122,13 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
 
 function FilterGroup({ icon, label, count, children }: { icon: ReactNode; label: string; count?: number; children: ReactNode }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-[92px_minmax(0,1fr)] sm:items-start">
-      <div className="flex min-h-[30px] items-center gap-1.5 text-[11px] font-medium text-[var(--nv-text-tertiary)]">
+    <div className="nv-browser-filter-group">
+      <div className="nv-browser-filter-label">
         <span aria-hidden="true">{icon}</span>
         <span>{label}</span>
         {!!count && <SemanticTag tone="brand">{count}</SemanticTag>}
       </div>
-      <div className="flex flex-wrap gap-1">{children}</div>
+      <div className="nv-browser-filter-options">{children}</div>
     </div>
   )
 }
@@ -422,8 +422,8 @@ export default function BrowsePage() {
   const hasSearchOrFilters = mediaType !== '' || !!searchQuery || activeFilterCount > 0
 
   return (
-    <div className={clsx('nv-section-stack')}>
-      <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" aria-label="媒体类型">
+    <div className="nv-section-stack">
+      <div className="nv-browse-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" role="group" aria-label="媒体类型">
         {[
           { key: '' as const, label: '全部', icon: Layers, value: stats.total },
           { key: 'movie' as const, label: '电影', icon: Film, value: stats.movieCount },
@@ -449,38 +449,37 @@ export default function BrowsePage() {
         {!serverPaginated && <SemanticTag className="ml-1"><TagIcon size={10} aria-hidden="true" />{allGenres.length} 类型</SemanticTag>}
       </div>
 
-      <div className="nv-browse-toolbar flex flex-wrap items-center gap-1.5">
+      <div className={clsx('nv-browse-toolbar nv-browser-toolbar', libraries.length > 1 && 'nv-browser-toolbar--scoped')}>
+        <SearchField
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+          placeholder="搜索片名"
+          wrapperClassName="nv-browser-search"
+          aria-label="搜索片名"
+        />
         {libraries.length > 1 && (
           <Select
             value={selectedLibrary}
             onChange={(event) => updateUrl({ lib: event.target.value || null })}
             aria-label="影片范围"
-            className="!w-auto min-w-28"
+            className="nv-browser-scope"
           >
             <option value="">全部影片</option>
             {libraries.map((library) => <option key={library.id} value={library.id}>{library.name}</option>)}
           </Select>
         )}
 
-        <SearchField
-          value={searchInput}
-          onChange={(event) => setSearchInput(event.target.value)}
-          placeholder="搜索片名"
-          wrapperClassName="min-w-[190px] flex-1 lg:max-w-sm"
-          aria-label="搜索片名"
-        />
+        <Select value={sortValue} onChange={(event) => updateUrl({ sort: event.target.value === 'created_desc' ? null : event.target.value })} aria-label="排序方式" className="nv-browser-sort">
+          {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </Select>
 
-        <Button type="button" variant={showFilters || activeFilterCount > 0 ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters}>
+        <Button type="button" variant={showFilters || activeFilterCount > 0 ? 'secondary' : 'ghost'} size="sm" className="nv-browser-filter-toggle" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters} aria-controls={showFilters ? 'browse-filter-panel' : undefined}>
           <SlidersHorizontal size={14} aria-hidden="true" />
           筛选
           {activeFilterCount > 0 && <SemanticTag tone="brand">{activeFilterCount}</SemanticTag>}
         </Button>
 
-        <Select value={sortValue} onChange={(event) => updateUrl({ sort: event.target.value === 'created_desc' ? null : event.target.value })} aria-label="排序方式" className="!w-auto min-w-28">
-          {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </Select>
-
-        <div className="flex items-center gap-0.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] p-0.5" role="group" aria-label="视图模式">
+        <div className="nv-browser-views" role="group" aria-label="视图模式">
           <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => updateUrl({ view: null })}><Grid3X3 size={14} /></ViewButton>
           <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => updateUrl({ view: 'list' })}><LayoutList size={14} /></ViewButton>
           <ViewButton active={viewMode === 'poster'} title="海报墙视图" onClick={() => updateUrl({ view: 'poster' })}><LayoutGrid size={14} /></ViewButton>
@@ -488,7 +487,7 @@ export default function BrowsePage() {
       </div>
 
       {showFilters && (
-        <Surface variant="glass" className="nv-browse-filter-panel space-y-2.5 p-3 sm:p-4">
+        <Surface variant="glass" id="browse-filter-panel" className="space-y-2.5 p-3 sm:p-4">
           {serverPaginated ? (
             <div className="flex items-start gap-2 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-3 py-2 text-[11px] leading-5 text-[var(--nv-text-tertiary)]">
               <Info size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
@@ -528,11 +527,11 @@ export default function BrowsePage() {
       )}
 
       {selectedGenres.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="已选类型标签">
+        <div className="nv-browser-selected-tags" aria-label="已选类型标签">
           {selectedGenres.map((genre) => (
             <SemanticTag key={genre} tone="brand">
-              {genre}
-              <button type="button" onClick={() => toggleGenre(genre)} aria-label={`移除 ${genre} 标签`} className="ml-0.5 inline-flex rounded p-0.5 hover:bg-[var(--nv-fill-hover)]"><X size={10} /></button>
+              <span>{genre}</span>
+              <button type="button" onClick={() => toggleGenre(genre)} aria-label={`移除 ${genre} 标签`} className="nv-browser-tag-remove"><X size={12} aria-hidden="true" /></button>
             </SemanticTag>
           ))}
         </div>
@@ -588,7 +587,7 @@ function BrowseSkeleton({ viewMode }: { viewMode: ViewMode }) {
   const list = viewMode === 'list'
   if (list) {
     return (
-      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
+      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-busy="true" aria-label="正在加载影片">
         {Array.from({ length: 8 }).map((_, index) => (
           <div key={index} className="flex items-center gap-3 py-2.5">
             <div className="skeleton h-16 w-11 shrink-0 rounded-[var(--nv-radius-control)]" />
@@ -600,9 +599,13 @@ function BrowseSkeleton({ viewMode }: { viewMode: ViewMode }) {
   }
 
   return (
-    <MediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'}>
+    <MediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'} aria-busy="true" aria-label="正在加载影片">
       {Array.from({ length: 12 }).map((_, index) => (
-        <div key={index}><div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" /><div className="skeleton mt-2 h-3 w-3/4" /><div className="skeleton mt-1.5 h-2.5 w-1/2" /></div>
+        <div key={index}>
+          <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
+          <div className="skeleton mt-2 h-3 w-3/4" />
+          {viewMode !== 'poster' && <div className="skeleton mt-1.5 h-2.5 w-1/2" />}
+        </div>
       ))}
     </MediaGrid>
   )
@@ -629,7 +632,7 @@ function BrowseListItem({ item }: { item: MixedItem }) {
   const durationLabel = duration ? `${Math.floor(duration / 3600) ? `${Math.floor(duration / 3600)}h ` : ''}${Math.floor((duration % 3600) / 60)}m` : ''
 
   return (
-    <Link to={linkTo} className="nv-browse-list-item group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
+    <article className="nv-browser-result-row">
       <MediaArtwork
         src={hasPoster ? posterUrl : null}
         alt=""
@@ -638,20 +641,23 @@ function BrowseListItem({ item }: { item: MixedItem }) {
         fallback={isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2"><h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{title}</h3>{isSeries && <SemanticTag>剧集</SemanticTag>}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="min-w-0 truncate text-xs font-medium text-[var(--nv-text-primary)]"><Link to={linkTo} className="nv-browser-row-link" title={title}>{title}</Link></h3>
+          {isSeries && <SemanticTag className="shrink-0">剧集</SemanticTag>}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">
           {year > 0 && <span>{year}</span>}{country && <span>{country}</span>}{durationLabel && <span>{durationLabel}</span>}{isSeries && series && <span>{series.season_count} 季 · {series.episode_count} 集</span>}
         </div>
         {genreList.length > 0 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {visibleTags.map((genre) => <SemanticTag key={genre}>{genre}</SemanticTag>)}
-            {genreList.length > 3 && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setTagsExpanded((value) => !value) }} className="text-[10px] text-[var(--nv-text-tertiary)] hover:text-[var(--nv-text-primary)]">{tagsExpanded ? '收起' : `+${genreList.length - 3}`}</button>}
+            {genreList.length > 3 && <button type="button" onClick={() => setTagsExpanded((value) => !value)} className="nv-browser-row-toggle" aria-expanded={tagsExpanded}>{tagsExpanded ? '收起类型' : `+${genreList.length - 3} 类型`}</button>}
           </div>
         )}
         {overview && <p className="mt-1 line-clamp-1 text-[10px] text-[var(--nv-text-tertiary)]">{overview}</p>}
       </div>
       {rating > 0 && <SemanticTag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" />{rating.toFixed(1)}</SemanticTag>}
-    </Link>
+    </article>
   )
 }
 
@@ -672,8 +678,7 @@ function PosterWallItem({ item }: { item: MixedItem }) {
         src={hasPoster ? posterUrl : null}
         alt=""
         ratio="poster"
-        className="shadow-[0_5px_16px_rgba(0,0,0,.12)] transition-[transform,box-shadow,border-color] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]"
-        imageClassName="transition-[filter] duration-200 group-hover:brightness-[.82]"
+        className="nv-browser-poster-artwork"
         fallback={(
           <div className="flex flex-col items-center justify-center gap-2 text-[var(--nv-text-tertiary)]">
             {isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
@@ -681,7 +686,7 @@ function PosterWallItem({ item }: { item: MixedItem }) {
           </div>
         )}
       >
-        <div className="absolute inset-0 z-10 grid place-items-center bg-[var(--nv-bg-overlay)] opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="nv-browser-poster-overlay absolute inset-0 z-10 grid place-items-center bg-[var(--nv-bg-overlay)]" aria-hidden="true">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span>
         </div>
         {rating > 0 && <SemanticTag tone="quality" className="absolute left-1.5 top-1.5 z-20"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</SemanticTag>}

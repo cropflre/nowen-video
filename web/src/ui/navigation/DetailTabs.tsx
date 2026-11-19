@@ -49,22 +49,20 @@ export function DetailTabs<T extends string>({
         const tabId = item.tabId || `${item.panelId}-tab`
         const selected = value === item.value
         return (
-          <a
+          <button
             key={item.value}
             id={tabId}
-            href={`#${item.panelId}`}
+            type="button"
+            disabled={item.disabled}
             role="tab"
             aria-selected={selected}
             aria-controls={item.panelId}
             aria-disabled={item.disabled || undefined}
             tabIndex={selected ? 0 : -1}
-            onClick={(event) => {
-              event.preventDefault()
-              if (!item.disabled) onChange(item.value)
-            }}
+            onClick={() => onChange(item.value)}
           >
             {item.label}
-          </a>
+          </button>
         )
       })}
     </nav>

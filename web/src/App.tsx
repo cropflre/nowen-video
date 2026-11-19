@@ -8,6 +8,7 @@ import { Toaster } from 'react-hot-toast'
 import { ViewingPreferenceBridge } from '@/components/ViewingPreferences'
 import DeviceSessionBridge from '@/components/DeviceSessionBridge'
 import Layout from '@/components/Layout'
+import PageLoader from '@/components/PageLoader'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
 import PlaybackHistoryBridge from '@/components/PlaybackHistoryBridge'
@@ -45,27 +46,6 @@ function ServerProfileLoader() {
     void load()
   }, [load])
   return null
-}
-
-function PageLoader() {
-  return (
-    <div
-      className="nv-page-loader flex min-h-[60vh] items-center justify-center px-6"
-      role="status"
-      aria-live="polite"
-      aria-label="页面加载中"
-    >
-      <div className="flex flex-col items-center gap-3">
-        <div className="nv-page-loader-indicator flex h-11 w-11 items-center justify-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
-          <span
-            className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--nv-border-default)] border-t-[var(--nv-action-primary)] motion-reduce:animate-none"
-            aria-hidden="true"
-          />
-        </div>
-        <span className="text-sm font-medium text-[var(--nv-text-tertiary)]">加载中...</span>
-      </div>
-    </div>
-  )
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -114,7 +94,13 @@ function AdminRoute() {
 
 function DeviceApprovalRoute() {
   const identity = useAuthStore(state => `${state.user?.id}:${state.user?.role}:${state.user?.child_mode}`)
-  return <div className="mx-auto w-full max-w-3xl p-6"><DeviceApprovalPage key={identity} /></div>
+  return (
+    <div className="nv-auth-scroll">
+      <main className="w-full max-w-3xl">
+        <DeviceApprovalPage key={identity} />
+      </main>
+    </div>
+  )
 }
 
 export default function App() {

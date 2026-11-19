@@ -197,7 +197,22 @@ let browser;
  const before=await page.locator('#main-scroll-container').evaluate(e=>e.scrollTop);
  await page.locator('.nv-media-card-play').nth(8).click();await page.waitForFunction(()=>document.querySelector('video')?.readyState>=2);await page.goBack();await page.locator('.nv-media-card').first().waitFor();
  await page.waitForTimeout(300);const after=await page.locator('#main-scroll-container').evaluate(e=>e.scrollTop);assert(after>0,`scroll restore lost position: ${before} -> ${after}`);
- await page.setViewportSize({width:320,height:720}); assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)); assert.deepEqual(env.errors,[]);checks.push('mobile navigation, no horizontal overflow, visible touch playback and return scroll restore');await env.ctx.close();
+ for (const [width, height] of [[320,568],[360,640],[390,844],[430,932],[844,390],[932,430]]) {
+  await page.setViewportSize({width,height});
+  const layout = await page.locator('#main-scroll-container').evaluate(main => {
+   const nav = document.querySelector('.nv-mobile-nav');
+   const container = main.querySelector(':scope > .nv-page-container');
+   main.scrollTop = main.scrollHeight;
+   const contentBottom = container.getBoundingClientRect().bottom - parseFloat(getComputedStyle(container).paddingBottom);
+   return {
+    fits: document.documentElement.scrollWidth <= innerWidth && main.scrollWidth <= main.clientWidth + 1,
+    navFits: nav.offsetHeight > 0 && [...nav.querySelectorAll('a')].every(item => item.offsetWidth >= 44 && item.offsetHeight >= 44),
+    contentClearsNav: contentBottom <= nav.getBoundingClientRect().top + 1,
+   };
+  });
+  assert.deepEqual(layout,{fits:true,navFits:true,contentClearsNav:true},`browse layout at ${width}×${height}`);
+ }
+ assert.deepEqual(env.errors,[]);checks.push('mobile and landscape navigation, no content overflow, visible touch playback and return scroll restore');await env.ctx.close();
  env=await setup({mobile:true});page=env.page;await page.goto(base+'/my');await page.getByRole('switch',{name:'大字模式',exact:true}).waitFor();
  env.state.failPreferences=true;await page.getByRole('switch',{name:'大字模式',exact:true}).click();await visible(page,'偏好未能保存，请重试');assert.equal(env.state.preferences.large_text,false);assert.equal(await page.getByRole('switch',{name:'大字模式',exact:true}).isChecked(),false);env.state.failPreferences=false;
  await page.getByRole('switch',{name:'大字模式',exact:true}).check();await page.waitForFunction(()=>document.documentElement.dataset.largeText==='true');assert.equal(env.state.preferences.large_text,true);

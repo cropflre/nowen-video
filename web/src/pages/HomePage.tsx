@@ -156,7 +156,7 @@ export default function HomePage() {
           </section>
         )}
         {loading && noContent && (
-          <div className="nv-section-stack">
+          <div className="nv-section-stack" aria-busy="true" aria-label="正在加载首页内容">
             <HomeRailSkeleton title={t('home.continueWatching')} landscape />
             <HomeRailSkeleton title={t('home.recentlyAdded')} />
           </div>
@@ -218,7 +218,7 @@ function ContinueWatchingRow({
                 alt=""
                 ratio="landscape"
                 className="nv-continue-artwork"
-                imageClassName="transition-[filter,transform] duration-200 group-hover:scale-[1.01] group-hover:brightness-[.9]"
+                imageClassName="nv-continue-artwork-image"
                 fallback={<Play size={22} aria-hidden="true" />}
               >
                 <div className="nv-media-card-progress"><span style={{ width: `${percent}%` }} /></div>
@@ -241,7 +241,7 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
     <Section title={title}>
       <div className="flex gap-[var(--nv-grid-gap-x)] overflow-hidden pb-3 pt-1">
         {Array.from({ length: landscape ? 6 : 9 }).map((_, index) => (
-          <div key={index} className={landscape ? 'nv-continue-card flex-shrink-0' : 'nv-home-poster-slot flex-shrink-0'}>
+          <div key={index} className={landscape ? 'nv-continue-card flex-shrink-0' : 'nv-home-shelf-poster-slot flex-shrink-0'}>
             <div className={`skeleton w-full rounded-[var(--nv-radius-card)] ${landscape ? 'aspect-video' : 'aspect-[2/3]'}`} />
             <div className="mt-2 space-y-2">
               <div className="skeleton h-3 w-3/4" />

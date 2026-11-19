@@ -83,8 +83,8 @@ export default function CollectionMovieBrowser({ media }: CollectionMovieBrowser
           <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">{sortedMedia.length} 部电影 · 自动折叠同片多版本</p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Select value={sortOption} onChange={(event) => setSort(event.target.value as SortOption)} className="h-9 text-xs" aria-label="合集电影排序">
+        <div className="nv-collection-movie-controls flex flex-wrap items-center gap-2">
+          <Select value={sortOption} onChange={(event) => setSort(event.target.value as SortOption)} className="h-9 max-w-full text-xs" aria-label="合集电影排序">
             {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </Select>
           <div className="flex items-center gap-0.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] p-0.5" role="group" aria-label="视图模式">
@@ -197,16 +197,14 @@ function MovieGridCard({ group, index }: { group: GroupedMovieItem; index: numbe
         </div>
 
         <Tag className="nv-media-card-badge absolute left-2 top-2 z-30">#{index}</Tag>
-        {versions.length > 1 && (
-          <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30"><Copy size={10} aria-hidden="true" />{versions.length} 版</Tag>
-        )}
         {item.rating > 0 && (
           <Tag tone="rating" className="nv-media-card-badge absolute bottom-2 left-2 z-30"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>
         )}
 
         {versions.length > 1 && (
-          <Button type="button" variant={versionsOpen ? 'primary' : 'secondary'} size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} className="absolute bottom-2 right-2 z-40" aria-label={versionsOpen ? '收起版本' : '查看所有版本'} title={versionsOpen ? '收起版本' : '查看所有版本'} aria-expanded={versionsOpen}>
-            <ChevronDown size={13} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+          <Button type="button" variant={versionsOpen ? 'primary' : 'secondary'} size="sm" onClick={() => setVersionsOpen((open) => !open)} className="nv-collection-grid-versions absolute right-2 top-2 z-40" aria-label={versionsOpen ? '收起版本' : '查看所有版本'} title={versionsOpen ? '收起版本' : '查看所有版本'} aria-expanded={versionsOpen}>
+            <Copy size={12} aria-hidden="true" />
+            {versions.length} 版
           </Button>
         )}
       </MediaArtwork>
@@ -238,10 +236,10 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
   const genres = (item.genres || '').split(',').map((genre) => genre.trim()).filter(Boolean)
 
   return (
-    <article className="nv-browse-list-item group transition-colors hover:bg-[var(--nv-fill-hover)]">
-      <div className="flex items-center gap-3 px-1 py-2.5">
-        <span className="w-6 shrink-0 text-center text-[10px] font-semibold tabular-nums text-[var(--nv-text-tertiary)]">{index}</span>
-        <Link to={`/media/${item.id}`} className="block h-16 w-11 shrink-0">
+    <article className="nv-browse-list-item nv-collection-list-item group">
+      <div className="nv-collection-list-row grid items-center gap-3 px-1 py-2.5">
+        <span className="nv-collection-list-index text-center text-[10px] font-semibold tabular-nums text-[var(--nv-text-tertiary)]">{index}</span>
+        <Link to={`/media/${item.id}`} className="nv-collection-list-poster block h-16 w-11" aria-label={`查看 ${item.title} 详情`}>
           <MediaArtwork
             src={item.poster_path ? streamApi.getPosterUrl(item.id) : null}
             alt=""
@@ -251,7 +249,7 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
           />
         </Link>
 
-        <div className="min-w-0 flex-1">
+        <div className="nv-collection-list-copy min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Link to={`/media/${item.id}`} className="min-w-0 truncate text-xs font-medium text-[var(--nv-text-primary)]">{item.title}</Link>
             {versions.length > 1 && <Tag tone="brand"><Copy size={10} aria-hidden="true" />{versions.length} 个版本</Tag>}
@@ -263,23 +261,25 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
           <ExpandableGenreTags genres={genres} />
         </div>
 
-        {item.rating > 0 && <Tag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>}
-        {versions.length > 1 && (
-          <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} aria-label={versionsOpen ? '收起版本' : '展开版本'} title={versionsOpen ? '收起版本' : '展开版本'} aria-expanded={versionsOpen}>
-            <ChevronDown size={14} className={versionsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+        <div className="nv-collection-list-actions flex min-w-0 flex-wrap items-center gap-1.5">
+          {item.rating > 0 && <Tag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" aria-hidden="true" />{item.rating.toFixed(1)}</Tag>}
+          {versions.length > 1 && (
+            <Button type="button" variant="ghost" size="sm" iconOnly onClick={() => setVersionsOpen((open) => !open)} aria-label={versionsOpen ? '收起版本' : '展开版本'} title={versionsOpen ? '收起版本' : '展开版本'} aria-expanded={versionsOpen}>
+              <ChevronDown size={14} className={versionsOpen ? 'rotate-180 transition-transform motion-reduce:transition-none' : 'transition-transform motion-reduce:transition-none'} />
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            size="sm"
+            iconOnly
+            className="nv-collection-list-play shrink-0"
+            onClick={() => navigate(`/play/${item.id}`)}
+            aria-label={`播放 ${item.title}`}
+            title="立即播放"
+          >
+            <Play size={13} fill="currentColor" aria-hidden="true" />
           </Button>
-        )}
-        <Button
-          variant="primary"
-          size="sm"
-          iconOnly
-          className="nv-collection-list-play shrink-0"
-          onClick={() => navigate(`/play/${item.id}`)}
-          aria-label={`播放 ${item.title}`}
-          title="立即播放"
-        >
-          <Play size={13} fill="currentColor" aria-hidden="true" />
-        </Button>
+        </div>
       </div>
 
       {versions.length > 1 && versionsOpen && (
@@ -293,7 +293,7 @@ function MovieListCard({ group, index }: { group: GroupedMovieItem; index: numbe
 
 function VersionMenu({ versions, currentId }: { versions: CollectionMediaItem[]; currentId: string }) {
   return (
-    <div className="absolute left-0 right-0 top-full z-[var(--nv-z-dropdown)] mt-1 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-2 shadow-[var(--nv-shadow-elevated)]">
+    <div className="nv-collection-version-menu absolute left-0 right-0 top-full z-[var(--nv-z-dropdown)] mt-1 rounded-[var(--nv-radius-card)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] p-2 shadow-[var(--nv-shadow-elevated)]">
       <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">{versions.length} 个版本</div>
       <div className="space-y-1">{versions.map((version) => <VersionRow key={version.id} version={version} currentId={currentId} />)}</div>
     </div>
@@ -303,7 +303,7 @@ function VersionMenu({ versions, currentId }: { versions: CollectionMediaItem[];
 function VersionRow({ version, currentId }: { version: CollectionMediaItem; currentId: string }) {
   const current = version.id === currentId
   return (
-    <Link to={`/media/${version.id}`} className={`flex items-center justify-between gap-2 rounded-[var(--nv-radius-control)] px-2.5 py-2 text-xs transition-colors ${current ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'}`}>
+    <Link to={`/media/${version.id}`} className={`nv-collection-version-row flex items-center justify-between gap-2 rounded-[var(--nv-radius-control)] px-2.5 py-2 text-xs transition-colors ${current ? 'bg-[var(--nv-bg-active)] text-[var(--nv-action-primary)]' : 'text-[var(--nv-text-secondary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]'}`}>
       <span className="truncate">{versionLabel(version) || version.title || '默认版本'}</span>
       {current && <Tag tone="brand">当前</Tag>}
     </Link>

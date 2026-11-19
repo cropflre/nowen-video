@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { AnimatePresence, motion, useReducedMotion, type PanInfo } from 'framer-motion'
+import { AnimatePresence, domMax, LazyMotion, m, useReducedMotion, type PanInfo } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { buttonClassName } from '@/components/design-system'
 import { streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
+import { springDefault } from '@/lib/motion'
 import type { RecommendedMedia, MixedItem, Media } from '@/types'
 import { MediaHeroContent } from '@/ui'
 
@@ -269,6 +270,7 @@ export default function HeroCarousel({
   if (!item) return null
 
   const artwork = getHeroArtwork(item.media)
+  const detailPath = getHeroDetailPath(item.media)
   const watchState = watchStateByMediaId[item.media.id]
   const progress = watchState?.duration > 0
     ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
@@ -276,7 +278,7 @@ export default function HeroCarousel({
 
   const openCurrentDetail = () => {
     if (suppressNavigationRef.current) return
-    navigate(getHeroDetailPath(item.media))
+    navigate(detailPath)
   }
 
   return (
@@ -289,115 +291,89 @@ export default function HeroCarousel({
       title="点击查看详情"
       onClick={openCurrentDetail}
     >
-      <AnimatePresence initial={false} mode="sync">
-        <motion.div
-          key={`hero-${item.media.id}`}
-          className="absolute inset-0"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0.1 : 0.28, ease: 'easeOut' }}
-          drag={items.length > 1 ? 'x' : false}
-          dragConstraints={{ left: 0, right: 0 }}
-          dragElastic={0.08}
-          onDragEnd={handleDragEnd}
-        >
-          {artwork.primary && (
-            <img
-              src={artwork.primary}
-              alt=""
-              data-artwork-kind={artwork.isBackdrop ? 'backdrop' : 'poster'}
-              className={`h-full w-full select-none object-cover object-center${artwork.isBackdrop ? '' : ' scale-110 blur-2xl'}`}
-              loading="eager"
-              decoding="async"
-              draggable={false}
-              onError={(event) => handleArtworkError(event, artwork.fallback)}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
+      <LazyMotion features={domMax} strict>
+        <AnimatePresence initial={false} mode="sync">
+          <m.div
+            key={`hero-${item.media.id}`}
+            className="absolute inset-0"
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={prefersReducedMotion ? undefined : { opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0 } : springDefault}
+            drag={items.length > 1 ? 'x' : false}
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={prefersReducedMotion ? 0 : 0.08}
+            dragMomentum={false}
+            onDragEnd={handleDragEnd}
+          >
+            {artwork.primary && (
+              <img
+                src={artwork.primary}
+                alt=""
+                data-artwork-kind={artwork.isBackdrop ? 'backdrop' : 'poster'}
+                className={`h-full w-full select-none object-cover object-center${artwork.isBackdrop ? '' : ' scale-110 blur-2xl'}`}
+                loading="eager"
+                decoding="async"
+                draggable={false}
+                onError={(event) => handleArtworkError(event, artwork.fallback)}
+              />
+            )}
+          </m.div>
+        </AnimatePresence>
+      </LazyMotion>
 
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-scrim)' }} />
       <div className="pointer-events-none absolute inset-0" style={{ background: 'var(--nv-hero-bottom-scrim)' }} />
 
-      <div className="nv-home-hero-foreground relative z-10">
+      <div className="nv-home-hero-foreground">
         <div className="nv-home-hero-content flex min-w-0 flex-col justify-center">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={`hero-content-${item.media.id}`}
-              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -4 }}
-              transition={{ duration: prefersReducedMotion ? 0.1 : 0.2 }}
-            >
-              <MediaHeroContent
-                media={item.media}
-                inlineBadges
-                actions={(
-                  <Link to={isSeriesProxy(item.media) ? getHeroDetailPath(item.media) : `/play/${item.media.id}`}
-                    className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                    onClick={(event) => event.stopPropagation()}>
-                    {isSeriesProxy(item.media) ? t('family.chooseEpisode') : watchState?.position > 0 ? t('family.resume') : t('home.playNow')}
-                  </Link>
-                )}
-                supplemental={watchState?.duration > 0 ? (
-                  <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
-                    <div className="nv-home-hero-watch-progress-label">
-                      上次观看至 {formatClock(watchState.position)} / {formatClock(watchState.duration)}
-                    </div>
-                    <div className="nv-home-hero-watch-progress-track">
-                      <span style={{ width: `${progress}%` }} />
-                    </div>
+          <m.div
+            key={`hero-content-${item.media.id}`}
+            initial={prefersReducedMotion ? false : { opacity: .75 }}
+            animate={{ opacity: 1 }}
+            transition={springDefault}
+          >
+            <MediaHeroContent
+              media={item.media}
+              title={<Link className="nv-home-hero-title-link" to={detailPath} onClick={(event) => event.stopPropagation()} title={item.media.title}>{item.media.title}</Link>}
+              inlineBadges
+              actions={(
+                <Link to={isSeriesProxy(item.media) ? detailPath : `/play/${item.media.id}`}
+                  className={buttonClassName({ variant: 'primary', size: 'lg' })}
+                  onClick={(event) => event.stopPropagation()}>
+                  {isSeriesProxy(item.media) ? t('family.chooseEpisode') : watchState?.position > 0 ? t('family.resume') : t('home.playNow')}
+                </Link>
+              )}
+              supplemental={watchState?.duration > 0 ? (
+                <div className="nv-home-hero-watch-progress" aria-label={`已观看 ${progress}%`}>
+                  <div className="nv-home-hero-watch-progress-label">
+                    上次观看至 {formatClock(watchState.position)} / {formatClock(watchState.duration)}
                   </div>
-                ) : undefined}
-              />
-            </motion.div>
-          </AnimatePresence>
+                  <div className="nv-home-hero-watch-progress-track">
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
+                </div>
+              ) : undefined}
+            />
+          </m.div>
         </div>
       </div>
 
       {items.length > 1 && (
-        <>
-          <button
-            type="button"
-            className="absolute right-16 bottom-4 z-30 grid h-11 w-11 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
-            onClick={(event) => {
-              event.stopPropagation()
-              goPrev()
-            }}
-            aria-label="上一张"
-            title="上一张"
-          >
-            <ChevronLeft size={20} aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            className="absolute right-3 bottom-4 z-30 grid h-11 w-11 place-items-center rounded-[5px] border border-black/10 bg-white/90 text-neutral-800 shadow-md backdrop-blur-sm transition-colors hover:bg-white focus-visible:bg-white"
-            onClick={(event) => {
-              event.stopPropagation()
-              goNext()
-            }}
-            aria-label="下一张"
-            title="下一张"
-          >
-            <ChevronRight size={20} aria-hidden="true" />
-          </button>
-        </>
-      )}
-
-      {items.length > 1 && (
-        <div
-          className="nv-home-hero-indicators pointer-events-none absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5"
-          aria-hidden="true"
-        >
-          {items.map((recommendation, index) => (
-            <span
-              key={recommendation.media.id}
-              className={`nv-home-hero-indicator block h-1.5 w-1.5 rounded-full shadow-sm transition-opacity duration-200 ${
-                index === current ? 'opacity-95' : 'opacity-35'
-              }`}
-            />
-          ))}
+        <div className="nv-home-hero-controls">
+          <div className="nv-home-hero-indicators flex items-center gap-1.5" aria-hidden="true">
+            {items.map((recommendation, index) => (
+              <span key={recommendation.media.id} className="nv-home-hero-indicator" data-active={index === current || undefined} />
+            ))}
+          </div>
+          <div className="nv-home-hero-arrows">
+            <button type="button" className="nv-home-hero-arrow" onClick={(event) => { event.stopPropagation(); goPrev() }} aria-label="上一张">
+              <ChevronLeft size={20} aria-hidden="true" />
+            </button>
+            <button type="button" className="nv-home-hero-arrow" onClick={(event) => { event.stopPropagation(); goNext() }} aria-label="下一张">
+              <ChevronRight size={20} aria-hidden="true" />
+            </button>
+          </div>
         </div>
       )}
     </section>

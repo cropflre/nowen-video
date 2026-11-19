@@ -1,7 +1,9 @@
 /* Nowen Video · Hills Lite inspired media detail continuous information flow */
 
 .nv-media-detail-page {
+  --nv-detail-hero-height: clamp(360px, 37vw, 640px);
   width: 100%;
+  min-width: 0;
   min-height: 100%;
   margin: 0;
   color: var(--nv-text-primary);
@@ -107,7 +109,7 @@
 
 .nv-media-detail-page .nv-detail-hero {
   width: 100%;
-  min-height: clamp(500px, 58vh, 660px);
+  min-height: var(--nv-detail-hero-height);
   margin: 0;
   overflow: hidden;
   border-bottom: 0;
@@ -126,7 +128,7 @@
 }
 
 .nv-media-detail-page .nv-detail-hero-inner {
-  min-height: clamp(500px, 58vh, 660px);
+  min-height: var(--nv-detail-hero-height);
   max-width: none;
   grid-template-columns: minmax(0, 1fr);
   align-items: end;
@@ -158,6 +160,7 @@
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-title {
   max-width: 22ch;
+  overflow-wrap: anywhere;
   color: var(--nv-text-primary);
   font-size: clamp(2rem, 2.7vw, 3.25rem) !important;
   font-weight: 760;
@@ -176,6 +179,11 @@
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle {
   margin-top: 7px;
   font-size: 13px;
+}
+
+.nv-media-detail-page .nv-detail-hero .nv-media-hero-meta,
+.nv-media-detail-page .nv-detail-hero .nv-media-hero-badges {
+  overflow-wrap: anywhere;
 }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-meta {
@@ -334,7 +342,7 @@
 .nv-cast-rail::-webkit-scrollbar { display: none; }
 .nv-cast-rail .nv-person-card { width: 78px; min-width: 78px; scroll-snap-align: start; }
 .nv-cast-rail .nv-person-card-artwork { border-radius: 5px; }
-.nv-cast-rail .nv-person-card:hover .nv-person-card-artwork { transform: translateY(-1px); box-shadow: none; }
+
 
 /* Highlight previews swap from a thumbnail to an animated asset on hover.
  * Keep every card bound to the responsive grid so the replacement asset's
@@ -503,30 +511,70 @@
   }
 }
 
+.nv-detail-toolbar-skeleton { display: none; }
+.nv-detail-hero-skeleton { min-height: var(--nv-detail-hero-height); }
+.nv-media-detail-page .nv-detail-content-section > :where(p, div) { overflow-wrap: anywhere; }
+
+@media (hover: hover) and (pointer: fine) {
+  .nv-cast-rail .nv-person-card:hover .nv-person-card-artwork { transform: translateY(-1px); box-shadow: none; }
+}
+
 @media (max-width: 47.999rem) {
+  .nv-media-detail-page {
+    --nv-detail-hero-height: clamp(270px, min(87vw, 62svh), 400px);
+  }
+  .nv-detail-toolbar-skeleton {
+    display: block;
+    min-height: 48px;
+  }
   .nv-detail-local-toolbar {
     position: relative;
-    min-height: 40px;
-    padding-inline: 8px;
+    min-height: 48px;
+    gap: 4px;
+    padding-inline: var(--nv-page-gutter);
+    flex-wrap: wrap;
     background: var(--nv-bg-canvas);
     pointer-events: auto;
   }
   .nv-detail-back-button {
     width: auto;
-    min-width: 0;
-    height: 30px;
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
     padding-inline: 8px;
     border-color: transparent !important;
     background: transparent !important;
     color: var(--nv-text-secondary) !important;
     font-size: 11px;
   }
-  .nv-detail-breadcrumb,
-  .nv-detail-admin-actions { display: none; }
-  .nv-media-detail-page .nv-detail-hero { min-height: 430px; }
-  .nv-media-detail-page .nv-detail-hero-inner { min-height: 430px; padding: 110px 12px 24px; }
+  .nv-detail-breadcrumb { display: none; }
+  .nv-detail-admin-actions { min-width: 0; flex-wrap: wrap; }
+  .nv-detail-admin-actions .nv-button {
+    min-height: 44px;
+    height: auto;
+    border-color: var(--nv-border-subtle);
+    background: var(--nv-bg-surface-soft);
+    color: var(--nv-text-secondary);
+  }
+  .nv-media-detail-page .nv-detail-hero-inner {
+    min-height: var(--nv-detail-hero-height);
+    padding: clamp(48px, 22vw, 110px) var(--nv-page-gutter) 20px;
+  }
   .nv-media-detail-page .nv-detail-hero .nv-hero-content { max-width: none; }
-  .nv-media-detail-page .nv-detail-hero .nv-media-hero-title { font-size: 1.35rem !important; }
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-title {
+    max-width: 100%;
+    font-size: clamp(1.35rem, 5.1vw, 2rem) !important;
+  }
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions { gap: 6px; }
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions :is(.nv-button, a) {
+    min-width: 44px;
+    min-height: 44px;
+    height: auto;
+    font-size: .75rem;
+    white-space: normal;
+  }
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions a[data-variant='primary'] { min-width: 0; }
+  .nv-media-detail-page .nv-detail-subtitle-tab { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
   .nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle,
   .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview { display: none; }
   .nv-media-detail-page .nv-detail-content-shell { padding-top: 12px; }
@@ -534,10 +582,11 @@
     position: sticky;
     top: var(--nv-toolbar-height);
     z-index: 16;
-    margin-inline: -12px;
-    padding-inline: 12px;
+    margin-inline: calc(-1 * var(--nv-page-gutter));
+    padding-inline: var(--nv-page-gutter);
     background: var(--nv-bg-canvas);
   }
+  .nv-media-detail-page .nv-detail-content-section { margin-top: 16px; }
   .nv-cast-rail .nv-person-card { width: 76px; min-width: 76px; }
   .nv-detail-tech-grid { grid-template-columns: 1fr; }
   .nv-detail-tech-metric,

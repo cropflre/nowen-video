@@ -58,7 +58,7 @@ function parseViewMode(value: string | null): LibraryViewMode {
 
 function FilterChip({ selected, onClick, children }: { selected: boolean; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" onClick={onClick} aria-pressed={selected} className="nv-button !min-h-[30px] !rounded-[9px] !px-2.5 !text-[11px]" data-variant={selected ? 'secondary' : 'ghost'} data-size="sm">
+    <button type="button" onClick={onClick} aria-pressed={selected} className="nv-button nv-browser-filter-chip" data-variant={selected ? 'secondary' : 'ghost'} data-size="sm">
       {children}
     </button>
   )
@@ -66,11 +66,11 @@ function FilterChip({ selected, onClick, children }: { selected: boolean; onClic
 
 function FilterGroup({ icon, label, count, children }: { icon: ReactNode; label: string; count?: number; children: ReactNode }) {
   return (
-    <div className="grid gap-2 sm:grid-cols-[92px_minmax(0,1fr)] sm:items-start">
-      <div className="flex min-h-[30px] items-center gap-1.5 text-[11px] font-medium text-[var(--nv-text-tertiary)]">
+    <div className="nv-browser-filter-group">
+      <div className="nv-browser-filter-label">
         <span aria-hidden="true">{icon}</span><span>{label}</span>{!!count && <Tag tone="brand">{count}</Tag>}
       </div>
-      <div className="flex flex-wrap gap-1">{children}</div>
+      <div className="nv-browser-filter-options">{children}</div>
     </div>
   )
 }
@@ -296,20 +296,20 @@ export default function LibraryPage() {
 
   return (
     <div className="nv-section-stack">
-      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" role="group" aria-label="媒体库内容类型">
+      <div className="nv-library-type-tabs flex flex-wrap items-center gap-1 border-b border-[var(--nv-border-subtle)] pb-3" role="group" aria-label="媒体库内容类型">
         <ContentTabButton active={viewTab === 'all'} onClick={() => setViewTab('all')} icon={<Film size={14} />} label="全部内容" count={total} />
         {hasSeries && <ContentTabButton active={viewTab === 'series'} onClick={() => setViewTab('series')} icon={<Tv size={14} />} label="剧集合集" count={deduplicatedSeries.length} />}
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        <SearchField value={searchQuery} onChange={(event) => updateUrl({ q: event.target.value || null })} placeholder="筛选此媒体库" wrapperClassName="min-w-[190px] flex-1 lg:max-w-sm" aria-label="筛选此媒体库" />
-        <Button type="button" variant={showFilters || activeFilterCount > 0 ? 'secondary' : 'ghost'} size="sm" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters}>
-          <SlidersHorizontal size={14} />筛选{activeFilterCount > 0 && <Tag tone="brand">{activeFilterCount}</Tag>}
-        </Button>
-        <Select value={sortValue} onChange={(event) => updateUrl({ sort: event.target.value === 'created_desc' ? null : event.target.value })} aria-label="媒体库排序" className="!w-auto min-w-28">
+      <div className="nv-library-toolbar nv-browser-toolbar">
+        <SearchField value={searchQuery} onChange={(event) => updateUrl({ q: event.target.value || null })} placeholder="筛选此媒体库" wrapperClassName="nv-browser-search" aria-label="筛选此媒体库" />
+        <Select value={sortValue} onChange={(event) => updateUrl({ sort: event.target.value === 'created_desc' ? null : event.target.value })} aria-label="媒体库排序" className="nv-browser-sort">
           {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
         </Select>
-        <div className="ml-auto flex items-center gap-0.5 rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] p-0.5" role="group" aria-label="媒体库视图">
+        <Button type="button" variant={showFilters || activeFilterCount > 0 ? 'secondary' : 'ghost'} size="sm" className="nv-browser-filter-toggle" onClick={() => setShowFilters((value) => !value)} aria-expanded={showFilters} aria-controls={showFilters ? 'library-filter-panel' : undefined}>
+          <SlidersHorizontal size={14} aria-hidden="true" />筛选{activeFilterCount > 0 && <Tag tone="brand">{activeFilterCount}</Tag>}
+        </Button>
+        <div className="nv-browser-views" role="group" aria-label="媒体库视图">
           <ViewButton active={viewMode === 'grid'} title="网格视图" onClick={() => setViewMode('grid')}><Grid3X3 size={14} /></ViewButton>
           <ViewButton active={viewMode === 'list'} title="列表视图" onClick={() => setViewMode('list')}><LayoutList size={14} /></ViewButton>
           <ViewButton active={viewMode === 'poster'} title="海报墙视图" onClick={() => setViewMode('poster')}><LayoutGrid size={14} /></ViewButton>
@@ -317,7 +317,7 @@ export default function LibraryPage() {
       </div>
 
       {showFilters && (
-        <Surface variant="glass" className="space-y-2.5 p-3 sm:p-4">
+        <Surface variant="glass" id="library-filter-panel" className="space-y-2.5 p-3 sm:p-4">
           {allGenres.length > 0 && <FilterGroup icon={<TagIcon size={12} />} label="类型" count={selectedGenres.length}>{allGenres.map((genre) => <FilterChip key={genre} selected={selectedGenres.includes(genre)} onClick={() => toggleGenre(genre)}>{genre}</FilterChip>)}</FilterGroup>}
           {allCountries.length > 0 && <FilterGroup icon={<Globe size={12} />} label="地区"><FilterChip selected={!selectedCountry} onClick={() => updateUrl({ country: null })}>全部</FilterChip>{allCountries.map((country) => <FilterChip key={country} selected={selectedCountry === country} onClick={() => updateUrl({ country: selectedCountry === country ? null : country })}>{country}</FilterChip>)}</FilterGroup>}
           <FilterGroup icon={<Calendar size={12} />} label="年份">{YEAR_RANGES.map((range) => <FilterChip key={range.label} selected={yearRange.min === range.min && yearRange.max === range.max} onClick={() => updateUrl({ year_min: range.min > 0 ? String(range.min) : null, year_max: range.max > 0 ? String(range.max) : null })}>{range.label}</FilterChip>)}</FilterGroup>
@@ -326,7 +326,16 @@ export default function LibraryPage() {
         </Surface>
       )}
 
-      {selectedGenres.length > 0 && <div className="flex flex-wrap items-center gap-1.5">{selectedGenres.map((genre) => <Tag key={genre} tone="brand">{genre}<button type="button" onClick={() => toggleGenre(genre)} className="ml-0.5 rounded p-0.5 hover:bg-[var(--nv-fill-hover)]" aria-label={`移除 ${genre} 标签`}><X size={10} /></button></Tag>)}</div>}
+      {selectedGenres.length > 0 && (
+        <div className="nv-browser-selected-tags" aria-label="已选类型标签">
+          {selectedGenres.map((genre) => (
+            <Tag key={genre} tone="brand">
+              <span>{genre}</span>
+              <button type="button" onClick={() => toggleGenre(genre)} className="nv-browser-tag-remove" aria-label={`移除 ${genre} 标签`}><X size={12} aria-hidden="true" /></button>
+            </Tag>
+          ))}
+        </div>
+      )}
       {hasLocalFilter && <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]" aria-live="polite"><span>找到 <strong className="font-semibold text-[var(--nv-text-secondary)]">{resultCount}</strong> 个结果</span><Button type="button" variant="ghost" size="sm" onClick={clearAllFilters}>清除</Button></div>}
 
       {loading ? (
@@ -360,7 +369,7 @@ function LibrarySkeleton({ viewMode }: { viewMode: LibraryViewMode }) {
   const list = viewMode === 'list'
   if (list) {
     return (
-      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-busy="true">
+      <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-busy="true" aria-label="正在加载媒体库">
         {Array.from({ length: 8 }).map((_, index) => (
           <div key={index} className="flex items-center gap-3 py-2.5">
             <div className="skeleton h-16 w-11 shrink-0 rounded-[9px]" />
@@ -372,11 +381,12 @@ function LibrarySkeleton({ viewMode }: { viewMode: LibraryViewMode }) {
   }
 
   return (
-    <SharedMediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'} aria-busy="true">
+    <SharedMediaGrid variant={viewMode === 'poster' ? 'poster' : 'standard'} aria-busy="true" aria-label="正在加载媒体库">
       {Array.from({ length: 12 }).map((_, index) => (
         <div key={index}>
           <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
-          {viewMode !== 'poster' && <><div className="skeleton mt-2 h-3 w-3/4" /><div className="skeleton mt-1.5 h-2.5 w-1/2" /></>}
+          <div className="skeleton mt-2 h-3 w-3/4" />
+          {viewMode !== 'poster' && <div className="skeleton mt-1.5 h-2.5 w-1/2" />}
         </div>
       ))}
     </SharedMediaGrid>
@@ -409,7 +419,7 @@ function LibraryListItem({ item, series: seriesProp }: { item?: MixedItem; serie
   const hasPoster = series ? !!series.poster_path : media?.series_id ? !!media.series?.poster_path || !!media.poster_path : !!media?.poster_path
 
   return (
-    <Link to={linkTo} className="group flex items-center gap-3 px-1 py-2.5 transition-colors hover:bg-[var(--nv-fill-hover)]">
+    <article className="nv-browser-result-row">
       <MediaArtwork
         src={hasPoster ? posterUrl : null}
         alt=""
@@ -418,13 +428,21 @@ function LibraryListItem({ item, series: seriesProp }: { item?: MixedItem; serie
         fallback={isSeries ? <Tv size={15} aria-hidden="true" /> : <Film size={15} aria-hidden="true" />}
       />
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2"><h3 className="truncate text-xs font-medium text-[var(--nv-text-primary)]">{title}</h3>{isSeries && <Tag>剧集</Tag>}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="min-w-0 truncate text-xs font-medium text-[var(--nv-text-primary)]"><Link to={linkTo} className="nv-browser-row-link" title={title}>{title}</Link></h3>
+          {isSeries && <Tag className="shrink-0">剧集</Tag>}
+        </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-2 text-[10px] text-[var(--nv-text-tertiary)]">{year > 0 && <span>{year}</span>}{country && <span>{country}</span>}{duration > 0 && <span>{formatDuration(duration)}</span>}{series && <span>{series.season_count} 季 · {series.episode_count} 集</span>}</div>
-        {genreList.length > 0 && <div className="mt-1.5 flex flex-wrap items-center gap-1">{visibleTags.map((genre) => <Tag key={genre}>{genre}</Tag>)}{genreList.length > 3 && <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); setTagsExpanded((value) => !value) }} className="text-[10px] text-[var(--nv-text-tertiary)] hover:text-[var(--nv-text-primary)]">{tagsExpanded ? '收起' : `+${genreList.length - 3}`}</button>}</div>}
+        {genreList.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
+            {visibleTags.map((genre) => <Tag key={genre}>{genre}</Tag>)}
+            {genreList.length > 3 && <button type="button" onClick={() => setTagsExpanded((value) => !value)} className="nv-browser-row-toggle" aria-expanded={tagsExpanded}>{tagsExpanded ? '收起类型' : `+${genreList.length - 3} 类型`}</button>}
+          </div>
+        )}
         {overview && <p className="mt-1 line-clamp-1 text-[10px] text-[var(--nv-text-tertiary)]">{overview}</p>}
       </div>
       {rating > 0 && <Tag tone="rating" className="shrink-0"><Star size={10} fill="currentColor" />{rating.toFixed(1)}</Tag>}
-    </Link>
+    </article>
   )
 }
 
@@ -439,16 +457,15 @@ function LibraryPosterItem({ item, series: seriesProp }: { item?: MixedItem; ser
   const hasPoster = series ? !!series.poster_path : media?.series_id ? !!media.series?.poster_path || !!media.poster_path : !!media?.poster_path
 
   return (
-    <Link to={linkTo} className="group block min-w-0" aria-label={title}>
+    <Link to={linkTo} className="nv-browse-poster-card block min-w-0" aria-label={title}>
       <MediaArtwork
         src={hasPoster ? posterUrl : null}
         alt=""
         ratio="poster"
-        className="nv-media-card-poster"
-        imageClassName="transition-[filter,transform] duration-200 group-hover:brightness-[.82]"
+        className="nv-browser-poster-artwork"
         fallback={isSeries ? <Tv size={22} aria-hidden="true" /> : <Film size={22} aria-hidden="true" />}
       >
-        <div className="absolute inset-0 z-20 grid place-items-center bg-black/20 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+        <div className="nv-browser-poster-overlay absolute inset-0 z-20 grid place-items-center bg-black/20" aria-hidden="true">
           <span className="grid h-8 w-8 place-items-center rounded-full bg-[var(--nv-action-primary)] text-[var(--nv-text-on-brand)]"><Play size={12} fill="currentColor" /></span>
         </div>
         {rating > 0 && <Tag tone="quality" className="absolute left-1.5 top-1.5 z-30"><Star size={9} fill="currentColor" />{rating.toFixed(1)}</Tag>}

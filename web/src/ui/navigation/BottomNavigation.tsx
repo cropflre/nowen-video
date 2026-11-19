@@ -23,10 +23,6 @@ export function BottomNavigation({ items, className }: BottomNavigationProps) {
     <nav
       className={clsx('nv-mobile-nav', className)}
       aria-label="移动端主导航"
-      style={{
-        left: 'max(8px, env(safe-area-inset-left, 0px))',
-        right: 'max(8px, env(safe-area-inset-right, 0px))',
-      }}
     >
       {items.map((item) => {
         const forceActive = item.activeOn?.some((prefix) => location.pathname.startsWith(prefix)) ?? false

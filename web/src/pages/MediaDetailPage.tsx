@@ -41,8 +41,6 @@ import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
-import { AnimatePresence, motion } from 'framer-motion'
-import { durations, easeSmooth } from '@/lib/motion'
 import { ArrowLeft, Captions } from 'lucide-react'
 
 type DetailTab = 'overview' | 'cast' | 'subtitles' | 'related'
@@ -418,30 +416,14 @@ export default function MediaDetailPage() {
 
   if (loading || !media) {
     return (
-      <AnimatePresence mode="wait">
-        <motion.div
-          key="skeleton"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: durations.fast }}
-          className="nv-detail-loading space-y-5"
-        >
-          <div className="skeleton h-12 rounded-[var(--nv-radius-control)]" />
-          <div className="skeleton h-[400px] rounded-[var(--nv-radius-hero)]" />
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-4">
-              <div className="skeleton h-14 rounded-[var(--nv-radius-card)]" />
-              <div className="skeleton h-64 rounded-[var(--nv-radius-card)]" />
-              <div className="skeleton h-40 rounded-[var(--nv-radius-card)]" />
-            </div>
-            <div className="space-y-4">
-              <div className="skeleton h-52 rounded-[var(--nv-radius-card)]" />
-              <div className="skeleton h-48 rounded-[var(--nv-radius-card)]" />
-            </div>
-          </div>
-        </motion.div>
-      </AnimatePresence>
+      <div className="nv-media-detail-page nv-detail-loading" role="status" aria-label="影片详情加载中">
+        <div className="skeleton nv-detail-toolbar-skeleton" aria-hidden="true" />
+        <div className="skeleton nv-detail-hero-skeleton" aria-hidden="true" />
+        <div className="nv-detail-content-shell space-y-4 px-[var(--nv-page-gutter)]" aria-hidden="true">
+          <div className="skeleton h-11 rounded-[var(--nv-radius-control)]" />
+          <div className="skeleton h-44 rounded-[var(--nv-radius-card)]" />
+        </div>
+      </div>
     )
   }
 
@@ -464,12 +446,7 @@ export default function MediaDetailPage() {
   const hasSubtitleData = embeddedSubtitleCount + externalSubtitleCount > 0
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: durations.page, ease: easeSmooth as unknown as [number, number, number, number] }}
-      className="nv-media-detail-page relative -mx-4 -mt-6 sm:-mx-6 lg:-mx-8"
-    >
+    <div className="nv-media-detail-page nv-detail-content-ready relative">
       <div className="nv-detail-local-toolbar">
         <Button
           type="button"
@@ -533,18 +510,18 @@ export default function MediaDetailPage() {
               ]}
             />
 
-            <section id="detail-overview" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-overview" hidden={activeTab !== 'overview'}>
+            <section id="detail-overview" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-overview" hidden={activeTab !== 'overview'}>
               <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
               {id && <div className="nv-detail-tab-secondary-section"><CommentSection mediaId={id} /></div>}
             </section>
 
-            <section id="detail-cast" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-cast" hidden={activeTab !== 'cast'}>
+            <section id="detail-cast" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-cast" hidden={activeTab !== 'cast'}>
               <CastGrid persons={persons} />
             </section>
 
-            <section id="detail-subtitles" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-subtitles" hidden={activeTab !== 'subtitles'}>
+            <section id="detail-subtitles" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-subtitles" hidden={activeTab !== 'subtitles'}>
               {enhancedLoading && !hasSubtitleData ? (
-                <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" aria-label="正在加载字幕信息" />
+                <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" role="status" aria-label="正在加载字幕信息" />
               ) : hasSubtitleData ? (
                 <div className="nv-detail-subtitle-tab">
                   <div className="nv-detail-subtitle-tab-copy">
@@ -559,7 +536,7 @@ export default function MediaDetailPage() {
               )}
             </section>
 
-            <section id="detail-related" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" aria-labelledby="detail-tab-related" hidden={activeTab !== 'related'}>
+            <section id="detail-related" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-related" hidden={activeTab !== 'related'}>
               {media.media_type === 'movie' && id && (
                 <div className="nv-detail-tab-secondary-section nv-detail-tab-secondary-section-first"><CollectionCarousel mediaId={id} /></div>
               )}
@@ -647,6 +624,6 @@ export default function MediaDetailPage() {
           onClose={() => setShowDeleteConfirm(false)}
         />
       )}
-    </motion.div>
+    </div>
   )
 }

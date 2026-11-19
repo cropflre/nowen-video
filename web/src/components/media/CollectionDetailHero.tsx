@@ -66,7 +66,7 @@ export default function CollectionDetailHero({ data, movieCount, fileCount, onBa
           返回
         </Button>
 
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-end">
+        <div className="nv-collection-hero-layout">
           <div className="nv-collection-hero-poster relative shrink-0 overflow-hidden">
             <div className="absolute inset-0 flex items-center justify-center text-[var(--nv-text-tertiary)]"><Layers size={42} aria-hidden="true" /></div>
             <img
@@ -77,74 +77,77 @@ export default function CollectionDetailHero({ data, movieCount, fileCount, onBa
             />
           </div>
 
-          <div className="min-w-0 flex-1 pb-1">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="nv-collection-hero-summary min-w-0">
+            <h1 className="nv-collection-hero-title font-display text-[var(--nv-text-primary)]">
+              {collection.name}
+            </h1>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               <Tag tone="brand">系列合集</Tag>
               <Tag>{movieCount} 部电影</Tag>
               {fileCount > movieCount && <Tag>{fileCount} 个文件</Tag>}
               {stats.yearRange && <Tag><Calendar size={11} />{stats.yearRange}</Tag>}
               {stats.averageRating > 0 && <Tag tone="rating"><Star size={11} fill="currentColor" />均分 {stats.averageRating.toFixed(1)}</Tag>}
             </div>
+          </div>
 
-            <h1 className="nv-collection-hero-title font-display text-[var(--nv-text-primary)]">
-              {collection.name}
-            </h1>
-
-            {stats.genres.length > 0 && (
-              <div className="mt-4 max-w-4xl">
-                <div className="mb-2 flex items-center gap-2">
-                  <span className="text-xs font-medium text-[var(--nv-text-secondary)]">标签</span>
-                  <span className="text-[11px] tabular-nums text-[var(--nv-text-tertiary)]">{stats.genres.length}</span>
-                  {hiddenGenreCount > 0 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => setGenresExpanded((expanded) => !expanded)}
-                      aria-expanded={genresExpanded}
-                    >
-                      {genresExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                      {genresExpanded ? '收起' : `查看全部 ${stats.genres.length}`}
-                    </Button>
-                  )}
-                </div>
-
-                <div
-                  className={genresExpanded
-                    ? 'max-h-40 overflow-y-auto rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[color-mix(in_srgb,var(--nv-bg-surface)_72%,transparent)] p-3'
-                    : ''}
-                >
-                  <div className="flex flex-wrap items-center gap-2">
-                    {visibleGenres.map((genre) => (
-                      <Link
-                        key={genre}
-                        to={`/search?q=${encodeURIComponent(genre)}`}
-                        className="min-w-0 max-w-[12rem] no-underline"
-                        title={genre}
-                      >
-                        <Tag className="block max-w-full truncate">{genre}</Tag>
-                      </Link>
-                    ))}
-                    {!genresExpanded && hiddenGenreCount > 0 && (
-                      <button
+          {(stats.genres.length > 0 || collection.overview) && (
+            <div className="nv-collection-hero-details min-w-0">
+              {stats.genres.length > 0 && (
+                <div className="max-w-4xl">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-medium text-[var(--nv-text-secondary)]">标签</span>
+                    <span className="text-[11px] tabular-nums text-[var(--nv-text-tertiary)]">{stats.genres.length}</span>
+                    {hiddenGenreCount > 0 && (
+                      <Button
                         type="button"
-                        onClick={() => setGenresExpanded(true)}
-                        className="inline-flex h-6 items-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-2.5 text-[11px] font-medium text-[var(--nv-text-secondary)] transition-colors hover:border-[var(--nv-border-default)] hover:text-[var(--nv-text-primary)]"
-                        aria-label={`查看其余 ${hiddenGenreCount} 个标签`}
+                        variant="ghost"
+                        size="sm"
+                        className="ml-auto"
+                        onClick={() => setGenresExpanded((expanded) => !expanded)}
+                        aria-expanded={genresExpanded}
                       >
-                        +{hiddenGenreCount}
-                      </button>
+                        {genresExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        {genresExpanded ? '收起' : `查看全部 ${stats.genres.length}`}
+                      </Button>
                     )}
                   </div>
-                </div>
-              </div>
-            )}
 
-            {collection.overview && (
-              <p className="mt-5 max-w-3xl text-sm leading-6 text-[var(--nv-text-secondary)]">{collection.overview}</p>
-            )}
-          </div>
+                  <div
+                    className={genresExpanded
+                      ? 'max-h-40 overflow-y-auto rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[color-mix(in_srgb,var(--nv-bg-surface)_72%,transparent)] p-3'
+                      : ''}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      {visibleGenres.map((genre) => (
+                        <Link
+                          key={genre}
+                          to={`/search?q=${encodeURIComponent(genre)}`}
+                          className="min-w-0 max-w-[12rem] no-underline"
+                          title={genre}
+                        >
+                          <Tag className="block max-w-full truncate">{genre}</Tag>
+                        </Link>
+                      ))}
+                      {!genresExpanded && hiddenGenreCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setGenresExpanded(true)}
+                          className="nv-collection-tag-toggle inline-flex min-h-8 items-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-control)] px-2.5 text-[11px] font-medium text-[var(--nv-text-secondary)] transition-colors hover:border-[var(--nv-border-default)] hover:text-[var(--nv-text-primary)]"
+                          aria-label={`查看其余 ${hiddenGenreCount} 个标签`}
+                        >
+                          +{hiddenGenreCount}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {collection.overview && (
+                <p className="max-w-3xl text-sm leading-6 text-[var(--nv-text-secondary)]">{collection.overview}</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </section>

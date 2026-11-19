@@ -88,7 +88,7 @@ function FilterRow({ icon, label, children }: { icon: ReactNode; label: string; 
         {icon}
         {label}
       </span>
-      {children}
+      <div className="nv-search-filter-options">{children}</div>
     </div>
   )
 }
@@ -336,7 +336,7 @@ export default function SearchPage() {
   const clearSearch = () => {
     setDraftQuery('')
     updateUrl({ q: null })
-    requestAnimationFrame(() => searchInputRef.current?.focus())
+    searchInputRef.current?.focus()
   }
 
   const hasActiveFilters = filterType !== '' || sortBy !== 'relevance' || yearRange.min > 0 || yearRange.max > 0 || minRating > 0
@@ -468,16 +468,14 @@ export default function SearchPage() {
               autoComplete="off"
               wrapperClassName="nv-search-workspace-field"
             />
-            <span className="nv-search-shortcut" aria-hidden="true">/</span>
+            {draftQuery.length > 0 ? (
+              <Button type="button" variant="ghost" iconOnly className="nv-search-clear" onClick={clearSearch} aria-label="清空搜索">
+                <X size={16} aria-hidden="true" />
+              </Button>
+            ) : <span className="nv-search-shortcut" aria-hidden="true">/</span>}
           </div>
 
-          {draftQuery.length > 0 && (
-            <Button type="button" variant="ghost" size="md" iconOnly onClick={clearSearch} aria-label="清空搜索">
-              <X size={16} aria-hidden="true" />
-            </Button>
-          )}
-
-          <Button type="submit" variant="primary" size="md" disabled={!draftQuery.trim()}>
+          <Button type="submit" variant="primary" size="md" disabled={!draftQuery.trim()} aria-busy={loading || undefined}>
             <SearchIcon size={15} aria-hidden="true" />
             搜索
           </Button>
@@ -497,7 +495,7 @@ export default function SearchPage() {
         </form>
 
         <div className="nv-search-workspace-summary" aria-live="polite">
-          <span>{resultSummary}</span>
+          <span className="nv-search-summary-text">{resultSummary}</span>
           {searched && !loading && hasAnyResults && (
             <span className="nv-search-result-context">第 {page} / {totalPages} 页</span>
           )}
@@ -588,9 +586,9 @@ export default function SearchPage() {
             <h2 id="search-person-title" className="nv-section-title">人物</h2>
             <span className="text-[11px] text-[var(--nv-text-tertiary)]">{people.length}</span>
           </div>
-          <div className="scrollbar-hide flex gap-3 overflow-x-auto pb-2" role="list" aria-label="人物搜索结果">
+          <ul className="nv-search-person-track scrollbar-hide flex gap-3 overflow-x-auto pb-2" aria-label="人物搜索结果">
             {people.map((person) => <PersonSearchCard key={person.id} person={person} />)}
-          </div>
+          </ul>
         </section>
       )}
 
@@ -625,31 +623,28 @@ function PersonSearchCard({ person }: { person: Person }) {
   const profileUrl = streamApi.getPersonProfileUrl(person.id)
 
   return (
-    <Link
-      to={`/person/${person.id}`}
-      className="group w-[92px] shrink-0 no-underline sm:w-[104px]"
-      role="listitem"
-      aria-label={`查看人物 ${person.name}`}
-    >
-      <div className="relative aspect-[4/5] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)] shadow-[var(--nv-shadow-card)] transition-[transform,border-color,box-shadow] duration-200 group-hover:-translate-y-[3px] group-hover:border-[var(--nv-border-default)] group-hover:shadow-[var(--nv-shadow-card-hover)]">
-        {!imageFailed ? (
-          <img
-            src={profileUrl}
-            alt=""
-            className="h-full w-full object-cover transition-[filter] duration-200 group-hover:brightness-[.88]"
-            loading="lazy"
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
-            <User size={28} strokeWidth={1.4} aria-hidden="true" />
-          </div>
+    <li className="nv-search-person-item">
+      <Link to={`/person/${person.id}`} className="nv-search-person-link block no-underline" aria-label={`查看人物 ${person.name}`}>
+        <div className="nv-search-person-artwork relative aspect-[4/5] overflow-hidden rounded-[var(--nv-radius-card)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-poster)]">
+          {!imageFailed ? (
+            <img
+              src={profileUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+              onError={() => setImageFailed(true)}
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[var(--nv-text-tertiary)]">
+              <User size={28} strokeWidth={1.4} aria-hidden="true" />
+            </div>
+          )}
+        </div>
+        <p className="mt-1.5 truncate text-xs font-medium text-[var(--nv-text-primary)]" title={person.name}>{person.name}</p>
+        {person.orig_name && person.orig_name !== person.name && (
+          <p className="mt-0.5 truncate text-[10px] text-[var(--nv-text-tertiary)]" title={person.orig_name}>{person.orig_name}</p>
         )}
-      </div>
-      <p className="mt-1.5 truncate text-xs font-medium text-[var(--nv-text-primary)]" title={person.name}>{person.name}</p>
-      {person.orig_name && person.orig_name !== person.name && (
-        <p className="mt-0.5 truncate text-[10px] text-[var(--nv-text-tertiary)]" title={person.orig_name}>{person.orig_name}</p>
-      )}
-    </Link>
+      </Link>
+    </li>
   )
 }

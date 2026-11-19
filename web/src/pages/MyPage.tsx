@@ -21,7 +21,7 @@ export default function MyPage() {
   const { theme, toggleTheme } = useThemeStore()
 
   return (
-    <div className="nv-section-stack">
+    <div className="nv-section-stack nv-my-page">
       <section className="flex items-center gap-3 border-b border-[var(--nv-border-subtle)] pb-5">
         <div className="grid h-10 w-10 shrink-0 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-active)] text-[var(--nv-text-secondary)]">
           <UserRound size={20} aria-hidden="true" />
@@ -35,13 +35,13 @@ export default function MyPage() {
       <Section title="我的内容">
         <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {entries.filter((entry) => !user?.child_mode || !['/playlists','/stats'].includes(entry.to)).map(({ to, title, description, icon: Icon }) => (
-            <Link key={to} to={to} className="group flex min-h-14 items-center gap-3 px-1 py-2.5 transition-colors duration-150 hover:bg-[var(--nv-fill-hover)]">
+            <Link key={to} to={to} className="nv-my-entry flex min-h-14 items-center gap-3 px-1 py-2.5">
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]"><Icon size={16} aria-hidden="true" /></span>
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium text-[var(--nv-text-primary)]">{title}</span>
-                <span className="mt-0.5 block truncate text-[11px] text-[var(--nv-text-tertiary)]">{description}</span>
+                <span className="mt-0.5 block text-[11px] text-[var(--nv-text-tertiary)]">{description}</span>
               </span>
-              <ChevronRight size={15} className="shrink-0 text-[var(--nv-text-tertiary)] transition-transform duration-150 group-hover:translate-x-0.5" aria-hidden="true" />
+              <ChevronRight size={15} className="nv-my-entry-chevron shrink-0 text-[var(--nv-text-tertiary)]" aria-hidden="true" />
             </Link>
           ))}
         </div>

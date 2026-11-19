@@ -34,6 +34,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -357,6 +359,7 @@ private fun PlayerSettingsContent(
                 HillsToggle(
                     checked = autoPlayNext,
                     onCheckedChange = onAutoPlayNextChange,
+                    modifier = Modifier.semantics { contentDescription = "自动播放下一集" },
                 )
             },
         )
@@ -417,6 +420,7 @@ private fun PlayerSettingsContent(
                     HillsToggle(
                         checked = danmakuEnabled,
                         onCheckedChange = onDanmakuEnabledChange,
+                        modifier = Modifier.semantics { contentDescription = "显示弹幕" },
                     )
                 },
             )
@@ -427,6 +431,7 @@ private fun PlayerSettingsContent(
                     HillsToggle(
                         checked = danmakuAutoMatch,
                         onCheckedChange = onDanmakuAutoMatchChange,
+                        modifier = Modifier.semantics { contentDescription = "自动匹配弹幕" },
                     )
                 },
             )

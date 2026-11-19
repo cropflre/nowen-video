@@ -1,5 +1,7 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
@@ -32,6 +35,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,6 +55,8 @@ import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
 import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.designsystem.HillsTextField
 import com.nowen.video.v2.core.designsystem.HillsTopBar
+import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
+import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MovieCollection
 import com.nowen.video.v2.core.model.Person
@@ -177,6 +186,7 @@ fun SearchScreen(
                 .fillMaxSize()
                 .padding(topPadding)
                 .statusBarsPadding()
+                .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             HillsTextField(
@@ -218,7 +228,16 @@ fun SearchScreen(
                     }
                 }
                 when {
-                    state.loading -> HillsState("正在搜索", "正在从当前服务器检索内容")
+                    state.loading -> Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Text("正在搜索", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     state.error != null -> HillsState("搜索失败", state.error!!)
                     filteredMedia.isEmpty() && state.peopleResults.isEmpty() && state.collectionResults.isEmpty() ->
                         HillsState("没有找到结果", "换一个关键词试试。")
@@ -283,16 +302,24 @@ private fun SearchMediaKindRail(
     ) {
         SearchMediaKind.entries.filter { it in availableKinds }.forEach { kind ->
             val selected = kind in selectedKinds
-            Text(
-                kind.label,
-                color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { onToggle(kind) }
-                    .padding(horizontal = 2.dp, vertical = 6.dp),
+            val color by animateColorAsState(
+                targetValue = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                animationSpec = tween(NowenMotion.ContentEnterMs),
+                label = "search_filter",
             )
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(
+                        minWidth = NowenMobileMetrics.TouchTarget,
+                        minHeight = NowenMobileMetrics.TouchTarget,
+                    )
+                    .clip(RoundedCornerShape(8.dp))
+                    .toggleable(value = selected, role = Role.Checkbox, onValueChange = { onToggle(kind) })
+                    .padding(horizontal = 8.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(kind.label, color = color, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+            }
         }
     }
 }

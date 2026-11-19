@@ -166,8 +166,14 @@
   border-bottom: 0;
 }
 
-.nv-data-row:hover {
+.nv-data-row:focus-within {
   background: var(--nv-fill-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nv-data-row:hover {
+    background: var(--nv-fill-hover);
+  }
 }
 
 @media (max-width: 47.999rem) {

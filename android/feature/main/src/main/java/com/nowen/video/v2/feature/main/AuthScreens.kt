@@ -1,6 +1,9 @@
 package com.nowen.video.v2.feature.main
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Key
@@ -14,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.window.Dialog
@@ -85,13 +89,14 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(22.dp),
+                .padding(16.dp)
+                .widthIn(max = 480.dp)
+                .fillMaxWidth(),
             shape = MaterialTheme.shapes.extraLarge,
             color = MaterialTheme.colorScheme.surface,
             border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
-            Column(Modifier.padding(24.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState()).padding(24.dp)) {
                 Text("登录服务器", style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -111,6 +116,7 @@ fun LoginScreen(viewModel: LoginViewModel = hiltViewModel()) {
                     onValueChange = viewModel::password,
                     placeholder = "密码",
                     visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 )
                 state.error?.let {
                     Spacer(Modifier.height(10.dp))
@@ -185,9 +191,11 @@ fun ForcePasswordScreen(viewModel: PasswordViewModel = hiltViewModel()) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(topPadding)
-                .padding(horizontal = 20.dp),
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 20.dp),
         ) {
-            Spacer(Modifier.height(28.dp))
             BrandMark(compact = true)
             Spacer(Modifier.height(28.dp))
             Text("修改初始密码", style = MaterialTheme.typography.headlineLarge)
@@ -221,5 +229,6 @@ private fun PasswordField(label: String, value: String, onChange: (String) -> Un
         onValueChange = onChange,
         placeholder = label,
         visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
     )
 }

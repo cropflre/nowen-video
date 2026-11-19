@@ -1,8 +1,14 @@
 package com.nowen.video.v2.core.designsystem
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
@@ -14,16 +20,22 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,11 +56,13 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import kotlin.math.roundToInt
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -71,8 +85,11 @@ fun HillsScreen(
     top: @Composable (() -> Unit)? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
-    Box(modifier.fillMaxSize().background(NowenColors.NightBackground)) {
-        content(PaddingValues(top = if (top == null) 0.dp else 76.dp))
+    Column(
+        modifier.fillMaxSize()
+            .background(NowenColors.NightBackground)
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+    ) {
         top?.let {
             Box(
                 modifier = Modifier
@@ -80,6 +97,9 @@ fun HillsScreen(
                     .statusBarsPadding()
                     .background(NowenColors.NightBackground.copy(alpha = 0.96f)),
             ) { it() }
+        }
+        Box(Modifier.fillMaxWidth().weight(1f)) {
+            content(PaddingValues(top = if (top == null) 0.dp else 12.dp))
         }
     }
 }
@@ -95,18 +115,29 @@ fun HillsTopBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(64.dp)
-            .padding(horizontal = HillsMetrics.gutter),
+            .heightIn(min = 64.dp)
+            .padding(horizontal = HillsMetrics.gutter, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (navigationIcon != null && onNavigate != null) {
-            HillsPressable(onClick = onNavigate, modifier = Modifier.size(44.dp)) {
+            HillsPressable(
+                onClick = onNavigate,
+                role = Role.Button,
+                modifier = Modifier.size(NowenMobileMetrics.TouchTarget).clip(CircleShape),
+            ) {
                 Icon(navigationIcon, contentDescription = "返回", tint = Color(0xFFF2F4FA), modifier = Modifier.align(Alignment.Center))
             }
             Spacer(Modifier.width(10.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, color = Color(0xFFF2F4FA), fontWeight = FontWeight.Bold, style = androidx.compose.material3.MaterialTheme.typography.titleLarge)
+            Text(
+                title,
+                color = Color(0xFFF2F4FA),
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, color = Color(0xFFB6BCC8), style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -149,15 +180,22 @@ fun HillsPrimaryAction(
     HillsPressable(
         onClick = onClick,
         enabled = enabled,
+        role = Role.Button,
         modifier = modifier
-            .height(HillsMetrics.controlHeight)
+            .heightIn(min = HillsMetrics.controlHeight)
             .clip(RoundedCornerShape(18.dp))
             .background(if (enabled) containerColor else containerColor.copy(alpha = 0.42f)),
     ) {
         val resolvedContentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.62f)
-        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) { Icon(icon, null, tint = resolvedContentColor); Spacer(Modifier.width(8.dp)) }
-            Text(label, color = resolvedContentColor, fontWeight = FontWeight.SemiBold)
+        Row(
+            Modifier.align(Alignment.Center).padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(icon, null, tint = resolvedContentColor)
+                Spacer(Modifier.width(8.dp))
+            }
+            Text(label, color = resolvedContentColor, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center)
         }
     }
 }
@@ -173,12 +211,16 @@ fun HillsSecondaryAction(
     HillsPressable(
         onClick = onClick,
         enabled = enabled,
+        role = Role.Button,
         modifier = modifier
-            .height(HillsMetrics.controlHeight)
+            .heightIn(min = HillsMetrics.controlHeight)
             .clip(RoundedCornerShape(16.dp))
             .background(NowenColors.NightRaised),
     ) {
-        Row(Modifier.align(Alignment.Center), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.align(Alignment.Center).padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             if (icon != null) {
                 Icon(icon, contentDescription = null, tint = Color(0xFFB6BCC8))
                 Spacer(Modifier.width(8.dp))
@@ -187,6 +229,7 @@ fun HillsSecondaryAction(
                 label,
                 color = if (enabled) Color(0xFFD6DBE6) else Color(0xFF737987),
                 fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
             )
         }
     }
@@ -199,30 +242,47 @@ fun HillsToggle(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
-    val trackColor = when {
-        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-        checked -> NowenColors.Brand
-        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
-    }
-    HillsPressable(
-        onClick = { onCheckedChange(!checked) },
-        enabled = enabled,
+    val trackColor by animateColorAsState(
+        targetValue = when {
+            !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+            checked -> NowenColors.Brand
+            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+        },
+        animationSpec = tween(NowenMotion.ContentEnterMs),
+        label = "switch_track",
+    )
+    val thumbOffset = animateDpAsState(
+        targetValue = if (checked) 23.dp else 3.dp,
+        animationSpec = tween(NowenMotion.ContentEnterMs),
+        label = "switch_thumb",
+    )
+    Box(
         modifier = modifier
-            .width(48.dp)
-            .height(28.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(trackColor),
+            .size(NowenMobileMetrics.TouchTarget)
+            .clip(CircleShape)
+            .toggleable(
+                value = checked,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            ),
+        contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = Modifier
-                .align(if (checked) Alignment.CenterEnd else Alignment.CenterStart)
-                .padding(horizontal = 3.dp)
-                .size(22.dp)
-                .clip(RoundedCornerShape(11.dp))
-                .background(
-                    if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
-                ),
-        )
+            Modifier.size(width = 48.dp, height = 28.dp)
+                .background(trackColor, CircleShape),
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .offset { IntOffset(thumbOffset.value.roundToPx(), 0) }
+                    .size(22.dp)
+                    .background(
+                        if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                        CircleShape,
+                    ),
+            )
+        }
     }
 }
 
@@ -340,16 +400,28 @@ fun HillsChoiceRail(
     modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(20.dp),
+        modifier = modifier.horizontalScroll(rememberScrollState()).selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         options.forEach { (key, label) ->
             val active = key == selected
-            HillsPressable(onClick = { onSelect(key) }) {
+            val textColor by animateColorAsState(
+                targetValue = if (active) Color(0xFF8397CE) else Color(0xFFB6BCC8),
+                animationSpec = tween(NowenMotion.ContentEnterMs),
+                label = "rail_selection",
+            )
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = NowenMobileMetrics.TouchTarget, minHeight = NowenMobileMetrics.TouchTarget)
+                    .clip(RoundedCornerShape(8.dp))
+                    .selectable(selected = active, role = Role.Tab, onClick = { onSelect(key) })
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(label, color = if (active) Color(0xFF8397CE) else Color(0xFFB6BCC8), fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal)
+                    Text(label, color = textColor, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.height(7.dp))
-                    Box(Modifier.width(if (active) 28.dp else 0.dp).height(3.dp).background(if (active) Color(0xFF8397CE) else Color.Transparent))
+                    Box(Modifier.width(28.dp).height(3.dp).background(if (active) textColor else Color.Transparent))
                 }
             }
         }

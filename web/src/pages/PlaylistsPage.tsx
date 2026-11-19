@@ -83,7 +83,7 @@ export default function PlaylistsPage() {
   const pages = totalPages(total)
 
   return (
-    <div className="space-y-6">
+    <div className="nv-playlists-page min-w-0 space-y-6">
       <header className="flex flex-col gap-4 border-b border-[var(--nv-border-subtle)] pb-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-[-0.02em] text-[var(--nv-text-primary)]">
@@ -132,7 +132,7 @@ export default function PlaylistsPage() {
       )}
 
       {loading ? (
-        <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-label="正在加载播放列表">
+        <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]" aria-busy="true" aria-label="正在加载播放列表">
           {Array.from({ length: 3 }).map((_, index) => (
             <div key={index} className="py-4">
               <div className="skeleton h-5 w-1/4 rounded-[var(--nv-radius-control)]" />
@@ -165,7 +165,7 @@ export default function PlaylistsPage() {
                     <button
                       type="button"
                       onClick={() => setExpandedId(expanded ? null : playlist.id)}
-                      className="group flex min-w-0 flex-1 items-center gap-3 rounded-[var(--nv-radius-control)] px-1 py-1 text-left outline-none transition-colors duration-150 hover:bg-[var(--nv-fill-hover)] focus-visible:shadow-[var(--nv-shadow-focus)]"
+                      className="nv-playlist-toggle flex min-w-0 flex-1 items-center gap-3 rounded-[var(--nv-radius-control)] px-1 py-1 text-left"
                       aria-expanded={expanded}
                     >
                       <div className="grid h-8 w-8 shrink-0 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
@@ -200,16 +200,16 @@ export default function PlaylistsPage() {
                   </div>
 
                   {expanded && (
-                    <div className="ml-12 border-t border-[var(--nv-border-subtle)]">
+                    <div className="border-t border-[var(--nv-border-subtle)] sm:ml-12">
                       {!playlist.items || playlist.items.length === 0 ? (
                         <div className="py-6 text-sm text-[var(--nv-text-tertiary)]">{t('playlists.emptyList')}</div>
                       ) : (
                         <div className="divide-y divide-[var(--nv-border-subtle)]">
                           {playlist.items.map((item) => (
-                            <div key={item.id} className="group flex items-center gap-3 py-3 transition-colors duration-150 hover:bg-[var(--nv-fill-hover)]">
+                            <div key={item.id} className="nv-playlist-item group flex min-w-0 items-center gap-2 py-3 sm:gap-3">
                               <Link
                                 to={`/play/${item.media_id}`}
-                                className="relative h-14 w-24 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)]"
+                                className="relative h-11 w-16 shrink-0 overflow-hidden rounded-[var(--nv-radius-control)] bg-[var(--nv-bg-surface-soft)] sm:h-14 sm:w-24"
                                 aria-label={`播放 ${item.media?.title || t('history.unknownMedia')}`}
                               >
                                 <img
@@ -218,7 +218,7 @@ export default function PlaylistsPage() {
                                   className="h-full w-full object-cover"
                                   onError={(event) => { event.currentTarget.style.display = 'none' }}
                                 />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+                                <div className="nv-playlist-play-overlay absolute inset-0 flex items-center justify-center bg-black/30" aria-hidden="true">
                                   <span className="grid h-7 w-7 place-items-center rounded-full bg-white/90 text-black">
                                     <Play size={12} className="ml-0.5" fill="currentColor" aria-hidden="true" />
                                   </span>
@@ -238,7 +238,7 @@ export default function PlaylistsPage() {
                                 variant="ghost"
                                 iconOnly
                                 onClick={() => void handleRemoveItem(playlist.id, item.media_id)}
-                                className="shrink-0 text-[var(--nv-text-tertiary)] sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100"
+                                className="shrink-0 text-[var(--nv-text-tertiary)]"
                                 aria-label={t('playlists.removeFromList')}
                                 title={t('playlists.removeFromList')}
                               >

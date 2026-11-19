@@ -25,8 +25,6 @@ const sizeClass: Record<ModalSize, string> = {
   video: 'max-w-5xl',
 }
 
-const responsiveSafePadding = 'max(10px, min(20px, 2vw), env(safe-area-inset-top, 0px))'
-
 export function Modal({
   open = true,
   onClose,
@@ -71,6 +69,30 @@ export function Modal({
     }
   }, [handleKeyDown, open])
 
+  useEffect(() => {
+    const overlay = overlayRef.current
+    const viewport = window.visualViewport
+    if (!open || !overlay || !viewport) return
+
+    // The on-screen keyboard can shrink and pan the visual viewport.
+    const fitViewport = () => {
+      if (viewport.scale !== 1) {
+        overlay.style.removeProperty('--nv-modal-viewport-height')
+        overlay.style.removeProperty('--nv-modal-viewport-top')
+        return
+      }
+      overlay.style.setProperty('--nv-modal-viewport-height', `${viewport.height}px`)
+      overlay.style.setProperty('--nv-modal-viewport-top', `${viewport.offsetTop}px`)
+    }
+    fitViewport()
+    viewport.addEventListener('resize', fitViewport)
+    viewport.addEventListener('scroll', fitViewport)
+    return () => {
+      viewport.removeEventListener('resize', fitViewport)
+      viewport.removeEventListener('scroll', fitViewport)
+    }
+  }, [open])
+
   if (!open) return null
 
   const handleBackdrop = (event: MouseEvent<HTMLDivElement>) => {
@@ -81,12 +103,6 @@ export function Modal({
     <div
       ref={overlayRef}
       className={clsx('nv-modal-backdrop', className)}
-      style={{
-        paddingTop: responsiveSafePadding,
-        paddingRight: 'max(10px, min(20px, 2vw), env(safe-area-inset-right, 0px))',
-        paddingBottom: 'max(10px, min(20px, 2vw), env(safe-area-inset-bottom, 0px))',
-        paddingLeft: 'max(10px, min(20px, 2vw), env(safe-area-inset-left, 0px))',
-      }}
       onMouseDown={handleBackdrop}
       tabIndex={-1}
       role="dialog"

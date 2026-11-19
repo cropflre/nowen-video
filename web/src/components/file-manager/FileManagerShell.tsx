@@ -30,9 +30,9 @@ export default function FileManagerShell({
 }: FileManagerShellProps) {
   return (
     <div className="nv-file-manager-shell space-y-4">
-      <div className="flex min-w-0 items-end gap-3 border-b border-[var(--nv-border-subtle)]">
+      <div className="flex min-w-0 flex-wrap items-end gap-x-3 gap-y-1 border-b border-[var(--nv-border-subtle)] min-[480px]:flex-nowrap">
         <nav
-          className="scrollbar-hide flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain scroll-smooth"
+          className="scrollbar-hide flex min-w-0 flex-1 basis-full items-center gap-1 overflow-x-auto overscroll-x-contain scroll-smooth min-[480px]:basis-auto"
           aria-label="文件管理功能"
         >
           {tabs.map((tab) => {
@@ -57,8 +57,8 @@ export default function FileManagerShell({
         </nav>
 
         {activeTab === 'files' && (
-          <div className="mb-1 flex shrink-0 items-center gap-1">
-            <Button type="button" variant="ghost" size="sm" onClick={onOpenLogs} title="操作日志">
+          <div className="mb-1 ml-auto flex shrink-0 items-center gap-1">
+            <Button type="button" variant="ghost" size="sm" onClick={onOpenLogs} aria-label="操作日志" title="操作日志">
               <History size={14} aria-hidden="true" />
               <span className="hidden sm:inline">日志</span>
             </Button>

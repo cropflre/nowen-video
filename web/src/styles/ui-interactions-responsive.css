@@ -13,30 +13,44 @@
   overflow-x: hidden;
 }
 
+.nv-auth-scroll {
+  display: grid;
+  height: 100%;
+  justify-items: center;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding:
+    max(clamp(16px, 6dvh, 40px), env(safe-area-inset-top, 0px))
+    max(16px, env(safe-area-inset-right, 0px))
+    max(clamp(16px, 6dvh, 40px), env(safe-area-inset-bottom, 0px))
+    max(16px, env(safe-area-inset-left, 0px));
+}
+
+.nv-auth-content {
+  align-self: safe center;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .nv-page-loader {
   min-width: 0;
 }
 
 .nv-page-loader-indicator {
-  animation: nv-loading-enter 180ms var(--nv-ease-standard) both;
+  animation: nv-fade-in var(--nv-motion-normal) var(--nv-ease-standard) var(--nv-motion-fast) both;
 }
 
-@keyframes nv-loading-enter {
-  from { opacity: .45; transform: translate3d(0, 4px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
+@keyframes nv-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .nv-modal-backdrop {
-  animation: nv-backdrop-enter 140ms ease-out both;
+  animation: nv-fade-in var(--nv-motion-fast) var(--nv-ease-standard);
 }
 
 .nv-modal-sheet {
-  animation: nv-sheet-enter 180ms var(--nv-ease-standard) both;
-}
-
-@keyframes nv-backdrop-enter {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  animation: nv-sheet-enter var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
 @keyframes nv-sheet-enter {
@@ -55,16 +69,43 @@
   transition-timing-function: var(--nv-ease-standard);
 }
 
-.nv-button[aria-busy="true"] {
+.nv-button[aria-busy="true"]:not([aria-disabled="true"]) {
+  position: relative;
   cursor: progress;
+  opacity: .8;
 }
 
-.nv-button:disabled {
-  cursor: not-allowed;
+.nv-button[aria-busy="true"]:not(:has(.animate-spin))::after {
+  position: absolute;
+  inset: auto 4px 1px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  content: "";
+  opacity: .6;
+  animation: nv-button-progress 1s var(--nv-ease-standard) infinite alternate;
+}
+
+@keyframes nv-button-progress {
+  from { transform: scaleX(.22); }
+  to { transform: scaleX(1); }
+}
+
+.nv-button:not(:disabled, [aria-disabled="true"]):active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 24%, transparent);
+}
+
+.nv-button[data-variant="primary"]:not(:disabled, [aria-disabled="true"]):active {
+  background: var(--nv-action-primary-active);
+}
+
+.nv-media-card-poster:has(:focus-visible) {
+  outline: 2px solid var(--nv-focus-ring);
+  outline-offset: 2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .nv-app-shell .nv-button:not(:disabled):active {
+  .nv-button:not(:disabled, [aria-disabled="true"]):active {
     transform: translateY(1px);
   }
 
@@ -86,16 +127,8 @@
 }
 
 @media (hover: none), (pointer: coarse) {
-  /* Touch hover can stay latched after tapping: keep artwork in place. */
-  .nv-media-card:hover .nv-media-card-poster,
-  .nv-media-card:focus-within .nv-media-card-poster {
-    transform: none;
-  }
-
   .nv-media-card-overlay {
-    opacity: 1;
-    place-items: end;
-    padding: 8px;
+    background: none;
   }
 
   .nv-media-card-play,
@@ -105,25 +138,25 @@
     opacity: 1;
     transform: none;
   }
-}
 
-@media (max-width: 63.999rem) {
-  .nv-page-container,
-  .nv-section-stack,
-  .nv-personal-workspace,
-  .nv-browse-toolbar,
-  .nv-library-toolbar {
-    min-width: 0;
-    max-width: 100%;
+  .nv-modal-header .nv-button[data-icon-only="true"],
+  .nv-modal-footer .nv-button,
+  .nv-auth-scroll :is(.nv-button, .nv-input) {
+    min-height: 44px;
   }
 
-  .nv-browse-toolbar,
-  .nv-library-toolbar {
-    flex-wrap: wrap;
+  .nv-modal-header .nv-button[data-icon-only="true"] {
+    min-width: 44px;
   }
 
-  .nv-modal-sheet {
-    max-width: 100%;
+  .nv-modal-sheet :is(.nv-input, .nv-select, .nv-textarea),
+  .nv-auth-scroll .nv-input {
+    font-size: 16px;
+  }
+
+  .nv-modal-sheet :is(.nv-input, .nv-select:not([multiple])),
+  .nv-auth-scroll .nv-input {
+    height: 44px;
   }
 }
 
@@ -133,24 +166,18 @@
     --nv-section-gap: 20px;
   }
 
-  /* ui-theme.css previously replaced mobile's bottom-safe padding with 32px.
-     Keep the last card, page actions and pagination above the fixed nav. */
-  .nv-page-container {
-    box-sizing: border-box;
-    padding-inline: var(--nv-page-gutter);
-    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-  }
-
   .nv-main-scroll {
-    width: 100%;
-    scroll-padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
-    -webkit-overflow-scrolling: touch;
+    --nv-toolbar-height: 54px;
   }
 
-  /* On phones the toolbar has no side title/actions; reclaim their empty columns. */
+  html[data-large-text='true'] .nv-main-scroll {
+    --nv-toolbar-height: 64px;
+  }
+
   .nv-minimal-toolbar {
     grid-template-columns: minmax(0, 1fr);
     gap: 0;
+    min-height: var(--nv-toolbar-height);
   }
 
   .nv-minimal-toolbar-side {
@@ -160,49 +187,11 @@
   .nv-toolbar-search {
     min-width: 0;
     max-width: 100%;
+    height: 44px;
   }
 
-  .nv-mobile-nav {
-    min-width: 0;
-    height: 62px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .nv-mobile-nav-item {
-    min-width: 0;
-    min-height: 44px;
-  }
-
-  .nv-mobile-nav-label {
-    max-width: 100%;
-  }
-
-  /* 320/360/390/430px phones should reflow rather than crop controls. */
-  .nv-browse-toolbar > *,
-  .nv-library-toolbar > *,
-  .nv-search-page-toolbar > *,
-  .nv-search-workspace-form > *,
-  .nv-personal-workspace-header-actions > * {
-    max-width: 100%;
-  }
-
-  .nv-browse-toolbar .nv-search,
-  .nv-library-toolbar .nv-search,
-  .nv-search-workspace-field-wrap {
-    min-width: 0 !important;
-    flex-basis: 100%;
-  }
-
-  .nv-personal-workspace-header,
-  .nv-personal-workspace-panel,
-  .nv-personal-workspace-toolbar {
-    min-width: 0;
-  }
-
-  .nv-personal-workspace-header-actions {
-    min-width: 0;
-    flex-wrap: wrap;
-    gap: 8px;
+  .nv-main-scroll:has(> .nv-minimal-toolbar) {
+    scroll-padding-block-start: var(--nv-toolbar-height);
   }
 
   .nv-media-grid,
@@ -251,18 +240,6 @@
     max-width: 100%;
   }
 
-  /* Dialogs must fit inside the *visible* viewport when Safari chrome moves. */
-  .nv-modal-backdrop {
-    max-width: 100vw;
-    max-height: 100dvh;
-    overscroll-behavior: contain;
-  }
-
-  .nv-modal-sheet {
-    min-width: 0;
-    max-height: calc(100dvh - 20px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  }
-
   .nv-modal-header,
   .nv-modal-body,
   .nv-modal-footer {
@@ -290,42 +267,18 @@
   }
 }
 
-@media (max-width: 47.999rem) and (max-height: 540px) and (orientation: landscape) {
-  .nv-mobile-nav {
-    height: 52px;
-    bottom: max(4px, env(safe-area-inset-bottom, 0px));
-  }
-
-  .nv-page-container {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-  }
-
-  .nv-modal-sheet {
-    max-height: calc(100dvh - 12px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  }
-}
-
-@media (max-width: 47.999rem) {
-  html[data-large-text='true'] .nv-mobile-nav {
-    height: 84px;
-  }
-
-  html[data-large-text='true'] .nv-page-container {
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px));
-  }
-
-  html[data-large-text='true'] .nv-mobile-nav-label {
-    white-space: normal;
-    overflow-wrap: anywhere;
-    line-height: 1.15;
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .nv-page-loader-indicator,
   .nv-modal-backdrop,
-  .nv-modal-sheet {
+  .nv-modal-sheet,
+  .nv-button[aria-busy="true"]::after {
     animation: none !important;
+  }
+
+  .nv-button,
+  .nv-media-card-poster,
+  .nv-media-card-play {
+    transform: none !important;
   }
 
   .nv-button,

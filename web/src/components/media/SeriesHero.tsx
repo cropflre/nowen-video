@@ -5,6 +5,7 @@ import type { Media, Series } from '@/types'
 import { streamApi } from '@/api'
 import { Button, Tag, buttonClassName } from '@/components/design-system'
 import { HeroContent, MediaArtwork } from '@/ui'
+import DetailActionMenu from './DetailActionMenu'
 
 interface SeriesHeroProps {
   series: Series
@@ -35,28 +36,12 @@ export default function SeriesHero({
 }: SeriesHeroProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
+  const menuButtonRef = useRef<HTMLButtonElement>(null)
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
 
   useEffect(() => {
     setImageLoaded(false)
   }, [posterVersion, series.backdrop_path, series.id])
-
-  useEffect(() => {
-    const handleMouseDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) setMenuOpen(false)
-    }
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setMenuOpen(false)
-    }
-
-    document.addEventListener('mousedown', handleMouseDown)
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('mousedown', handleMouseDown)
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [])
 
   const closeAndRun = (action: () => void) => {
     setMenuOpen(false)
@@ -77,26 +62,22 @@ export default function SeriesHero({
         {isFavorited ? '已加入想看' : '想看'}
       </Button>
 
-      <div ref={menuRef} className="relative">
-        <Button type="button" variant="secondary" size="lg" iconOnly onClick={() => setMenuOpen((open) => !open)} aria-label="更多操作" aria-haspopup="menu" aria-expanded={menuOpen}>
-          <MoreHorizontal size={19} aria-hidden="true" />
-        </Button>
+      <Button ref={menuButtonRef} type="button" variant="secondary" size="lg" iconOnly onClick={() => setMenuOpen((open) => !open)} aria-label="更多操作" aria-haspopup="menu" aria-expanded={menuOpen}>
+        <MoreHorizontal size={19} aria-hidden="true" />
+      </Button>
 
-        {menuOpen && (
-          <div className="nv-menu absolute left-0 top-full z-[var(--nv-z-dropdown)] mt-2 w-56" role="menu">
-            {isAdmin && (
-              <>
-                <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">剧集管理</div>
-                <MenuItem icon={<Link2 size={14} />} label="手动匹配剧集" onClick={() => closeAndRun(onManualMatch)} />
-                <MenuItem icon={<Unlink size={14} />} label="解除匹配剧集" onClick={() => closeAndRun(onUnmatch)} />
-                <MenuItem icon={<Trash2 size={14} />} label="删除剧集" onClick={() => closeAndRun(onDelete)} danger />
-                <div className="my-1 h-px bg-[var(--nv-border-subtle)]" />
-              </>
-            )}
-            <MenuItem icon={<Share2 size={14} />} label="分享链接" onClick={() => closeAndRun(onShare)} />
-          </div>
+      <DetailActionMenu open={menuOpen} anchorRef={menuButtonRef} ariaLabel="更多操作" onClose={() => setMenuOpen(false)}>
+        {isAdmin && (
+          <>
+            <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">剧集管理</div>
+            <MenuItem icon={<Link2 size={14} />} label="手动匹配剧集" onClick={() => closeAndRun(onManualMatch)} />
+            <MenuItem icon={<Unlink size={14} />} label="解除匹配剧集" onClick={() => closeAndRun(onUnmatch)} />
+            <MenuItem icon={<Trash2 size={14} />} label="删除剧集" onClick={() => closeAndRun(onDelete)} danger />
+            <div className="my-1 h-px bg-[var(--nv-border-subtle)]" />
+          </>
         )}
-      </div>
+        <MenuItem icon={<Share2 size={14} />} label="分享链接" onClick={() => closeAndRun(onShare)} />
+      </DetailActionMenu>
     </>
   )
 

@@ -167,7 +167,7 @@ fun PagedFavoritesScreen(
         },
     ) { topPadding ->
         LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
+            columns = GridCells.Adaptive(minSize = 96.dp),
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)

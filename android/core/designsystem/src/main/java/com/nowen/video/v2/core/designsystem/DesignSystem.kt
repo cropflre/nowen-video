@@ -18,6 +18,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -267,6 +268,7 @@ fun HillsPressable(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    role: Role? = null,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -284,8 +286,9 @@ fun HillsPressable(
             }
             .clickable(
                 interactionSource = interactionSource,
-                indication = null,
+                indication = ripple(),
                 enabled = enabled,
+                role = role,
                 onClick = onClick,
             ),
         content = content,

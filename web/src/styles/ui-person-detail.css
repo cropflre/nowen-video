@@ -2,6 +2,7 @@
 
 .nv-person-detail-page {
   width: 100%;
+  min-width: 0;
 }
 
 .nv-person-profile-hero {
@@ -39,6 +40,7 @@
 
 .nv-person-profile-title-row h1 {
   color: var(--nv-text-primary);
+  overflow-wrap: anywhere;
   font-size: clamp(1.45rem, 2vw, 2rem);
   font-weight: 720;
   line-height: 1.12;
@@ -46,6 +48,7 @@
 }
 
 .nv-person-original-name {
+  overflow-wrap: anywhere;
   margin-top: 5px;
   color: var(--nv-text-tertiary);
   font-size: 11.5px;
@@ -133,17 +136,28 @@
   }
 
   .nv-person-profile-layout {
-    grid-template-columns: 92px minmax(0, 1fr);
+    --nv-person-artwork-size: clamp(64px, 23vw, 92px);
+    grid-template-columns: var(--nv-person-artwork-size) minmax(0, 1fr);
     gap: 12px;
   }
 
   .nv-person-profile-artwork {
-    width: 92px;
+    width: var(--nv-person-artwork-size);
   }
 
   .nv-person-profile-title-row {
-    gap: 8px;
+    flex-direction: column;
+    gap: 4px;
   }
+
+  .nv-person-back-button,
+  .nv-person-inline-link,
+  .nv-person-external-links a {
+    min-height: 44px;
+    padding-inline: 8px;
+  }
+
+  .nv-person-work-summary { margin-top: 8px; }
 
   .nv-person-profile-title-row h1 {
     font-size: 1.35rem;

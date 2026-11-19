@@ -200,7 +200,7 @@ export default function PlayerPage() {
 
   if (loadError || childViewing.error) {
     return (
-      <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
+      <div className="group/player flex h-full flex-col items-center justify-center gap-4 bg-[var(--nv-player-canvas)] px-6 text-center text-[var(--nv-player-text-primary)]" role="alert">
         <h1 className="text-lg font-semibold">{childViewing.error || (accessRevoked ? '这部影片暂未向儿童账号开放' : '暂时无法准备这部影片')}</h1>
         <p className="text-sm text-[var(--nv-player-text-secondary)]">{childViewing.error ? '可以返回选择其他活动，或请家长检查观看设置。' : accessRevoked ? '请返回选择其他影片，或请家长确认内容分级。' : '影片或观看记录暂时无法读取，请重试。'}</p>
         <div className="flex gap-3">
@@ -213,7 +213,7 @@ export default function PlayerPage() {
 
   if (loading || !childViewing.ready || (desktopRuntime.isDesktop && !desktopRuntime.ready) || !media || media.id !== id || !playInfo || !id) {
     return (
-      <div className="group/player flex h-screen items-center justify-center bg-[var(--nv-player-canvas)]">
+      <div className="group/player flex h-full items-center justify-center bg-[var(--nv-player-canvas)]" role="status">
         <div className="flex flex-col items-center gap-3">
           <Loader2 size={32} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
           <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在准备播放…</p>
@@ -224,7 +224,7 @@ export default function PlayerPage() {
 
   if (!highlightMode && desktopRuntime.isDesktop && !desktopRuntime.playerAvailable) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[var(--nv-player-canvas)] p-6">
+      <div className="group/player flex h-full items-center justify-center bg-[var(--nv-player-canvas)] p-6" role="alert">
         <div className="max-w-lg rounded-[var(--nv-radius-lg)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] p-6 text-center">
           <h2 className="text-lg font-semibold text-[var(--nv-player-text-primary)]">播放器暂时不可用</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--nv-player-text-secondary)]">请重新启动客户端后再试。如果仍然无法播放，请联系管理员检查播放器安装。</p>
@@ -317,8 +317,8 @@ export default function PlayerPage() {
       : 'var(--nv-player-accent)'
 
   return (
-    <div className={`group/player relative h-screen w-screen ${useDesktopPlayer ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'}`}>
-      <div className="nv-player-runtime-status absolute right-4 top-4 z-50 flex flex-col items-end gap-2 transition-opacity duration-200">
+    <div className={`nv-player-page group/player relative h-full min-w-0 w-full overflow-hidden ${useDesktopPlayer ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'}`}>
+      {(isAdmin || highlightMode) && <div className="nv-player-runtime-status absolute z-50 flex flex-col items-end gap-2">
         {isAdmin && !highlightMode && (
           <details className="rounded-lg bg-[var(--nv-player-surface-soft)] p-2 text-sm text-[var(--nv-player-text-secondary)]">
             <summary className="cursor-pointer min-h-11 flex items-center">播放信息</summary>
@@ -341,7 +341,7 @@ export default function PlayerPage() {
             退出片段模式
           </button>
         )}
-      </div>
+      </div>}
 
       {useDesktopPlayer ? (
         <DesktopPlayer

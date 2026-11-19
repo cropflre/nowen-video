@@ -58,7 +58,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       data-variant={variant}
       data-size={size}
       data-icon-only={iconOnly || undefined}
-      aria-busy={loading || undefined}
+      aria-busy={loading || props['aria-busy']}
       disabled={disabled || loading}
     >
       {children}

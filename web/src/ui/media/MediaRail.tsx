@@ -81,7 +81,7 @@ export function MediaRail({
     // viewport width therefore always lands on a full-card boundary; scroll snap
     // resolves the final sub-pixel difference without another measurement pass.
     const amount = Math.max(240, element.clientWidth)
-    element.scrollBy({ left: direction === 'left' ? -amount : amount, behavior: 'smooth' })
+    element.scrollBy({ left: direction === 'left' ? -amount : amount })
   }
 
   return (

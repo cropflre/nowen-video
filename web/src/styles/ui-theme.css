@@ -144,10 +144,6 @@
   box-shadow: none;
 }
 
-.nv-button--primary:hover:not(:disabled) {
-  background: var(--nv-action-primary-hover);
-}
-
 .nv-button--secondary {
   border-color: var(--nv-border-default);
   background: var(--nv-bg-surface);
@@ -179,11 +175,16 @@
   box-shadow: none;
 }
 
-.nv-media-card:hover .nv-media-card-poster,
 .nv-media-card:focus-within .nv-media-card-poster {
-  transform: translateY(-1px);
   border-color: var(--nv-border-hover);
   box-shadow: var(--nv-shadow-card-hover);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nv-media-card:hover .nv-media-card-poster {
+    border-color: var(--nv-border-hover);
+    box-shadow: var(--nv-shadow-card-hover);
+  }
 }
 
 .nv-media-card-title {

@@ -8,7 +8,7 @@
   -webkit-backdrop-filter: blur(20px) saturate(120%) !important;
 }
 
-.group\/player .player-controls > .absolute.left-4.top-4 > button:first-child {
+.group\/player .player-controls > .nv-player-top-chrome > button:first-child {
   border: 1px solid var(--nv-player-border) !important;
   border-radius: var(--nv-player-radius-control) !important;
   background: var(--nv-player-surface-soft) !important;
@@ -22,7 +22,6 @@
   height: 4px !important;
   background: rgba(235,238,255,.16) !important;
 }
-.group\/player .player-controls > .progress-bar:hover { height: 5px !important; }
 .group\/player .progress-bar-fill {
   background: linear-gradient(90deg, var(--nv-player-accent-blue), var(--nv-player-accent) 56%, var(--nv-player-accent-pink)) !important;
   box-shadow: 0 0 12px rgba(109,93,252,.36) !important;

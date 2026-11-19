@@ -18,7 +18,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -163,7 +164,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         HISTORY_ROUTE, DOWNLOADS_ROUTE, SETTINGS_ROUTE, COLLECTIONS_ROUTE, COLLECTION_DETAIL_ROUTE -> null
         else -> null
     }
-    val showBottomBar = currentRoute != PLAYER_ROUTE &&
+    val searchKeyboardVisible = currentRoute == MainTab.Search.route &&
+        WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val showBottomBar = !searchKeyboardVisible &&
+        currentRoute != PLAYER_ROUTE &&
         currentRoute != OFFLINE_PLAYER_ROUTE &&
         currentRoute != LIBRARY_BROWSE_ROUTE &&
         currentRoute != DETAIL_ROUTE &&
@@ -258,14 +262,10 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             navController = navController,
             startDestination = MainTab.Home.route,
             modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) dockContentInset else 0.dp),
+            enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+            exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
         ) {
-            composable(
-                route = MainTab.Home.route,
-                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-            ) {
+            composable(MainTab.Home.route) {
                 LibraryScreen(
                     onMediaClick = ::openCatalogDetail,
                     onPlay = ::openPlayer,
@@ -292,13 +292,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onMediaClick = ::openCatalogDetail,
                 )
             }
-            composable(
-                route = MainTab.Search.route,
-                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-            ) { entry ->
+            composable(MainTab.Search.route) { entry ->
                 val initialQuery by entry.savedStateHandle
                     .getStateFlow("search_query", "")
                     .collectAsState()
@@ -318,13 +312,7 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(SETTINGS_ROUTE) {
                 MobileSettingsScreen(onBack = { navController.popBackStack() })
             }
-            composable(
-                route = MainTab.Favorites.route,
-                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
-                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
-            ) {
+            composable(MainTab.Favorites.route) {
                 PagedFavoritesScreen(
                     primaryDestination = true,
                     onMediaClick = ::openCatalogDetail,
@@ -486,23 +474,22 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
         }
         if (showBottomBar) {
             Box(Modifier.align(Alignment.BottomCenter)) {
-            HillsBottomDock {
-                MainTab.entries.forEach { item ->
-                    val selected = selectedTab == item
-                    WebMobileBottomBarItem(
-                        item = item,
-                        selected = selected,
-                        onClick = {
-                            navController.navigate(item.route) {
-                                popUpTo(MainTab.Home.route) { saveState = true }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
+                HillsBottomDock {
+                    MainTab.entries.forEach { item ->
+                        WebMobileBottomBarItem(
+                            item = item,
+                            selected = selectedTab == item,
+                            onClick = {
+                                navController.navigate(item.route) {
+                                    popUpTo(MainTab.Home.route) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
                 }
-            }
             }
         }
     }
@@ -598,7 +585,7 @@ private fun WebMobileBottomBarItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
     val containerColor by animateColorAsState(
         targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         animationSpec = tween(NowenMotion.ContentEnterMs),

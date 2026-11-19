@@ -113,19 +113,6 @@
     display: none;
   }
 
-  .skeleton {
-    position: relative;
-    overflow: hidden;
-    background: linear-gradient(
-      90deg,
-      var(--nv-bg-surface-soft) 25%,
-      var(--nv-bg-hover) 50%,
-      var(--nv-bg-surface-soft) 75%
-    );
-    background-size: 200% 100%;
-    animation: nv-global-shimmer 1.8s linear infinite;
-  }
-
   .gradient-overlay {
     position: absolute;
     inset: 0;
@@ -165,10 +152,6 @@
     padding-top: env(safe-area-inset-top, 0px);
   }
 
-  @keyframes nv-global-shimmer {
-    from { background-position: 200% 0; }
-    to { background-position: -200% 0; }
-  }
 }
 
 @media (max-width: 479px) {
@@ -196,43 +179,6 @@
   .nv-textarea,
   .nv-select {
     font-size: 16px !important;
-  }
-
-  /* Browse/search toolbars should use the whole phone width instead of forcing
-     a desktop-style search + selector row into ~360 CSS pixels. */
-  .nv-browse-toolbar .nv-search {
-    flex-basis: 100%;
-    width: 100% !important;
-    min-width: 0 !important;
-    max-width: none !important;
-  }
-
-  .nv-browse-toolbar > .nv-select {
-    width: auto !important;
-    min-width: 7rem;
-    flex: 1 1 7rem;
-  }
-
-  .nv-search-page-toolbar {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .nv-search-page-toolbar > .nv-page-title-lockup {
-    min-width: 0;
-    flex: 1 1 12rem;
-  }
-
-  .nv-search-filter-row {
-    align-items: flex-start;
-  }
-
-  .nv-search-filter-row > span {
-    width: 100%;
-    min-width: 0;
-    flex-basis: 100%;
-    margin-right: 0;
   }
 
   /* A seven-button desktop paginator plus touch-size controls easily spans
@@ -319,12 +265,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
-  }
-}
-
 /* Media detail polish: the hero already owns the quality badge, so hide the
  * duplicated standalone badge above the info cards. */
 [aria-label='媒体标识'] > .nv-tag[data-tone='brand'] {
@@ -339,10 +279,12 @@
   color: var(--nv-status-danger);
 }
 
-.nv-button[data-variant='secondary'][aria-pressed='true']:has(.lucide-heart):hover {
-  border-color: color-mix(in srgb, var(--nv-status-danger) 42%, transparent);
-  background: color-mix(in srgb, var(--nv-status-danger) 16%, transparent);
-  color: var(--nv-status-danger);
+@media (hover: hover) and (pointer: fine) {
+  .nv-button[data-variant='secondary'][aria-pressed='true']:has(.lucide-heart):hover {
+    border-color: color-mix(in srgb, var(--nv-status-danger) 42%, transparent);
+    background: color-mix(in srgb, var(--nv-status-danger) 16%, transparent);
+    color: var(--nv-status-danger);
+  }
 }
 
 /* Library content tabs must keep a shared control height. The series count tag

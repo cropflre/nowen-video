@@ -152,11 +152,11 @@ export default function HistoryPage() {
           <div className="nv-history-grid" aria-busy="true" aria-label="正在加载观看历史">
             {Array.from({ length: 6 }).map((_, index) => (
               <div key={index} className="nv-history-card nv-history-card--loading">
-                <div className="skeleton nv-history-thumb" />
-                <div className="flex-1 space-y-3 py-2">
-                  <div className="skeleton h-5 w-2/3" />
-                  <div className="skeleton h-4 w-1/2" />
-                  <div className="skeleton h-8 w-28" />
+                <div className="nv-history-thumb"><div className="skeleton absolute inset-0" /></div>
+                <div className="nv-history-card-body">
+                  <div className="skeleton h-4 w-2/3" />
+                  <div className="skeleton h-3 w-1/2" />
+                  <div className="skeleton nv-history-continue-placeholder w-24 max-w-full" />
                 </div>
               </div>
             ))}
@@ -194,7 +194,7 @@ export default function HistoryPage() {
                         alt=""
                         ratio="landscape"
                         className="absolute inset-0 !rounded-none !border-0 !shadow-none"
-                        imageClassName="transition-[filter,transform] duration-300 group-hover:scale-[1.02] group-hover:brightness-[.84]"
+                        imageClassName="nv-history-image"
                         fallback={<Film size={22} aria-hidden="true" />}
                       />
                       <div className="nv-history-play-overlay" aria-hidden="true">

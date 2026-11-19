@@ -6,7 +6,7 @@ import { prepareChildViewing } from '@/hooks/useChildViewing'
 import { usePlaybackSessionSource } from '@/hooks/usePlaybackSessionSource'
 import { usePlayerStore } from '@/stores/player'
 import { clearPlaybackSessionRuntime, setPlaybackSessionRuntime } from '@/playback/sessionRuntime'
-import { shouldIgnorePlaybackShortcut } from '@/utils/playbackShortcuts'
+import { shouldIgnorePlaybackShortcut, timelineKeyPosition } from '@/utils/playbackShortcuts'
 
 interface SessionVideoPlayerProps {
   mediaId: string
@@ -205,6 +205,14 @@ export default function SessionVideoPlayer({
       if (event.altKey || event.ctrlKey || event.metaKey) return
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest('.progress-bar')) {
+        const targetTime = timelineKeyPosition(event.key, absolutePositionRef.current, knownDuration || usePlayerStore.getState().duration)
+        if (targetTime === null) return
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        requestSeek(targetTime, 'keyboard_seek')
+        return
+      }
       let delta = 0
       if (event.key === 'ArrowLeft' || event.key.toLowerCase() === 'j') delta = -10
       if (event.key === 'ArrowRight' || event.key.toLowerCase() === 'l') delta = 10
@@ -215,7 +223,7 @@ export default function SessionVideoPlayer({
     }
     window.addEventListener('keydown', handleKeyDown, true)
     return () => window.removeEventListener('keydown', handleKeyDown, true)
-  }, [playback.sessionId, playback.loading, requestSeek])
+  }, [knownDuration, playback.sessionId, playback.loading, requestSeek])
 
   const handlePlayerClickCapture = (event: React.MouseEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement | null
@@ -243,9 +251,7 @@ export default function SessionVideoPlayer({
       return
     }
     if (button.querySelector('[class*="lucide-skip-back"]')) {
-      const parent = button.parentElement
-      const isTitleBack = Boolean(parent?.classList.contains('absolute') && parent.classList.contains('top-4') && parent.classList.contains('left-4'))
-      if (!isTitleBack) {
+      if (!button.closest('.nv-player-top-chrome')) {
         event.preventDefault()
         event.stopPropagation()
         event.nativeEvent.stopImmediatePropagation()
@@ -263,7 +269,7 @@ export default function SessionVideoPlayer({
       return <PlaybackFailure detail={playback.error} onRetry={onRetry} onBack={handleBack} />
     }
     return (
-      <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] text-[var(--nv-player-text-primary)]">
+      <div className="group/player flex h-full w-full flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] text-[var(--nv-player-text-primary)]" role="status">
         <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={32} aria-hidden="true" />
         <p className="text-sm text-[var(--nv-player-text-tertiary)]">正在准备播放…</p>
       </div>
@@ -290,14 +296,14 @@ export default function SessionVideoPlayer({
       />
 
       {isSeeking && (
-        <div className="pointer-events-none absolute left-1/2 top-16 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-4 py-2.5 text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl" role="status" aria-live="polite">
+        <div className="nv-player-seek-feedback pointer-events-none absolute left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-4 py-2.5 text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl" role="status" aria-live="polite">
           <Loader2 className="animate-spin text-[var(--nv-player-accent)]" size={17} aria-hidden="true" />
           <div className="leading-tight"><p className="text-xs font-medium">正在跳转</p><p className="mt-0.5 font-mono text-[11px] text-[var(--nv-player-text-tertiary)]">{formatTimestamp(seekTarget)}</p></div>
         </div>
       )}
 
       {playback.error && (
-        <div className="pointer-events-none absolute left-1/2 top-16 z-50 flex max-w-[min(90vw,520px)] -translate-x-1/2 items-center gap-2 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] px-4 py-2.5 text-sm text-[var(--nv-player-danger)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
+        <div className="nv-player-seek-feedback pointer-events-none absolute left-1/2 z-50 flex max-w-[min(90vw,520px)] -translate-x-1/2 items-center gap-2 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-danger-border)] bg-[var(--nv-player-danger-soft)] px-4 py-2.5 text-sm text-[var(--nv-player-danger)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl">
           <AlertTriangle size={16} className="shrink-0" aria-hidden="true" /><span className="truncate">跳转失败：{playback.error}</span>
         </div>
       )}

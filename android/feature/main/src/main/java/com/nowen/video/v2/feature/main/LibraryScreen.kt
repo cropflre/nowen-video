@@ -1,5 +1,11 @@
 package com.nowen.video.v2.feature.main
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -14,12 +20,16 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -31,6 +41,9 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -68,16 +81,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
@@ -97,6 +113,8 @@ import com.nowen.video.v2.core.designsystem.HillsPrimaryAction
 import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
 import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.designsystem.HillsTextField
+import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
+import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.model.LibraryContentType
 import com.nowen.video.v2.core.model.LibraryFilter
 import com.nowen.video.v2.core.model.LibraryOrder
@@ -372,16 +390,18 @@ private fun LibraryLandingScreen(
     val hero = heroItems.firstOrNull()
     val continueWatching = loadedItems.filter { it.normalizedProgress > 0f }
     val nextUp = (continueWatching + loadedItems).distinctBy(MediaCard::resolvedId).take(10)
+    val heroHeight = (LocalConfiguration.current.screenHeightDp.dp * 0.72f).coerceIn(360.dp, 590.dp)
 
     LazyColumn(
-        modifier = modifier.background(Color(0xFF101116)),
-        contentPadding = PaddingValues(bottom = 102.dp),
+        modifier = modifier.background(Color(0xFF101116))
+            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+        contentPadding = PaddingValues(bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(28.dp),
     ) {
         when {
             media.loadState.refresh is LoadState.Loading && hero == null -> {
                 item {
-                    Box(Modifier.fillMaxWidth().height(520.dp), contentAlignment = Alignment.Center) {
+                    Box(Modifier.fillMaxWidth().height(heroHeight), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 }
@@ -414,6 +434,7 @@ private fun LibraryLandingScreen(
                 item {
                     LibraryLandingHero(
                         items = heroItems,
+                        height = heroHeight,
                         baseUrl = baseUrl,
                         serverName = serverName,
                         onOpen = onMediaClick,
@@ -476,6 +497,7 @@ private fun LibraryLandingScreen(
 @Composable
 private fun LibraryLandingHero(
     items: List<MediaCard>,
+    height: Dp,
     baseUrl: String?,
     serverName: String?,
     onOpen: (MediaCard) -> Unit,
@@ -483,7 +505,6 @@ private fun LibraryLandingHero(
     onOpenWorkspace: () -> Unit,
 ) {
     var selectedIndex by rememberSaveable(items.map(MediaCard::resolvedId)) { mutableStateOf(0) }
-    var dragDistance by remember { mutableStateOf(0f) }
     val safeIndex = selectedIndex.coerceIn(0, items.lastIndex)
     val media = items[safeIndex]
     val usePosterAsBackground = media.resolvedBackdrop.isNullOrBlank()
@@ -495,17 +516,19 @@ private fun LibraryLandingHero(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(590.dp)
+            .height(height)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .pointerInput(items.map(MediaCard::resolvedId), safeIndex) {
+                val dragThreshold = 44.dp.toPx()
+                var dragDistance = 0f
                 detectHorizontalDragGestures(
                     onDragStart = { dragDistance = 0f },
                     onHorizontalDrag = { _, amount -> dragDistance += amount },
                     onDragCancel = { dragDistance = 0f },
                     onDragEnd = {
-                        if (items.size > 1 && dragDistance > 54f) {
+                        if (items.size > 1 && dragDistance > dragThreshold) {
                             selectedIndex = (safeIndex - 1 + items.size) % items.size
-                        } else if (items.size > 1 && dragDistance < -54f) {
+                        } else if (items.size > 1 && dragDistance < -dragThreshold) {
                             selectedIndex = (safeIndex + 1) % items.size
                         }
                         dragDistance = 0f
@@ -514,20 +537,21 @@ private fun LibraryLandingHero(
             }
             .clickable(onClick = { onOpen(media) }),
     ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = media.displayTitle,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .then(
-                    if (usePosterAsBackground) {
-                        Modifier
-                            .graphicsLayer { scaleX = 1.12f; scaleY = 1.12f }
-                            .blur(18.dp)
-                    } else Modifier,
-                ),
-        )
+        AnimatedContent(
+            targetState = imageUrl,
+            modifier = Modifier.matchParentSize(),
+            transitionSpec = {
+                fadeIn(tween(NowenMotion.HeroEnterMs)) togetherWith fadeOut(tween(NowenMotion.HeroExitMs))
+            },
+            label = "home_hero_artwork",
+        ) { artwork ->
+            AsyncImage(
+                model = artwork,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -543,7 +567,7 @@ private fun LibraryLandingHero(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
                 .padding(horizontal = 18.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -591,7 +615,7 @@ private fun LibraryLandingHero(
                 color = Color.White,
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             val metadata = listOfNotNull(
@@ -619,20 +643,29 @@ private fun LibraryLandingHero(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(12.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                items.indices.forEach { index ->
-                    Box(
-                        modifier = Modifier
-                            .padding(horizontal = 6.dp)
-                            .width(8.dp)
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(999.dp))
-                            .background(if (index == safeIndex) Color.White else Color.White.copy(alpha = 0.30f)),
-                    )
+            if (items.size > 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().selectableGroup(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    items.forEachIndexed { index, item ->
+                        val selected = index == safeIndex
+                        val color by animateColorAsState(
+                            targetValue = if (selected) Color.White else Color.White.copy(alpha = 0.40f),
+                            animationSpec = tween(NowenMotion.ContentEnterMs),
+                            label = "home_hero_indicator",
+                        )
+                        Box(
+                            modifier = Modifier
+                                .size(NowenMobileMetrics.TouchTarget)
+                                .clip(CircleShape)
+                                .semantics { contentDescription = item.displayTitle }
+                                .selectable(selected = selected, role = Role.Tab, onClick = { selectedIndex = index }),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Box(Modifier.size(8.dp).background(color, CircleShape))
+                        }
+                    }
                 }
             }
         }

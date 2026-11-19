@@ -8,11 +8,6 @@
   box-shadow: none;
 }
 
-.nv-button[data-variant="primary"]:hover:not(:disabled),
-.nv-button--primary:hover:not(:disabled) {
-  background: var(--nv-action-primary-hover);
-}
-
 .nv-button[data-variant="secondary"],
 .nv-button--secondary {
   border-color: var(--nv-border-default);
@@ -23,11 +18,18 @@
   -webkit-backdrop-filter: none;
 }
 
-.nv-button[data-variant="secondary"]:hover:not(:disabled),
-.nv-button--secondary:hover:not(:disabled),
-.nv-button[data-variant="ghost"]:hover:not(:disabled),
-.nv-button--ghost:hover:not(:disabled) {
-  border-color: var(--nv-border-hover);
-  background: var(--nv-fill-hover);
-  color: var(--nv-text-primary);
+@media (hover: hover) and (pointer: fine) {
+  .nv-button:is([data-variant="primary"], .nv-button--primary):hover:not(:disabled, [aria-disabled="true"]) {
+    background: var(--nv-action-primary-hover);
+  }
+
+  .nv-button:is([data-variant="secondary"], .nv-button--secondary, [data-variant="ghost"], .nv-button--ghost):hover:not(:disabled, [aria-disabled="true"]) {
+    border-color: var(--nv-border-hover);
+    background: var(--nv-fill-hover);
+    color: var(--nv-text-primary);
+  }
+
+  .nv-button[data-variant="danger"]:hover:not(:disabled, [aria-disabled="true"]) {
+    background: color-mix(in srgb, var(--nv-status-danger) 14%, transparent);
+  }
 }

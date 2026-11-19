@@ -31,7 +31,7 @@
   --nv-player-radius-panel: 18px;
 }
 
-.group\/player :where(button, input, select, textarea, [role='button'], [role='menuitem']):focus-visible {
+.group\/player :where(button, input, select, textarea, [role='button'], [role='menuitem'], [role='slider']):focus-visible {
   outline: 2px solid var(--nv-player-focus);
   outline-offset: 2px;
 }
@@ -41,11 +41,11 @@
    glyph, hover scale and contrast. The more-specific selector also overrides
    the cinema layout's top-toolbar button rule. */
 .group\/player button[aria-label='返回'],
-.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child {
-  width: 2.5rem !important;
-  min-width: 2.5rem !important;
-  height: 2.5rem !important;
-  min-height: 2.5rem !important;
+.group\/player .player-controls > .nv-player-top-chrome > button[aria-label='返回']:first-child {
+  width: var(--nv-player-control-size, 40px) !important;
+  min-width: var(--nv-player-control-size, 40px) !important;
+  height: var(--nv-player-control-size, 40px) !important;
+  min-height: var(--nv-player-control-size, 40px) !important;
   padding: 0 !important;
   display: inline-flex !important;
   align-items: center !important;
@@ -64,12 +64,12 @@
 }
 
 .group\/player button[aria-label='返回'] > svg,
-.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child > svg {
+.group\/player .player-controls > .nv-player-top-chrome > button[aria-label='返回']:first-child > svg {
   display: none !important;
 }
 
 .group\/player button[aria-label='返回']::before,
-.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child::before {
+.group\/player .player-controls > .nv-player-top-chrome > button[aria-label='返回']:first-child::before {
   content: '';
   display: block;
   width: 18px;
@@ -79,13 +79,13 @@
 }
 
 .group\/player button[aria-label='返回']:hover,
-.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:hover {
+.group\/player .player-controls > .nv-player-top-chrome > button[aria-label='返回']:first-child:hover {
   background: rgba(0, 0, 0, .60) !important;
   transform: scale(1.03) !important;
 }
 
 .group\/player button[aria-label='返回']:active,
-.group\/player .player-controls > .absolute.left-4.top-4 > button[aria-label='返回']:first-child:active {
+.group\/player .player-controls > .nv-player-top-chrome > button[aria-label='返回']:first-child:active {
   transform: scale(.98) !important;
 }
 

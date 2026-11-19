@@ -82,7 +82,7 @@ export default function PersonDetailPage() {
   const totalWorks = mediaList.length + seriesList.length
 
   return (
-    <div className="nv-person-detail-page">
+    <div className="nv-person-detail-page nv-detail-content-ready">
       <PersonHero
         person={person}
         personId={id}
@@ -94,7 +94,7 @@ export default function PersonDetailPage() {
 
       <div className="nv-person-detail-content">
         {worksLoading ? (
-          <WorksSkeleton />
+          <WorksSkeleton announce />
         ) : totalWorks === 0 ? (
           <EmptyState
             icon={<Film size={26} aria-hidden="true" />}
@@ -137,16 +137,18 @@ export default function PersonDetailPage() {
 }
 
 function PersonDetailSkeleton() {
+  const { t } = useTranslation()
+  const label = t('common.loading')
   return (
-    <div className="nv-person-detail-page animate-pulse">
+    <div className="nv-person-detail-page" role="status" aria-label={label}>
       <div className="nv-person-profile-hero">
-        <div className="h-8 w-16 rounded bg-[var(--nv-bg-surface-soft)]" />
+        <div className="skeleton nv-person-back-button h-9 w-16 rounded-[var(--nv-radius-control)]" />
         <div className="nv-person-profile-layout">
-          <div className="skeleton aspect-square w-[120px] rounded-[var(--nv-radius-card)]" />
-          <div className="w-full max-w-lg space-y-3">
-            <div className="skeleton h-8 w-40" />
-            <div className="skeleton h-4 w-28" />
-            <div className="skeleton h-4 w-64" />
+          <div className="skeleton nv-person-profile-artwork aspect-square rounded-[var(--nv-radius-card)]" />
+          <div className="min-w-0 space-y-3">
+            <div className="skeleton h-8 w-40 max-w-full" />
+            <div className="skeleton h-4 w-28 max-w-full" />
+            <div className="skeleton h-4 w-64 max-w-full" />
           </div>
         </div>
       </div>
@@ -155,15 +157,16 @@ function PersonDetailSkeleton() {
   )
 }
 
-function WorksSkeleton() {
+function WorksSkeleton({ announce = false }: { announce?: boolean }) {
+  const { t } = useTranslation()
   return (
-    <div className="space-y-8 animate-pulse">
+    <div className="min-w-0 space-y-8" role={announce ? 'status' : undefined} aria-label={announce ? t('common.loading') : undefined}>
       {[7, 5].map((count, sectionIndex) => (
         <section key={sectionIndex} className="space-y-3">
           <div className="skeleton h-5 w-24" />
           <div className="flex gap-3 overflow-hidden">
             {Array.from({ length: count }).map((_, index) => (
-              <div key={index} className="w-[106px] flex-shrink-0">
+              <div key={index} className="nv-person-work-card shrink-0">
                 <div className="skeleton aspect-[2/3] rounded-[var(--nv-radius-card)]" />
                 <div className="skeleton mt-2 h-3 w-3/4" />
               </div>

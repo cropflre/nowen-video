@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import Hls from 'hls.js'
-import { shouldIgnorePlaybackShortcut } from '@/utils/playbackShortcuts'
+import { shouldIgnorePlaybackShortcut, timelineKeyPosition } from '@/utils/playbackShortcuts'
 import { usePlayerStore } from '@/stores/player'
 import { useAuthStore } from '@/stores/auth'
 import { mediaApi, userApi, subtitleApi, subtitlePreprocessApi } from '@/api'
@@ -55,7 +55,7 @@ interface VideoPlayerProps {
 }
 
 const PLAYER_CONTROL_CLASS = 'flex h-11 min-w-11 items-center justify-center rounded-[var(--nv-player-radius-control)] text-[var(--nv-player-text-secondary)] transition-[background-color,color,transform] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)] active:scale-[0.98]'
-const PLAYER_MENU_CLASS = 'absolute bottom-full right-0 mb-2 min-w-[200px] overflow-hidden rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2 shadow-[var(--nv-player-shadow)] backdrop-blur-xl'
+const PLAYER_MENU_CLASS = 'nv-player-popup absolute bottom-full right-0 mb-2 min-w-[200px] overflow-hidden rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] p-2 shadow-[var(--nv-player-shadow)] backdrop-blur-xl'
 const PLAYER_MENU_ITEM = 'flex min-h-10 w-full items-center gap-2 rounded-[var(--nv-player-radius-control)] border border-transparent px-3 py-2 text-left text-sm text-[var(--nv-player-text-secondary)] transition-[background-color,border-color,color] hover:bg-[var(--nv-player-surface-hover)] hover:text-[var(--nv-player-text-primary)]'
 const PLAYER_MENU_ACTIVE = 'border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]'
 const PLAYER_MENU_LABEL = 'px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--nv-player-text-faint)]'
@@ -107,6 +107,8 @@ export default function VideoPlayer({
   const [qualities, setQualities] = useState<{ index: number; label: string; bitrate?: number; height?: number }[]>([])
   const [currentQuality, setCurrentQuality] = useState(-1)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const [buffering, setBuffering] = useState(false)
+  const bufferingTimerRef = useRef<number>(0)
   const [currentBitrate, setCurrentBitrate] = useState(0)
   const [bandwidthEstimate, setBandwidthEstimate] = useState(0)
 
@@ -621,6 +623,20 @@ export default function VideoPlayer({
     }, 3000)
   }, [setShowControls])
 
+  useEffect(() => () => clearTimeout(controlsTimerRef.current), [])
+
+  const stopBufferingFeedback = () => {
+    clearTimeout(bufferingTimerRef.current)
+    setBuffering(false)
+  }
+
+  const startBufferingFeedback = () => {
+    clearTimeout(bufferingTimerRef.current)
+    bufferingTimerRef.current = window.setTimeout(() => setBuffering(true), 240)
+  }
+
+  useEffect(() => () => clearTimeout(bufferingTimerRef.current), [])
+
   const togglePlay = () => {
     const video = videoRef.current
     if (!video) return
@@ -657,11 +673,9 @@ export default function VideoPlayer({
     seekHintTimer.current = window.setTimeout(() => setSeekHint(prev => ({ ...prev, visible: false })), 800)
   }
 
-  const handleProgressClick = async (event: React.MouseEvent<HTMLDivElement>) => {
+  const seekToTimelinePosition = async (targetTime: number) => {
     const video = videoRef.current
     if (!video) return
-    const rect = event.currentTarget.getBoundingClientRect()
-    const targetTime = ((event.clientX - rect.left) / rect.width) * displayDuration
     if (!await prepareChildViewing(mediaId)) return
     if (mode === 'remux' || mode === 'smart_remux') {
       remuxSeek(targetTime)
@@ -670,6 +684,19 @@ export default function VideoPlayer({
     if (video.duration > 0 && targetTime <= video.duration) video.currentTime = targetTime
     else if (video.duration > 0) video.currentTime = video.duration - 0.5
     if (useAuthStore.getState().user?.child_mode && video.paused) void video.play().catch(() => {})
+  }
+
+  const handleProgressClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width))
+    void seekToTimelinePosition(ratio * displayDuration)
+  }
+
+  const handleProgressKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const target = timelineKeyPosition(event.key, currentTime, displayDuration)
+    if (target === null) return
+    event.preventDefault()
+    void seekToTimelinePosition(target)
   }
 
   const handleProgressHover = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -943,21 +970,34 @@ export default function VideoPlayer({
         ? 'Remux播放'
         : 'HLS转码'
 
+  const menuOpen = showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch || showAudioMenu
+  const controlsVisible = showControls || menuOpen || !isPlaying
+
   return (
     <div
       ref={containerRef}
-      className="group/player relative h-full w-full bg-[var(--nv-player-canvas)]"
+      className="nv-player-web group/player relative h-full w-full bg-[var(--nv-player-canvas)]"
       onMouseMove={resetControlsTimer}
       onMouseLeave={() => { if (isPlaying) setShowControls(false) }}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
     >
       <video
         ref={videoRef}
         className="h-full w-full cursor-pointer"
         onClick={togglePlay}
         onDoubleClick={toggleFullscreen}
+        onTouchStart={(event) => {
+          resetControlsTimer()
+          handleTouchStart(event)
+        }}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onTouchCancel={handleTouchEnd}
+        onLoadStart={startBufferingFeedback}
+        onWaiting={startBufferingFeedback}
+        onCanPlay={stopBufferingFeedback}
+        onPlaying={stopBufferingFeedback}
+        onPause={stopBufferingFeedback}
+        onError={stopBufferingFeedback}
         playsInline
         crossOrigin="anonymous"
       />
@@ -966,7 +1006,7 @@ export default function VideoPlayer({
         <div
           className={clsx(
             'player-subtitle-overlay pointer-events-none absolute inset-x-4 z-20 flex flex-col items-center gap-1 text-center transition-[bottom] duration-200',
-            showControls ? 'bottom-[clamp(88px,14vh,140px)]' : 'bottom-[clamp(32px,7vh,76px)]',
+            controlsVisible ? 'is-controls-visible' : undefined,
           )}
           aria-live="off"
           data-testid="player-subtitle-overlay"
@@ -1002,6 +1042,13 @@ export default function VideoPlayer({
       {loadError && (
         <div className="absolute inset-0 z-40 flex items-center justify-center bg-[color-mix(in_srgb,var(--nv-player-canvas)_90%,transparent)] p-4 backdrop-blur-sm">
           <PlaybackFailure detail={loadError} onRetry={onRetry} onBack={onBack} />
+        </div>
+      )}
+
+      {buffering && !loadError && (
+        <div className="nv-player-buffer absolute z-20 flex items-center gap-2 rounded-[var(--nv-player-radius-panel)] border border-[var(--nv-player-border)] bg-[var(--nv-player-surface)] px-4 py-2 text-sm text-[var(--nv-player-text-primary)]" role="status">
+          <Loader2 size={18} className="animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
+          <span>正在缓冲…</span>
         </div>
       )}
 
@@ -1062,7 +1109,7 @@ export default function VideoPlayer({
         </div>
       </div>
 
-      {!isPlaying && !loadError && nextCountdown === null && (
+      {!isPlaying && !buffering && !loadError && nextCountdown === null && (
         <button
           type="button"
           className="absolute left-1/2 top-1/2 z-10 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-player-shadow)] backdrop-blur-xl transition-[background-color,border-color,transform] hover:bg-[var(--nv-player-accent-soft-hover)] active:scale-[0.98]"
@@ -1073,30 +1120,35 @@ export default function VideoPlayer({
         </button>
       )}
 
-      <div className={clsx('player-controls transition-opacity duration-300', showControls ? 'opacity-100' : 'pointer-events-none opacity-0')}>
+      <div className={clsx('player-controls', controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0')}>
         {title && (
-          <div className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-2rem)] items-center gap-3">
+          <div className="nv-player-top-chrome absolute z-20 flex items-center">
             {onBack && (
               <button type="button" onClick={onBack} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] text-[var(--nv-player-text-primary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md transition-[background-color,border-color,transform] hover:border-[var(--nv-player-border-hover)] hover:bg-[var(--nv-player-surface-hover)] active:scale-[0.98]" aria-label="返回">
                 <SkipBack size={18} aria-hidden="true" />
               </button>
             )}
             <h2 className="min-w-0 truncate font-display text-base font-medium tracking-tight text-[var(--nv-player-text-primary)] drop-shadow-lg">{title}</h2>
-            <Tag tone="brand" className="shrink-0 text-[10px]">{playbackLabel}</Tag>
-            {playbackRate !== 1 && <Tag tone="quality" className="shrink-0 text-[10px]">{playbackRate}x</Tag>}
+            <div className="nv-player-mode flex shrink-0 items-center gap-1">
+              <Tag tone="brand" className="text-[10px]">{playbackLabel}</Tag>
+              {playbackRate !== 1 && <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>}
+            </div>
           </div>
         )}
 
         <div
-          className="progress-bar group/progress mb-4"
+          className="progress-bar group/progress"
           onClick={handleProgressClick}
+          onKeyDown={handleProgressKeyDown}
           onMouseMove={handleProgressHover}
           onMouseLeave={() => { setHoverProgress(null); setHoverSprite(null) }}
           role="slider"
+          tabIndex={displayDuration > 0 ? 0 : -1}
           aria-label="播放进度"
           aria-valuemin={0}
           aria-valuemax={Math.max(displayDuration, 0)}
-          aria-valuenow={Math.max(currentTime, 0)}
+          aria-valuenow={Math.min(Math.max(currentTime, 0), Math.max(displayDuration, 0))}
+          aria-valuetext={`${formatTime(currentTime)} / ${formatTime(displayDuration)}`}
         >
           {hoverProgress !== null && (
             <div className="pointer-events-none absolute flex -translate-x-1/2 flex-col items-center gap-1" style={{ left: `${hoverProgress}%`, bottom: '100%', marginBottom: 8 }}>
@@ -1125,23 +1177,22 @@ export default function VideoPlayer({
           <div className="progress-bar-thumb" style={{ left: `${progress}%` }} />
         </div>
 
-        <div className="flex items-center gap-1 text-[var(--nv-player-text-primary)]">
+        <div className="nv-player-dock relative flex items-center text-[var(--nv-player-text-primary)]">
           <button type="button" onClick={togglePlay} className={PLAYER_CONTROL_CLASS} aria-label={isPlaying ? '暂停' : '播放'}>{isPlaying ? <Pause size={22} aria-hidden="true" /> : <Play size={22} aria-hidden="true" />}</button>
           <button type="button" onClick={() => seek(-10)} className={PLAYER_CONTROL_CLASS} aria-label="后退 10 秒"><SkipBack size={18} aria-hidden="true" /></button>
           <button type="button" onClick={() => seek(10)} className={PLAYER_CONTROL_CLASS} aria-label="前进 10 秒"><SkipForward size={18} aria-hidden="true" /></button>
 
           {onNext && (
-            <button type="button" onClick={() => { setNextCountdown(null); onNext() }} className={clsx(PLAYER_CONTROL_CLASS, 'gap-1 px-2')} title={nextTitle ? `下一集: ${nextTitle}` : '下一集'}>
+            <button type="button" onClick={() => { setNextCountdown(null); onNext() }} className={clsx(PLAYER_CONTROL_CLASS, 'gap-1 px-2')} title={nextTitle ? `下一集: ${nextTitle}` : '下一集'} aria-label="下一集">
               <ChevronRight size={18} aria-hidden="true" />
               <span className="hidden text-xs sm:inline">下一集</span>
             </button>
           )}
 
-          <button type="button" onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} className={PLAYER_CONTROL_CLASS} aria-label={isMuted ? '取消静音' : '静音'}>
-            {isMuted || volume === 0 ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
-          </button>
-
-          <div className="group/vol hidden items-center sm:flex">
+          <div className="group/vol flex items-center">
+            <button type="button" onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} className={PLAYER_CONTROL_CLASS} aria-label={isMuted ? '取消静音' : '静音'}>
+              {isMuted || volume === 0 ? <VolumeX size={18} aria-hidden="true" /> : <Volume2 size={18} aria-hidden="true" />}
+            </button>
             <input
               type="range"
               min="0"
@@ -1155,11 +1206,11 @@ export default function VideoPlayer({
             />
           </div>
 
-          <span className="ml-2 hidden whitespace-nowrap font-mono text-xs tabular-nums text-[var(--nv-player-text-tertiary)] md:inline">
+          <span className="nv-player-time ml-2 whitespace-nowrap font-mono text-xs tabular-nums text-[var(--nv-player-text-tertiary)]">
             {formatTime(currentTime)} <span className="mx-1 text-[var(--nv-player-text-faint)]">/</span> {formatTime(displayDuration)}
           </span>
 
-          <div className="flex-1" />
+          <div className="nv-player-dock-spacer flex-1" />
 
           <div className="relative">
             <button type="button" onClick={() => openExclusive('speed')} className={clsx(PLAYER_CONTROL_CLASS, 'px-2 text-xs font-semibold tabular-nums', playbackRate !== 1 && 'border border-[var(--nv-player-accent-border)] bg-[var(--nv-player-accent-soft)] text-[var(--nv-player-accent)]')} title="播放速度" aria-expanded={showSpeedMenu}>
@@ -1427,7 +1478,7 @@ export default function VideoPlayer({
         </div>
       </div>
 
-      {(showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch || showAudioMenu) && (
+      {menuOpen && (
         <button type="button" className="absolute inset-0 z-[-1]" onClick={closeAllMenus} aria-label="关闭播放器菜单" />
       )}
 

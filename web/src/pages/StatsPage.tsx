@@ -3,7 +3,8 @@ import { BarChart3, Clock, Film, Heart } from 'lucide-react'
 import { statsApi, streamApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import type { UserStatsOverview } from '@/types'
-import { EmptyState, PageContainer, Section, Tag } from '@/components/design-system'
+import { EmptyState, Section, Tag } from '@/components/design-system'
+import PageLoader from '@/components/PageLoader'
 
 export default function StatsPage() {
   const [stats, setStats] = useState<UserStatsOverview | null>(null)
@@ -30,20 +31,12 @@ export default function StatsPage() {
   }, [stats?.daily_stats])
 
   if (loading) {
-    return (
-      <PageContainer>
-        <div className="flex min-h-[50vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--nv-border-default)] border-t-[var(--nv-text-secondary)]" aria-label="Loading" />
-        </div>
-      </PageContainer>
-    )
+    return <PageLoader />
   }
 
   if (!stats) {
     return (
-      <PageContainer>
-        <EmptyState icon={<BarChart3 size={28} />} title={t('stats.noData')} description={t('stats.noDataHint')} />
-      </PageContainer>
+      <EmptyState icon={<BarChart3 size={28} />} title={t('stats.noData')} description={t('stats.noDataHint')} />
     )
   }
 
@@ -77,7 +70,7 @@ export default function StatsPage() {
   ]
 
   return (
-    <PageContainer>
+    <div className="nv-stats-page min-w-0">
       <div className="space-y-8">
         <header className="border-b border-[var(--nv-border-subtle)] pb-5">
           <h1 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--nv-text-primary)]">{t('stats.title')}</h1>
@@ -102,15 +95,15 @@ export default function StatsPage() {
 
         {stats.daily_stats && stats.daily_stats.length > 0 && (
           <Section title={t('stats.dailyTrend')} description={t('stats.last30Days')}>
-            <div className="flex min-h-40 items-end gap-2 overflow-x-auto border-y border-[var(--nv-border-subtle)] py-4">
+            <div tabIndex={0} role="region" aria-label={t('stats.dailyTrend')} className="nv-stats-trend flex min-h-40 items-end gap-2 overflow-x-auto border-y border-[var(--nv-border-subtle)] py-4">
               {stats.daily_stats.map((day) => {
                 const minutes = Number(day.total_minutes) || 0
                 const height = dailyMax > 0 ? (minutes / dailyMax) * 112 : 0
                 return (
-                  <div key={day.date} className="group flex min-w-7 flex-1 flex-col items-center justify-end gap-2" title={`${day.date}: ${minutes.toFixed(0)} min`}>
-                    <span className="text-[10px] text-[var(--nv-text-tertiary)] opacity-0 transition-opacity duration-150 group-hover:opacity-100">{minutes.toFixed(0)}m</span>
+                  <div key={day.date} className="group flex min-w-9 flex-1 flex-col items-center justify-end gap-2" title={`${day.date}: ${minutes.toFixed(0)} min`}>
+                    <span className="text-[10px] text-[var(--nv-text-tertiary)]">{minutes.toFixed(0)}m</span>
                     <div
-                      className="w-full max-w-7 rounded-t-[var(--nv-radius-sm)] bg-[var(--nv-text-secondary)] opacity-55 transition-opacity duration-150 group-hover:opacity-85"
+                      className="w-full max-w-7 rounded-t-[var(--nv-radius-sm)] bg-[var(--nv-text-secondary)] opacity-70"
                       style={{ height: `${Math.max(height, 4)}px` }}
                     />
                     <span className="text-[10px] text-[var(--nv-text-tertiary)]">{day.date.slice(5)}</span>
@@ -147,8 +140,8 @@ export default function StatsPage() {
           <Section title={t('stats.mostWatched')}>
             <div className="grid grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
               {stats.most_watched.map((item) => (
-                <article key={item.media_id} className="group min-w-0 transition-transform duration-150 hover:-translate-y-0.5">
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)] transition-shadow duration-150 group-hover:shadow-[var(--nv-shadow-card-hover)]">
+                <article key={item.media_id} className="min-w-0">
+                  <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--nv-radius-card)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
                     {item.poster_path ? (
                       <img
                         src={item.media_type === 'series'
@@ -172,6 +165,6 @@ export default function StatsPage() {
           </Section>
         )}
       </div>
-    </PageContainer>
+    </div>
   )
 }

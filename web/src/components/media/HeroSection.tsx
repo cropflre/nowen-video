@@ -1,6 +1,5 @@
 import { useAuthStore } from '@/stores/auth'
-import { useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import { usePosterVersion } from '@/stores/mediaRefresh'
@@ -29,6 +28,7 @@ import {
   Unlink,
 } from 'lucide-react'
 import clsx from 'clsx'
+import DetailActionMenu from './DetailActionMenu'
 
 interface HeroSectionProps {
   media: Media
@@ -52,99 +52,7 @@ interface HeroSectionProps {
   onTranscode?: () => void
 }
 
-const menuClassName = 'fixed z-[calc(var(--nv-z-dropdown)+1)] min-w-[230px] max-w-[calc(100vw-24px)] max-h-[calc(100vh-24px)] overflow-y-auto rounded-[var(--nv-radius-popover)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)] backdrop-blur-xl'
 const menuItemClassName = 'flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] focus-visible:bg-[var(--nv-bg-hover)]'
-
-interface AnchoredMenuProps {
-  open: boolean
-  anchorRef: RefObject<HTMLElement>
-  ariaLabel: string
-  onClose: () => void
-  children: ReactNode
-}
-
-function AnchoredMenu({ open, anchorRef, ariaLabel, onClose, children }: AnchoredMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null)
-  const [position, setPosition] = useState({ top: 0, left: 0, ready: false })
-
-  useLayoutEffect(() => {
-    if (!open) {
-      setPosition((current) => current.ready ? { ...current, ready: false } : current)
-      return
-    }
-
-    const updatePosition = () => {
-      const anchor = anchorRef.current
-      if (!anchor) return
-
-      const rect = anchor.getBoundingClientRect()
-      const menuWidth = menuRef.current?.offsetWidth || 230
-      const menuHeight = menuRef.current?.offsetHeight || 300
-      const viewportWidth = window.innerWidth
-      const viewportHeight = window.innerHeight
-      const edge = 12
-      const gap = 8
-
-      let left = rect.left
-      if (left + menuWidth > viewportWidth - edge) left = rect.right - menuWidth
-      left = Math.max(edge, Math.min(left, viewportWidth - menuWidth - edge))
-
-      let top = rect.bottom + gap
-      const roomBelow = viewportHeight - rect.bottom - edge
-      const roomAbove = rect.top - edge
-      if (roomBelow < menuHeight + gap && roomAbove > roomBelow) {
-        top = rect.top - menuHeight - gap
-      }
-      top = Math.max(edge, Math.min(top, viewportHeight - menuHeight - edge))
-
-      setPosition({ top, left, ready: true })
-    }
-
-    updatePosition()
-    const frame = window.requestAnimationFrame(updatePosition)
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-
-    window.addEventListener('resize', updatePosition)
-    window.addEventListener('scroll', updatePosition, true)
-    window.addEventListener('keydown', handleKeyDown)
-
-    return () => {
-      window.cancelAnimationFrame(frame)
-      window.removeEventListener('resize', updatePosition)
-      window.removeEventListener('scroll', updatePosition, true)
-      window.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [anchorRef, onClose, open])
-
-  if (!open || typeof document === 'undefined') return null
-
-  return createPortal(
-    <>
-      <button
-        type="button"
-        className="fixed inset-0 z-[var(--nv-z-dropdown)] cursor-default bg-transparent"
-        onClick={onClose}
-        aria-label="关闭菜单"
-      />
-      <div
-        ref={menuRef}
-        className={menuClassName}
-        role="menu"
-        aria-label={ariaLabel}
-        style={{
-          top: position.top,
-          left: position.left,
-          visibility: position.ready ? 'visible' : 'hidden',
-        }}
-      >
-        {children}
-      </div>
-    </>,
-    document.body,
-  )
-}
 
 function getBackdropUrl(media: Media, version?: number) {
   if (media.series_id) return streamApi.getSeriesBackdropUrl(media.series_id, version)
@@ -283,7 +191,7 @@ export default function HeroSection({
         <ListPlus size={19} aria-hidden="true" />
       </Button>}
 
-      <AnchoredMenu
+      <DetailActionMenu
         open={showPlaylistMenu}
         anchorRef={playlistButtonRef}
         ariaLabel={t('hero.playlists')}
@@ -301,7 +209,7 @@ export default function HeroSection({
             )}
           </button>
         ))}
-      </AnchoredMenu>
+      </DetailActionMenu>
 
       <Button
         ref={moreButtonRef}
@@ -320,7 +228,7 @@ export default function HeroSection({
         <MoreHorizontal size={19} aria-hidden="true" />
       </Button>
 
-      <AnchoredMenu
+      <DetailActionMenu
         open={showMoreMenu}
         anchorRef={moreButtonRef}
         ariaLabel={t('hero.moreActions')}
@@ -365,7 +273,7 @@ export default function HeroSection({
         >
           <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
         </button>
-      </AnchoredMenu>
+      </DetailActionMenu>
     </>
   )
 

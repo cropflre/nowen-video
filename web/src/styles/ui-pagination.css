@@ -39,3 +39,16 @@
   .nv-pagination-summary { width: 100%; }
   .nv-pagination-options { width: 100%; margin-left: 0; justify-content: space-between; }
 }
+
+@media (pointer: coarse) {
+  .nv-pagination .nv-button,
+  .nv-pagination .nv-input,
+  .nv-pagination .nv-select {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .nv-pagination :is(.nv-input, .nv-select) {
+    height: 44px;
+  }
+}

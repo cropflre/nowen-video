@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { LazyMotion, domAnimation } from 'framer-motion'
+import { LazyMotion, MotionConfig, domAnimation } from 'framer-motion'
 import App from './App'
 import FluentAppProvider from './components/FluentAppProvider'
 import { initTheme } from './stores/theme'
@@ -88,9 +88,11 @@ initI18n()
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <LazyMotion features={domAnimation} strict>
-      <FluentAppProvider>
-        <App />
-      </FluentAppProvider>
+      <MotionConfig reducedMotion="user">
+        <FluentAppProvider>
+          <App />
+        </FluentAppProvider>
+      </MotionConfig>
     </LazyMotion>
   </React.StrictMode>,
 )

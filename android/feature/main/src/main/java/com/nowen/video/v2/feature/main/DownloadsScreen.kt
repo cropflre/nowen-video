@@ -23,6 +23,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -144,44 +146,41 @@ fun DownloadsScreen(
             )
         },
     ) { topPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(topPadding)
-                .padding(horizontal = 20.dp),
+                .padding(topPadding),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
         ) {
-            DownloadStoragePanel(
-                state = state,
-                onWifiOnlyChange = viewModel::setWifiOnly,
-                onQuotaChange = viewModel::setQuotaGiB,
-                onClearCompleted = viewModel::clearCompleted,
-            )
-            state.message?.let { currentMessage ->
-                Spacer(Modifier.height(10.dp))
-                Text(currentMessage, color = MaterialTheme.colorScheme.primary)
-            }
-            Spacer(Modifier.height(18.dp))
-            if (state.records.isEmpty()) {
-                HillsState(
-                    title = "还没有离线内容",
-                    message = "在影片详情页下载媒体，任务会在满足网络和存储条件后自动开始。",
+            item {
+                DownloadStoragePanel(
+                    state = state,
+                    onWifiOnlyChange = viewModel::setWifiOnly,
+                    onQuotaChange = viewModel::setQuotaGiB,
+                    onClearCompleted = viewModel::clearCompleted,
                 )
+            }
+            state.message?.let { currentMessage ->
+                item { Text(currentMessage, color = MaterialTheme.colorScheme.primary) }
+            }
+            if (state.records.isEmpty()) {
+                item {
+                    HillsState(
+                        title = "还没有离线内容",
+                        message = "在影片详情页下载媒体，任务会在满足网络和存储条件后自动开始。",
+                    )
+                }
             } else {
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 20.dp),
-                ) {
-                    items(state.records, key = OfflineDownloadRecord::id) { record ->
-                        DownloadTaskCard(
-                            record = record,
-                            onPause = { viewModel.pause(record.id) },
-                            onResume = { viewModel.resume(record.id) },
-                            onRetry = { viewModel.retry(record.id) },
-                            onPlay = { onPlayOffline(record.mediaId) },
-                            onDelete = { viewModel.delete(record.id) },
-                        )
-                    }
+                items(state.records, key = OfflineDownloadRecord::id) { record ->
+                    DownloadTaskCard(
+                        record = record,
+                        onPause = { viewModel.pause(record.id) },
+                        onResume = { viewModel.resume(record.id) },
+                        onRetry = { viewModel.retry(record.id) },
+                        onPlay = { onPlayOffline(record.mediaId) },
+                        onDelete = { viewModel.delete(record.id) },
+                    )
                 }
             }
         }
@@ -237,7 +236,11 @@ private fun DownloadStoragePanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            HillsToggle(checked = state.policy.wifiOnly, onCheckedChange = onWifiOnlyChange)
+            HillsToggle(
+                checked = state.policy.wifiOnly,
+                onCheckedChange = onWifiOnlyChange,
+                modifier = Modifier.semantics { contentDescription = "仅 Wi‑Fi 下载" },
+            )
         }
         Spacer(Modifier.height(12.dp))
         HillsChoiceRail(

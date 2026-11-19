@@ -13,8 +13,8 @@ interface AuthShellProps {
 
 export default function AuthShell({ title, description, icon, eyebrow, children, footer }: AuthShellProps) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[var(--nv-bg-canvas)] px-4 py-10 text-[var(--nv-text-primary)]">
-      <main className="w-full max-w-sm">
+    <div className="nv-auth-scroll">
+      <main className="nv-auth-content w-full max-w-sm">
         <header className="mb-7">
           <div className="mb-5 grid h-10 w-10 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-active)] text-[var(--nv-text-secondary)]">
             {icon ?? <Film size={19} aria-hidden="true" />}

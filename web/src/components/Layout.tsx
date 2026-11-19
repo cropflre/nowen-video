@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import Sidebar from './Sidebar'
+import PageLoader from './PageLoader'
 import { PageContainer } from './design-system'
+import { durations, easeSmooth } from '@/lib/motion'
 import { AppShell } from '@/ui'
 
 const SCROLL_KEY_PREFIX = 'nowen_scroll_'
@@ -154,24 +156,29 @@ export default function Layout() {
 
   // Animate only route *path* changes. Never remount the Outlet or animate search
   // params: doing so would reset page state and interfere with scroll recovery.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (previousPathRef.current === location.pathname) return
     previousPathRef.current = location.pathname
-    const element = mainRef.current?.querySelector<HTMLElement>('.nv-page-container')
-    if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const element = mainRef.current?.querySelector<HTMLElement>(':scope > .nv-page-container')
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
+    if (!element?.animate || reducedMotion.matches) return
 
+    // Opacity keeps viewport-fixed overlays and sticky toolbars in place.
     const animation = element.animate(
-      [
-        { opacity: 0.88, transform: 'translate3d(0, 6px, 0)' },
-        { opacity: 1, transform: 'translate3d(0, 0, 0)' },
-      ],
-      { duration: 180, easing: 'cubic-bezier(.2, .72, .2, 1)' },
+      [{ opacity: 0.88 }, { opacity: 1 }],
+      { duration: durations.page * 1000, easing: `cubic-bezier(${easeSmooth.join(', ')})` },
     )
-    return () => animation.cancel()
+    const cancel = () => animation.cancel()
+    reducedMotion.addEventListener('change', cancel, { once: true })
+    return () => {
+      reducedMotion.removeEventListener('change', cancel)
+      cancel()
+    }
   }, [location.pathname])
 
   return (
     <AppShell
+      className="nv-navigation-shell"
       sidebar={(
         <Sidebar
           collapsed={sidebarCollapsed}
@@ -190,7 +197,9 @@ export default function Layout() {
           className={usesLocalDetailChrome ? 'nv-page-container--detail' : 'nv-page-container--minimal'}
           style={SAFE_INLINE_STYLE}
         >
-          <Outlet />
+          <Suspense fallback={<PageLoader />}>
+            <Outlet />
+          </Suspense>
         </PageContainer>
       </main>
     </AppShell>
