@@ -91,6 +91,8 @@ function MinimalToolbar() {
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
+  const routeContentRef = useRef<HTMLDivElement>(null)
+  const previousPathRef = useRef(location.pathname)
   const viewerId = useAuthStore((state) => state.user?.id)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
   const isWidePage = location.pathname === '/' || WIDE_PAGE_PREFIXES.some((prefix) => location.pathname.startsWith(prefix))
@@ -151,6 +153,24 @@ export default function Layout() {
     }
   }, [location.pathname, location.search, viewerId])
 
+  // Animate only route *path* changes. Never remount the Outlet or animate search
+  // params: doing so would reset page state and interfere with scroll recovery.
+  useEffect(() => {
+    if (previousPathRef.current === location.pathname) return
+    previousPathRef.current = location.pathname
+    const element = routeContentRef.current
+    if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+
+    const animation = element.animate(
+      [
+        { opacity: 0.88, transform: 'translate3d(0, 6px, 0)' },
+        { opacity: 1, transform: 'translate3d(0, 0, 0)' },
+      ],
+      { duration: 180, easing: 'cubic-bezier(.2, .72, .2, 1)' },
+    )
+    return () => animation.cancel()
+  }, [location.pathname])
+
   return (
     <AppShell
       sidebar={(
@@ -171,7 +191,9 @@ export default function Layout() {
           className={usesLocalDetailChrome ? 'nv-page-container--detail' : 'nv-page-container--minimal'}
           style={SAFE_INLINE_STYLE}
         >
-          <Outlet />
+          <div className="nv-route-content" ref={routeContentRef}>
+            <Outlet />
+          </div>
         </PageContainer>
       </main>
     </AppShell>

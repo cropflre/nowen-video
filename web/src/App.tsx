@@ -50,13 +50,13 @@ function ServerProfileLoader() {
 function PageLoader() {
   return (
     <div
-      className="flex min-h-[60vh] items-center justify-center px-6"
+      className="nv-page-loader flex min-h-[60vh] items-center justify-center px-6"
       role="status"
       aria-live="polite"
       aria-label="页面加载中"
     >
       <div className="flex flex-col items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
+        <div className="nv-page-loader-indicator flex h-11 w-11 items-center justify-center rounded-full border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] shadow-[var(--nv-shadow-card)]">
           <span
             className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--nv-border-default)] border-t-[var(--nv-action-primary)] motion-reduce:animate-none"
             aria-hidden="true"
