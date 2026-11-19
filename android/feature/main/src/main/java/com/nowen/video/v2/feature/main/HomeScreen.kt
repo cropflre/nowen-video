@@ -42,6 +42,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -296,6 +297,9 @@ private fun HomeHeroCarousel(
     var dragDistance by remember { mutableStateOf(0f) }
     val safeIndex = index.coerceIn(0, items.lastIndex)
     val media = items[safeIndex]
+    // 500dp is too tall on compact phones; scale with visible screen height.
+    val heroHeight = (LocalConfiguration.current.screenHeightDp * 0.66f)
+        .coerceIn(420f, 500f).dp
 
     LaunchedEffect(items.map(MediaCard::resolvedId), safeIndex) {
         if (items.size <= 1) return@LaunchedEffect
@@ -306,7 +310,7 @@ private fun HomeHeroCarousel(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(500.dp)
+            .height(heroHeight)
             .pointerInput(items.size, safeIndex) {
                 detectHorizontalDragGestures(
                     onDragStart = { dragDistance = 0f },

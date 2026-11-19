@@ -10,11 +10,16 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -58,7 +63,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -78,6 +88,8 @@ import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.model.LibrarySummary
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.designsystem.HillsBottomDock
+import com.nowen.video.v2.core.designsystem.HillsMetrics
+import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -237,14 +249,23 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
     }
 
     var showWorkspace by rememberSaveable { mutableStateOf(false) }
+    // Match the floating dock's real geometry, including gesture/3-button navigation.
+    val navigationBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val dockContentInset = HillsMetrics.dockHeight + HillsMetrics.dockBottomGap * 2 + navigationBottomInset
 
     Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         NavHost(
             navController = navController,
             startDestination = MainTab.Home.route,
-            modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) 84.dp else 0.dp),
+            modifier = Modifier.fillMaxSize().padding(bottom = if (showBottomBar) dockContentInset else 0.dp),
         ) {
-            composable(MainTab.Home.route) {
+            composable(
+                route = MainTab.Home.route,
+                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+            ) {
                 LibraryScreen(
                     onMediaClick = ::openCatalogDetail,
                     onPlay = ::openPlayer,
@@ -271,7 +292,13 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
                     onMediaClick = ::openCatalogDetail,
                 )
             }
-            composable(MainTab.Search.route) { entry ->
+            composable(
+                route = MainTab.Search.route,
+                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+            ) { entry ->
                 val initialQuery by entry.savedStateHandle
                     .getStateFlow("search_query", "")
                     .collectAsState()
@@ -291,7 +318,13 @@ fun MainShell(viewModel: MainShellViewModel = hiltViewModel()) {
             composable(SETTINGS_ROUTE) {
                 MobileSettingsScreen(onBack = { navController.popBackStack() })
             }
-            composable(MainTab.Favorites.route) {
+            composable(
+                route = MainTab.Favorites.route,
+                enterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                exitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+                popEnterTransition = { fadeIn(tween(NowenMotion.ContentEnterMs)) },
+                popExitTransition = { fadeOut(tween(NowenMotion.ContentExitMs)) },
+            ) {
                 PagedFavoritesScreen(
                     primaryDestination = true,
                     onMediaClick = ::openCatalogDetail,
@@ -566,37 +599,43 @@ private fun WebMobileBottomBarItem(
     modifier: Modifier = Modifier,
 ) {
     val contentColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        animationSpec = tween(NowenMotion.ContentEnterMs),
+        label = "bottom_nav_selection",
+    )
     Box(
         modifier = modifier
             .padding(horizontal = 3.dp)
             .height(NowenMobileMetrics.TouchTarget)
             .clip(RoundedCornerShape(NowenMobileMetrics.ControlRadius))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-            )
-            .clickable(onClick = onClick),
+            .background(containerColor)
+            .semantics { this.selected = selected }
+            .clickable(role = Role.Tab, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
+        // Keep all items the same size; selecting a tab must not change its layout.
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
             Icon(
                 if (selected) item.selectedIcon else item.icon,
-                contentDescription = item.label,
+                contentDescription = null,
                 tint = contentColor,
                 modifier = Modifier.size(20.dp),
             )
-            if (selected) {
-                Text(
-                    item.label,
-                    color = contentColor,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                )
-            }
+            Text(
+                item.label,
+                color = contentColor,
+                fontSize = 11.sp,
+                lineHeight = 13.sp,
+                textAlign = TextAlign.Center,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

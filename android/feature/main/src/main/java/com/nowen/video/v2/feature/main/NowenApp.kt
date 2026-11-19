@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -17,6 +18,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.designsystem.NowenTheme
+import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.model.SessionSnapshot
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -55,7 +57,10 @@ fun NowenApp(viewModel: AppViewModel = hiltViewModel()) {
                 session.user?.mustChangePassword == true -> RootDestination.Password
                 else -> RootDestination.Main
             },
-            transitionSpec = { fadeIn() togetherWith fadeOut() },
+            transitionSpec = {
+                fadeIn(tween(NowenMotion.ContentEnterMs)) togetherWith
+                    fadeOut(tween(NowenMotion.ContentExitMs))
+            },
             label = "root_destination",
         ) { destination ->
             when (destination) {
