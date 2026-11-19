@@ -5,13 +5,8 @@
 
 .nv-app-body,
 .nv-main-scroll,
-.nv-page-container,
-.nv-route-content {
+.nv-page-container {
   min-width: 0;
-}
-
-.nv-route-content {
-  width: 100%;
 }
 
 .nv-main-scroll {

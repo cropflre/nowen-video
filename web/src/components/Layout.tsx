@@ -91,7 +91,6 @@ function MinimalToolbar() {
 export default function Layout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
-  const routeContentRef = useRef<HTMLDivElement>(null)
   const previousPathRef = useRef(location.pathname)
   const viewerId = useAuthStore((state) => state.user?.id)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(readInitialSidebarCollapsed)
@@ -158,7 +157,7 @@ export default function Layout() {
   useEffect(() => {
     if (previousPathRef.current === location.pathname) return
     previousPathRef.current = location.pathname
-    const element = routeContentRef.current
+    const element = mainRef.current?.querySelector<HTMLElement>('.nv-page-container')
     if (!element || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
 
     const animation = element.animate(
@@ -191,9 +190,7 @@ export default function Layout() {
           className={usesLocalDetailChrome ? 'nv-page-container--detail' : 'nv-page-container--minimal'}
           style={SAFE_INLINE_STYLE}
         >
-          <div className="nv-route-content" ref={routeContentRef}>
-            <Outlet />
-          </div>
+          <Outlet />
         </PageContainer>
       </main>
     </AppShell>
