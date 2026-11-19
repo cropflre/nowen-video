@@ -61,6 +61,7 @@ const zhCN: Record<string, string> = {
   'family.ratingDescNC17': '仅成人观看。',
   'family.ratingUnconfirmed': '未确认',
   'family.ratingConfirmed': '已确认：{label}',
+  'family.ratingLabel': '家庭分级：{label}',
   'family.ratingQuickConfirm': '一键确认：全年龄',
   'player.statusDirect': '直接播放',
   'player.statusTranscoding': '转码中 · 画质稍低，稍等片刻',
@@ -108,6 +109,8 @@ const zhCN: Record<string, string> = {
   // ==================== 首页 ====================
   'home.continueWatching': '继续观看',
   'home.recentlyAdded': '最近添加',
+  'home.libraries': '我的片库',
+  'home.libraryCount': '共 {count} 部',
   'home.recommended': '为你推荐',
   'home.trending': '热门内容',
 
@@ -602,6 +605,7 @@ const zhCN: Record<string, string> = {
   'hero.playlists': '播放列表',
   'hero.noPlaylists': '暂无播放列表',
   'hero.moreActions': '更多操作',
+  'hero.viewingActions': '观影操作',
   'hero.mediaManagement': '影片管理',
   'hero.manualMatch': '手动匹配影片',
   'hero.unmatch': '解除匹配影片',

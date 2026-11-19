@@ -33,6 +33,7 @@ import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
+import SubtitleSearchPanel from '@/components/SubtitleSearchPanel'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
 import { Button, EmptyState } from '@/components/design-system'
 import { DetailTabs } from '@/ui'
@@ -78,6 +79,7 @@ export default function MediaDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
+  const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
   const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
@@ -538,7 +540,18 @@ export default function MediaDetailPage() {
                   {isAdmin && <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>}
                 </div>
               ) : (
-                <EmptyState className="nv-detail-tab-empty-state" icon={<Captions size={23} aria-hidden="true" />} title="暂无字幕" description="当前媒体暂未检测到内嵌字幕轨道或外挂字幕文件。" />
+                <EmptyState
+                  className="nv-detail-tab-empty-state"
+                  icon={<Captions size={23} aria-hidden="true" />}
+                  title="暂无字幕"
+                  description="当前媒体暂未检测到内嵌字幕轨道或外挂字幕文件。"
+                  action={(
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <Button type="button" variant="primary" size="sm" onClick={() => setShowSubtitleSearch(true)}>{t('subtitle.search')}</Button>
+                      {isAdmin && <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>}
+                    </div>
+                  )}
+                />
               )}
             </section>
 
@@ -616,6 +629,17 @@ export default function MediaDetailPage() {
       )}
 
       {showSubtitleManager && <SubtitleManager mediaId={id!} mediaTitle={media.title} onClose={() => setShowSubtitleManager(false)} />}
+
+      {showSubtitleSearch && id && (
+        <SubtitleSearchPanel
+          mediaId={id}
+          title={media.title}
+          year={media.year}
+          type={media.media_type}
+          onClose={() => setShowSubtitleSearch(false)}
+          onDownloaded={() => { void refreshMediaDetail(id) }}
+        />
+      )}
 
       {showDeleteConfirm && (
         <ConfirmDialog

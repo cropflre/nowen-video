@@ -6,6 +6,8 @@ import clsx from 'clsx'
 import { usePosterVersion } from '@/stores/mediaRefresh'
 import { Button, Tag } from '@/components/design-system'
 import { MediaArtwork, type MediaArtworkRatio } from '@/ui'
+import { useTranslation } from '@/i18n'
+import { FAMILY_RATING_AGE_KEY, mpaaToRatingLevel } from '@/utils/familyRating'
 
 export type MediaCardVariant = 'poster' | 'landscape' | 'compact' | 'recommendation'
 
@@ -16,6 +18,8 @@ interface MediaCardProps {
   className?: string
   variant?: MediaCardVariant
   showBadges?: boolean
+  /** 已观看进度（0–100）。不传则不渲染进度条——只在调用方有观看记录时展示。 */
+  progress?: number
 }
 
 export default function MediaCard({
@@ -25,12 +29,20 @@ export default function MediaCard({
   className,
   variant = 'poster',
   showBadges = true,
+  progress,
 }: MediaCardProps) {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const posterVersion = usePosterVersion()
 
   const isSeries = !!series || !!media?.series_id
   const seriesData = series || media?.series
+  /** 家庭分级角标：复用 familyRating 的 MPAA→中文年龄档映射，不新造体系。剧集无 mpaa，不显示。 */
+  const ratingLevel = mpaaToRatingLevel(media?.mpaa)
+  const ratingLabel = ratingLevel ? t(FAMILY_RATING_AGE_KEY[ratingLevel]) : ''
+  const progressPercent = typeof progress === 'number' && Number.isFinite(progress)
+    ? Math.max(0, Math.min(100, Math.round(progress)))
+    : null
   const isLandscape = variant === 'landscape' || variant === 'compact'
   const detailTo = series
     ? `/series/${series.id}`
@@ -128,6 +140,25 @@ export default function MediaCard({
           <Tag tone="quality" className="nv-media-card-badge absolute right-2 top-2 z-30">
             {media!.resolution}
           </Tag>
+        )}
+
+        {ratingLabel && (
+          <Tag tone="rating" className="nv-media-card-rating absolute bottom-2 left-2 z-30" title={t('family.ratingLabel', { label: ratingLabel })}>
+            {ratingLabel}
+          </Tag>
+        )}
+
+        {progressPercent !== null && progressPercent > 0 && (
+          <div
+            className="nv-media-card-progress z-30"
+            role="progressbar"
+            aria-valuenow={progressPercent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={`已观看 ${progressPercent}%`}
+          >
+            <span style={{ width: `${progressPercent}%` }} />
+          </div>
         )}
       </MediaArtwork>
 

@@ -61,6 +61,7 @@ const jaJP: Record<string, string> = {
   'family.ratingDescNC17': '成人のみ対象です。',
   'family.ratingUnconfirmed': '未確認',
   'family.ratingConfirmed': '確認済み：{label}',
+  'family.ratingLabel': 'ファミリー区分：{label}',
   'family.ratingQuickConfirm': 'ワンクリック確認：全年齢',
   'player.statusDirect': '直接再生',
   'player.statusTranscoding': '変換中…画質はやや低くなります。しばらくお待ちください',
@@ -108,6 +109,8 @@ const jaJP: Record<string, string> = {
   // ==================== ホーム ====================
   'home.continueWatching': '視聴を続ける',
   'home.recentlyAdded': '最近追加',
+  'home.libraries': 'マイライブラリ',
+  'home.libraryCount': '{count} 本',
   'home.recommended': 'おすすめ',
   'home.trending': '人気',
 
@@ -612,6 +615,7 @@ const jaJP: Record<string, string> = {
   'hero.playlists': 'プレイリスト',
   'hero.noPlaylists': 'プレイリストなし',
   'hero.moreActions': 'その他の操作',
+  'hero.viewingActions': '視聴操作',
   'hero.mediaManagement': 'メディア管理',
   'hero.manualMatch': '手動マッチ',
   'hero.unmatch': 'マッチ解除',

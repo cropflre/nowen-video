@@ -15,31 +15,10 @@ export default {
         body: ['var(--nv-font-sans)'],
         mono: ['var(--nv-font-mono)'],
       },
-      colors: {
-        primary: {
-          50: '#ecfeff',
-          100: '#cffafe',
-          200: '#a5f3fc',
-          300: '#67e8f9',
-          400: '#00F0FF',
-          500: '#00D4E0',
-          600: '#00A8B8',
-          700: '#008899',
-          800: '#006B7A',
-          900: '#004D5A',
-          950: '#002B33',
-        },
-        // Purple 仅保留为装饰/氛围色，不再作为功能主色。
-        accent: {
-          400: '#A855F7',
-          500: '#8A2BE2',
-          600: '#7C3AED',
-          glow: 'rgba(138, 43, 226, 0.4)',
-        },
-      },
-      backgroundImage: {
-        'deep-space': 'radial-gradient(ellipse at 20% 50%, var(--nv-ambient-cyan) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, var(--nv-ambient-purple-soft) 0%, transparent 50%)',
-      },
+      // 颜色不由 Tailwind 定义：全站主色 / 氛围光的唯一来源是
+      // ui-theme.css 的 --nv-* 令牌。历史上的 primary（cyan）/ accent
+      // （purple）色板与 deep-space 背景在 src/ 中已无人消费，删除；
+      // 氛围光改走 --nv-ambient-cyan / --nv-ambient-purple-soft 令牌。
       boxShadow: {
         'card-hover': 'var(--nv-shadow-card-hover)',
       },

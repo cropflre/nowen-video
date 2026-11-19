@@ -14,7 +14,7 @@ import FamilyRemainingChip from '@/components/FamilyRemainingChip'
 import HeroCarousel from '@/components/HeroCarousel'
 import { Button, EmptyState, Section } from '@/components/design-system'
 import { MediaArtwork, MediaRail } from '@/ui'
-import { ChevronRight, Play } from 'lucide-react'
+import { ChevronRight, Film, LayoutGrid, Play, Tv } from 'lucide-react'
 
 interface HomeData {
   recentItems: MixedItem[]
@@ -161,6 +161,7 @@ export default function HomePage() {
             <HeroCarousel items={recommendations} fallbackItems={recentItems} maxItems={5} watchStateByMediaId={watchStateByMediaId} />
           </section>
         )}
+        {libraries.length > 0 && <HomeLibrarySection libraries={libraries} />}
         {loading && noContent && (
           <div className="nv-section-stack" aria-busy="true" aria-label="正在加载首页内容">
             <HomeRailSkeleton title={t('home.continueWatching')} landscape />
@@ -168,7 +169,7 @@ export default function HomePage() {
           </div>
         )}
         {recentItems.length > 0 && (
-          <HomePosterShelf shelf={{ key: 'recent', title: t('home.recentlyAdded'), to: '/browse?sort=created_desc', items: recentItems }} />
+          <HomePosterShelf shelf={{ key: 'recent', title: t('home.recentlyAdded'), to: '/browse?sort=created_desc', items: recentItems }} watchStateByMediaId={watchStateByMediaId} />
         )}
         {!loading && noContent && (
           <EmptyState icon={<Play size={22} aria-hidden="true" />}
@@ -260,7 +261,35 @@ function HomeRailSkeleton({ title, landscape = false }: { title: string; landsca
   )
 }
 
-function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
+function HomeLibrarySection({ libraries }: { libraries: Library[] }) {
+  const { t } = useTranslation()
+  if (libraries.length === 0) return null
+  return (
+    <section className="nv-home-library-section" aria-label={t('home.libraries')}>
+      <div className="nv-home-section-heading"><h2>{t('home.libraries')}</h2></div>
+      <div className="nv-home-library-grid">
+        {libraries.map((library) => (
+          <Link key={library.id} to={`/library/${library.id}`} className="nv-home-library-tile">
+            <span className="nv-home-library-icon" aria-hidden="true">
+              {library.type === 'movie' ? <Film size={17} /> : library.type === 'tvshow' ? <Tv size={17} /> : <LayoutGrid size={17} />}
+            </span>
+            <span className="nv-home-library-copy">
+              <strong>{library.name}</strong>
+              {typeof library.media_count === 'number' && (
+                <span>{t('home.libraryCount', { count: library.media_count })}</span>
+              )}
+            </span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function HomePosterShelf({ shelf, watchStateByMediaId = {} }: {
+  shelf: HomeShelf
+  watchStateByMediaId?: Record<string, { position: number; duration: number }>
+}) {
   return (
     <MediaRail
       title={<RailTitleLink to={shelf.to} label={shelf.title} />}
@@ -271,12 +300,17 @@ function HomePosterShelf({ shelf }: { shelf: HomeShelf }) {
       {shelf.items.slice(0, 16).map((item) => {
         const media = item.type === 'movie' ? item.media : item.series
         if (!media) return null
+        // 影片若在继续观看列表里，卡片底部显示观看进度条。
+        const watchState = item.media ? watchStateByMediaId[item.media.id] : undefined
+        const progress = watchState && watchState.duration > 0
+          ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
+          : undefined
         return (
           <div key={`${shelf.key}-${item.type}-${media.id}`} className="nv-home-shelf-poster-slot flex-shrink-0">
             {item.type === 'series' && item.series
               ? <MediaCard series={item.series} showBadges={false} />
               : item.media
-                ? <MediaCard media={item.media} showBadges={false} />
+                ? <MediaCard media={item.media} showBadges={false} progress={progress} />
                 : null}
           </div>
         )

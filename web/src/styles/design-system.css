@@ -4,27 +4,19 @@
  * This file translates Navi's visual grammar into Nowen semantic tokens.
  * Product components consume --nv-* roles only; Navi brand/token names are
  * intentionally not copied into Nowen Video.
+ *
+ * 令牌归属：视觉令牌（颜色 / 圆角 / 侧边栏宽 / 间距 / 阴影 / 氛围光）
+ * 的唯一来源是 ui-theme.css，本文件不再定义它们。本文件只保留
+ * 组件样式、字号与行高、动效、层级、断点，以及状态色语义值。
  */
 
 :root {
-  color-scheme: dark;
-
   /* Status colors are semantic only. They are not the product chrome. */
   --nv-status-success: #6fbf88;
   --nv-status-warning: #d7a85c;
   --nv-status-danger: #ff6d73;
   --nv-status-rating: #d8b565;
   --nv-status-info: #79a9c9;
-
-  /* Compatibility aliases for callers still using the historical token names.
-     They intentionally resolve to the restrained neutral accent, not cyan. */
-  --nv-brand-cyan-50: #f5f1f6;
-  --nv-brand-cyan-100: #ece6ed;
-  --nv-brand-cyan-300: #bcaabd;
-  --nv-brand-cyan-400: #a18aa3;
-  --nv-brand-cyan-500: #8d758f;
-  --nv-brand-cyan-600: #78647a;
-  --nv-ambient-purple: #8d758f;
 
   /* Typography
    * 不依赖网络字体:各平台系统 UI 字体本身质量足够(macOS/iOS 为 SF Pro,
@@ -63,30 +55,6 @@
   --nv-space-12: 3rem;
   --nv-space-16: 4rem;
 
-  /* Radius roles mirror the reference hierarchy: controls < cards < popovers. */
-  --nv-radius-sm: 8px;
-  --nv-radius-control: 10px;
-  --nv-radius-card: 12px;
-  --nv-radius-container: 14px;
-  --nv-radius-popover: 16px;
-  --nv-radius-modal: 18px;
-  --nv-radius-hero: 16px;
-  --nv-radius-pill: 999px;
-
-  /* Layout */
-  --nv-rail-width: 72px;
-  --nv-sidebar-expanded: 72px;
-  --nv-sidebar-collapsed: 72px;
-  --nv-topbar-height: 56px;
-  --nv-content-max: 120rem;
-  --nv-content-wide-max: 120rem;
-  --nv-page-gutter: clamp(16px, 1.4vw, 20px);
-  --nv-section-gap: clamp(24px, 2.2vw, 32px);
-  --nv-grid-column: 192px;
-  --nv-grid-gap-x: clamp(12px, 1vw, 16px);
-  --nv-grid-gap-y: clamp(20px, 1.8vw, 28px);
-  --nv-grid-gap: var(--nv-grid-gap-x);
-
   /* Motion: reference uses quick opacity/background/2-4px translation. */
   --nv-motion-fast: 120ms;
   --nv-motion-normal: 180ms;
@@ -108,96 +76,8 @@
   --nv-bp-wide: 120rem;
 }
 
-:root,
-[data-theme="dark"] {
-  color-scheme: dark;
-  --nv-bg-canvas: #0b090d;
-  --nv-bg-surface: #0e0d10;
-  --nv-bg-surface-soft: #121014;
-  --nv-bg-elevated: #171019;
-  --nv-bg-poster: #181119;
-  --nv-bg-control: rgba(255, 255, 255, .026);
-  --nv-fill-hover: rgba(255, 255, 255, .052);
-  --nv-fill-active: rgba(255, 255, 255, .082);
-  --nv-bg-hover: var(--nv-fill-hover);
-  --nv-bg-active: var(--nv-fill-active);
-  --nv-bg-overlay: rgba(4, 3, 5, .76);
-
-  --nv-text-primary: #f5f1f6;
-  --nv-text-secondary: rgba(245, 241, 246, .72);
-  --nv-text-tertiary: rgba(245, 241, 246, .46);
-  --nv-text-disabled: rgba(245, 241, 246, .28);
-  --nv-text-on-brand: #0b090d;
-
-  --nv-border-subtle: rgba(255, 255, 255, .055);
-  --nv-border-default: rgba(255, 255, 255, .08);
-  --nv-border-hover: rgba(255, 255, 255, .15);
-  --nv-border-strong: rgba(255, 255, 255, .16);
-
-  /* Primary actions are neutral/light like the reference. The muted plum is
-     reserved for small selection/status hints, never a page-wide highlight. */
-  --nv-action-primary: #f5f1f6;
-  --nv-action-primary-hover: #ffffff;
-  --nv-action-primary-active: #ddd5df;
-  --nv-action-muted: #a18aa3;
-  --nv-action-muted-hover: #b19bb3;
-  --nv-focus-ring: rgba(245, 241, 246, .34);
-
-  --nv-shadow-card: 0 10px 28px rgba(0, 0, 0, .22);
-  --nv-shadow-card-hover: 0 18px 38px rgba(0, 0, 0, .36);
-  --nv-shadow-elevated: 0 20px 48px rgba(0, 0, 0, .42);
-  --nv-shadow-focus: 0 0 0 3px rgba(245, 241, 246, .09);
-
-  --nv-ambient-cyan: transparent;
-  --nv-ambient-purple-soft: transparent;
-  --nv-hero-scrim: linear-gradient(90deg, rgba(11, 9, 13, .97) 0%, rgba(11, 9, 13, .83) 37%, rgba(11, 9, 13, .36) 72%, rgba(11, 9, 13, .16) 100%);
-  --nv-hero-bottom-scrim: linear-gradient(0deg, #0b090d 0%, rgba(11, 9, 13, .78) 38%, rgba(11, 9, 13, .08) 86%, transparent 100%);
-}
-
-/* Keep the existing theme capability without creating a second visual system.
-   The light palette preserves the same neutral hierarchy and control geometry. */
-[data-theme="light"] {
-  color-scheme: light;
-  --nv-bg-canvas: #f3f0f4;
-  --nv-bg-surface: #f8f6f8;
-  --nv-bg-surface-soft: #ece8ed;
-  --nv-bg-elevated: #ffffff;
-  --nv-bg-poster: #e7e1e8;
-  --nv-bg-control: rgba(31, 25, 33, .035);
-  --nv-fill-hover: rgba(31, 25, 33, .055);
-  --nv-fill-active: rgba(31, 25, 33, .085);
-  --nv-bg-hover: var(--nv-fill-hover);
-  --nv-bg-active: var(--nv-fill-active);
-  --nv-bg-overlay: rgba(20, 16, 22, .38);
-
-  --nv-text-primary: #211c23;
-  --nv-text-secondary: rgba(33, 28, 35, .70);
-  --nv-text-tertiary: rgba(33, 28, 35, .48);
-  --nv-text-disabled: rgba(33, 28, 35, .30);
-  --nv-text-on-brand: #ffffff;
-
-  --nv-border-subtle: rgba(33, 28, 35, .055);
-  --nv-border-default: rgba(33, 28, 35, .09);
-  --nv-border-hover: rgba(33, 28, 35, .16);
-  --nv-border-strong: rgba(33, 28, 35, .18);
-
-  --nv-action-primary: #332b35;
-  --nv-action-primary-hover: #211c23;
-  --nv-action-primary-active: #493d4c;
-  --nv-action-muted: #78647a;
-  --nv-action-muted-hover: #665368;
-  --nv-focus-ring: rgba(33, 28, 35, .28);
-
-  --nv-shadow-card: 0 8px 24px rgba(28, 20, 31, .07);
-  --nv-shadow-card-hover: 0 16px 34px rgba(28, 20, 31, .12);
-  --nv-shadow-elevated: 0 18px 44px rgba(28, 20, 31, .16);
-  --nv-shadow-focus: 0 0 0 3px rgba(33, 28, 35, .08);
-
-  --nv-ambient-cyan: transparent;
-  --nv-ambient-purple-soft: transparent;
-  --nv-hero-scrim: linear-gradient(90deg, rgba(243, 240, 244, .98) 0%, rgba(243, 240, 244, .88) 38%, rgba(243, 240, 244, .42) 72%, rgba(243, 240, 244, .12) 100%);
-  --nv-hero-bottom-scrim: linear-gradient(0deg, #f3f0f4 0%, rgba(243, 240, 244, .82) 38%, transparent 86%);
-}
+/* 主题令牌（颜色 / 圆角 / 布局尺寸 / 阴影 / 氛围光）已冻结到 ui-theme.css，
+   本文件不再重复定义深浅两套主题块，避免两个来源打架。 */
 
 html,
 body,
@@ -336,10 +216,8 @@ body {
   align-items: center;
   padding: 12px 8px 10px;
   border-right: 1px solid var(--nv-border-default);
-  background: #0d0a0e;
+  /* 背景色由 ui-navigation.css 的 --nv-bg-sidebar 令牌决定（ui-theme.css 定义）。 */
 }
-
-[data-theme="light"] .nv-rail { background: #eee9ef; }
 
 .nv-rail-brand {
   width: 40px;
@@ -846,12 +724,10 @@ body {
   border-radius: var(--nv-radius-control);
 }
 
-@media (max-width: 63.999rem) {
-  :root { --nv-grid-column: 176px; }
-}
-
 @media (max-width: 47.999rem) {
-  :root { --nv-page-gutter: 14px; --nv-section-gap: 24px; }
+  /* --nv-grid-column 的 ≤64rem 覆盖已移到 ui-theme.css；
+     --nv-page-gutter / --nv-section-gap 的移动端值由 ui-theme.css 与
+     ui-interactions-responsive.css（最后加载）负责，这里不再重复定义。 */
 
   .nv-rail { display: none; }
   .nv-topbar { min-height: 50px; padding-inline: 14px; }

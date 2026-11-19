@@ -234,8 +234,21 @@ export default function HeroSection({
         ariaLabel={t('hero.moreActions')}
         onClose={() => setShowMoreMenu(false)}
       >
+        <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.viewingActions')}</div>
         {isResume && <Link to={`/play/${media.id}?start=0`} className={menuItemClassName} role="menuitem">从头播放</Link>}
         {media.trailer_url && onShowTrailer && <button onClick={() => { onShowTrailer(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem"><Clapperboard size={14} aria-hidden="true" />{t('media.trailer')}</button>}
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(window.location.href)
+              .then(() => toast.success(t('hero.linkCopied')))
+              .catch(() => {})
+            setShowMoreMenu(false)
+          }}
+          className={menuItemClassName}
+          role="menuitem"
+        >
+          <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
+        </button>
         {isAdmin && (
           <>
             <div className="px-3 pb-1.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--nv-text-tertiary)]">{t('hero.mediaManagement')}</div>
@@ -255,24 +268,11 @@ export default function HeroSection({
             <button onClick={() => { onDelete?.(); setShowMoreMenu(false) }} className={clsx(menuItemClassName, 'text-[var(--nv-status-danger)] hover:text-[var(--nv-status-danger)]')} role="menuitem">
               <Trash2 size={14} aria-hidden="true" /> {t('hero.deleteMedia')}
             </button>
-            <div className="mx-3 my-1 h-px bg-[var(--nv-border-subtle)]" />
+            <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
+              <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
+            </button>
           </>
         )}
-        <button onClick={() => { copyFilePath(); setShowMoreMenu(false) }} className={menuItemClassName} role="menuitem">
-          <Copy size={14} aria-hidden="true" /> {t('hero.copyFilePath')}
-        </button>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(window.location.href)
-              .then(() => toast.success(t('hero.linkCopied')))
-              .catch(() => {})
-            setShowMoreMenu(false)
-          }}
-          className={menuItemClassName}
-          role="menuitem"
-        >
-          <Share2 size={14} aria-hidden="true" /> {t('hero.shareLink')}
-        </button>
       </DetailActionMenu>
     </>
   )

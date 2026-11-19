@@ -67,16 +67,16 @@ export default function SeriesHero({
       </Button>
 
       <DetailActionMenu open={menuOpen} anchorRef={menuButtonRef} ariaLabel="更多操作" onClose={() => setMenuOpen(false)}>
+        <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">观影操作</div>
+        <MenuItem icon={<Share2 size={14} />} label="分享链接" onClick={() => closeAndRun(onShare)} />
         {isAdmin && (
           <>
             <div className="px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--nv-text-tertiary)]">剧集管理</div>
             <MenuItem icon={<Link2 size={14} />} label="手动匹配剧集" onClick={() => closeAndRun(onManualMatch)} />
             <MenuItem icon={<Unlink size={14} />} label="解除匹配剧集" onClick={() => closeAndRun(onUnmatch)} />
             <MenuItem icon={<Trash2 size={14} />} label="删除剧集" onClick={() => closeAndRun(onDelete)} danger />
-            <div className="my-1 h-px bg-[var(--nv-border-subtle)]" />
           </>
         )}
-        <MenuItem icon={<Share2 size={14} />} label="分享链接" onClick={() => closeAndRun(onShare)} />
       </DetailActionMenu>
     </>
   )

@@ -1,16 +1,30 @@
 /* Nowen Video · Minimal desktop media library theme
  * Semantic product theme only. Page geometry belongs to the page-specific files.
+ *
+ * ★ 唯一视觉令牌源（single source of truth）：
+ *    全站主色 / 画布色 / 圆角 / 侧边栏宽 / 间距 / 阴影 / 氛围光
+ *    只在这里定义。design-system.css 只保留组件样式、字号与动效，
+ *    不再定义任何 --nv-* 视觉令牌；Tailwind 不定义颜色板。
+ *    例外（页面/组件专属令牌，各自只在一个文件内定义）：
+ *    --nv-detail-hero-height（ui-media-detail.css）、
+ *    --nv-person-artwork-size（ui-person-detail.css）、
+ *    --nv-mobile-nav-*（ui-mobile-bottom-nav.css）、
+ *    --nv-player-*（player*.css）、
+ *    响应式覆盖 --nv-page-gutter / --nv-section-gap / --nv-toolbar-height
+ *    （ui-interactions-responsive.css，最后加载，移动端生效）。
  */
 
 :root {
-  --nv-rail-width: 176px;
-  --nv-sidebar-expanded: 176px;
+  --nv-rail-width: clamp(160px, 8.8vw, 172px);
   --nv-sidebar-collapsed: 56px;
   --nv-toolbar-height: 42px;
   --nv-topbar-height: var(--nv-toolbar-height);
   --nv-page-gutter: clamp(14px, 1.25vw, 20px);
   --nv-content-gap: clamp(14px, 1.2vw, 20px);
   --nv-section-gap: clamp(22px, 2vw, 30px);
+  --nv-content-max: 120rem;
+  --nv-content-wide-max: 120rem;
+  --nv-grid-column: 192px;
   --nv-poster-width-sm: clamp(92px, 6vw, 108px);
   --nv-poster-width-md: clamp(104px, 6.6vw, 120px);
   --nv-grid-gap-x: clamp(10px, .8vw, 14px);
@@ -23,6 +37,7 @@
   --nv-radius-popover: 8px;
   --nv-radius-modal: 10px;
   --nv-radius-hero: 6px;
+  --nv-radius-pill: 999px;
 }
 
 :root,
@@ -42,6 +57,9 @@
   --nv-text-primary: #ededee;
   --nv-text-secondary: rgba(237, 237, 238, .72);
   --nv-text-tertiary: rgba(237, 237, 238, .46);
+  --nv-text-disabled: rgba(245, 241, 246, .28);
+  --nv-bg-overlay: rgba(4, 3, 5, .76);
+  --nv-focus-ring: rgba(245, 241, 246, .34);
   --nv-border-subtle: rgba(255, 255, 255, .055);
   --nv-border-default: rgba(255, 255, 255, .085);
   --nv-border-hover: rgba(255, 255, 255, .15);
@@ -55,7 +73,9 @@
   --nv-shadow-card: 0 1px 2px rgba(0, 0, 0, .18);
   --nv-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, .20);
   --nv-shadow-elevated: 0 12px 30px rgba(0, 0, 0, .32);
-  --nv-shadow-brand: none;
+  --nv-shadow-focus: 0 0 0 3px rgba(245, 241, 246, .09);
+  --nv-ambient-cyan: rgba(0, 240, 255, .16);
+  --nv-ambient-purple-soft: rgba(179, 92, 255, .14);
   --nv-hero-scrim: linear-gradient(90deg, rgba(10, 11, 13, .86) 0%, rgba(10, 11, 13, .58) 30%, rgba(10, 11, 13, .10) 68%, transparent 100%);
   --nv-hero-bottom-scrim: linear-gradient(0deg, #111214 0%, rgba(17, 18, 20, .82) 18%, rgba(17, 18, 20, .24) 44%, transparent 72%);
 }
@@ -76,6 +96,9 @@
   --nv-text-primary: #151515;
   --nv-text-secondary: rgba(21, 21, 21, .70);
   --nv-text-tertiary: rgba(21, 21, 21, .46);
+  --nv-text-disabled: rgba(33, 28, 35, .30);
+  --nv-bg-overlay: rgba(20, 16, 22, .38);
+  --nv-focus-ring: rgba(33, 28, 35, .28);
   --nv-border-subtle: rgba(0, 0, 0, .055);
   --nv-border-default: rgba(0, 0, 0, .085);
   --nv-border-hover: rgba(0, 0, 0, .16);
@@ -89,7 +112,9 @@
   --nv-shadow-card: 0 1px 2px rgba(0, 0, 0, .06);
   --nv-shadow-card-hover: 0 4px 12px rgba(0, 0, 0, .09);
   --nv-shadow-elevated: 0 12px 30px rgba(0, 0, 0, .12);
-  --nv-shadow-brand: none;
+  --nv-shadow-focus: 0 0 0 3px rgba(33, 28, 35, .08);
+  --nv-ambient-cyan: rgba(0, 168, 204, .10);
+  --nv-ambient-purple-soft: rgba(147, 51, 234, .08);
   --nv-hero-scrim: linear-gradient(90deg, rgba(16, 16, 16, .74) 0%, rgba(16, 16, 16, .44) 32%, rgba(16, 16, 16, .07) 70%, transparent 100%);
   --nv-hero-bottom-scrim: linear-gradient(0deg, #f7f7f7 0%, rgba(247, 247, 247, .88) 17%, rgba(247, 247, 247, .18) 43%, transparent 72%);
 }
@@ -259,6 +284,12 @@
   background: var(--nv-bg-elevated);
   color: var(--nv-action-primary);
   box-shadow: 0 3px 10px rgba(0, 0, 0, .12);
+}
+
+@media (max-width: 63.999rem) {
+  :root {
+    --nv-grid-column: 176px;
+  }
 }
 
 @media (max-width: 47.999rem) {

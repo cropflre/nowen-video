@@ -1,7 +1,6 @@
 /* Nowen Video · minimal desktop navigation */
 
 .nv-rail {
-  --nv-rail-width: clamp(160px, 8.8vw, 172px);
   position: relative;
   z-index: 30;
   width: var(--nv-rail-width);
@@ -20,6 +19,7 @@
   transition: width var(--nv-motion-normal) var(--nv-ease-standard), min-width var(--nv-motion-normal) var(--nv-ease-standard), max-width var(--nv-motion-normal) var(--nv-ease-standard), flex-basis var(--nv-motion-normal) var(--nv-ease-standard);
 }
 
+/* 折叠态：侧边栏宽令牌的状态覆盖（基准值在 ui-theme.css 的 :root 定义）。 */
 .nv-rail[data-collapsed="true"] {
   --nv-rail-width: var(--nv-sidebar-collapsed);
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo, type SyntheticEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { AnimatePresence, domMax, LazyMotion, m, useReducedMotion, type PanInfo } from 'framer-motion'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { buttonClassName } from '@/components/design-system'
@@ -11,7 +11,8 @@ import { MediaHeroContent } from '@/ui'
 
 const SWIPE_THRESHOLD = 50
 const SWIPE_VELOCITY = 300
-const CLICK_DRAG_GUARD_THRESHOLD = 6
+/** 自动轮播间隔：无交互时每 6 秒切到下一张（悬停/聚焦/不可见/减弱动效时暂停）。 */
+const AUTOPLAY_DELAY_MS = 6000
 
 // A stale media record can still advertise a backdrop whose file has already
 // disappeared. Remember failed endpoints for this page lifetime so the carousel
@@ -185,10 +186,8 @@ export default function HeroCarousel({
   watchStateByMediaId = {},
 }: HeroCarouselProps) {
   const { t } = useTranslation()
-  const navigate = useNavigate()
   const prefersReducedMotion = useReducedMotion()
   const containerRef = useRef<HTMLElement>(null)
-  const suppressNavigationRef = useRef(false)
 
   const items = useMemo(() => {
     if (rawItems.length > 0) return rawItems.slice(0, maxItems)
@@ -201,6 +200,8 @@ export default function HeroCarousel({
   const [current, setCurrent] = useState(0)
   const [isInViewport, setIsInViewport] = useState(true)
   const [isPageVisible, setIsPageVisible] = useState(() => document.visibilityState !== 'hidden')
+  /** 悬停或键盘聚焦在轮播内时暂停自动轮播，移开后恢复。 */
+  const [isPaused, setIsPaused] = useState(false)
 
   useEffect(() => {
     if (current >= items.length && items.length > 0) setCurrent(0)
@@ -234,6 +235,14 @@ export default function HeroCarousel({
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [])
 
+  // 自动轮播：每次切图后重新计时；悬停/聚焦、滚出视口、切到后台、
+  // 开启减弱动效时停用（计时器不启动，当前张静止）。
+  useEffect(() => {
+    if (items.length <= 1 || prefersReducedMotion || !isInViewport || !isPageVisible || isPaused) return
+    const timer = window.setTimeout(goNext, AUTOPLAY_DELAY_MS)
+    return () => window.clearTimeout(timer)
+  }, [current, items.length, prefersReducedMotion, isInViewport, isPageVisible, isPaused, goNext])
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (!isInViewport || !isPageVisible || !containerRef.current?.contains(document.activeElement)) return
@@ -252,13 +261,6 @@ export default function HeroCarousel({
   }, [goNext, goPrev, isInViewport, isPageVisible])
 
   const handleDragEnd = useCallback((_: unknown, info: PanInfo) => {
-    if (Math.abs(info.offset.x) > CLICK_DRAG_GUARD_THRESHOLD) {
-      suppressNavigationRef.current = true
-      window.setTimeout(() => {
-        suppressNavigationRef.current = false
-      }, 0)
-    }
-
     if (Math.abs(info.offset.x) > SWIPE_THRESHOLD || Math.abs(info.velocity.x) > SWIPE_VELOCITY) {
       if (info.offset.x > 0) goPrev()
       else goNext()
@@ -276,20 +278,19 @@ export default function HeroCarousel({
     ? Math.max(0, Math.min(100, Math.round((watchState.position / watchState.duration) * 100)))
     : 0
 
-  const openCurrentDetail = () => {
-    if (suppressNavigationRef.current) return
-    navigate(detailPath)
-  }
-
   return (
     <section
       ref={containerRef}
-      className="nv-hero-carousel relative isolate cursor-pointer overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)]"
+      className="nv-hero-carousel relative isolate overflow-hidden rounded-[var(--nv-radius-hero)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)] shadow-[var(--nv-shadow-card)]"
       role="region"
       aria-roledescription="carousel"
-      aria-label={`${t('home.recommended')}：${item.media.title}，点击查看详情`}
-      title="点击查看详情"
-      onClick={openCurrentDetail}
+      aria-label={`${t('home.recommended')}：${item.media.title}`}
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onFocus={() => setIsPaused(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsPaused(false)
+      }}
     >
       <LazyMotion features={domMax} strict>
         <AnimatePresence initial={false} mode="sync">
@@ -335,12 +336,12 @@ export default function HeroCarousel({
           >
             <MediaHeroContent
               media={item.media}
-              title={<Link className="nv-home-hero-title-link" to={detailPath} onClick={(event) => event.stopPropagation()} title={item.media.title}>{item.media.title}</Link>}
+              eyebrow={item.reason ? item.reason : undefined}
+              title={<Link className="nv-home-hero-title-link" to={detailPath} title={item.media.title}>{item.media.title}</Link>}
               inlineBadges
               actions={(
                 <Link to={isSeriesProxy(item.media) ? detailPath : `/play/${item.media.id}`}
-                  className={buttonClassName({ variant: 'primary', size: 'lg' })}
-                  onClick={(event) => event.stopPropagation()}>
+                  className={buttonClassName({ variant: 'primary', size: 'lg' })}>
                   {isSeriesProxy(item.media) ? t('family.chooseEpisode') : watchState?.position > 0 ? t('family.resume') : t('home.playNow')}
                 </Link>
               )}
@@ -361,16 +362,24 @@ export default function HeroCarousel({
 
       {items.length > 1 && (
         <div className="nv-home-hero-controls">
-          <div className="nv-home-hero-indicators flex items-center gap-1.5" aria-hidden="true">
+          <div className="nv-home-hero-indicators flex items-center gap-1.5">
             {items.map((recommendation, index) => (
-              <span key={recommendation.media.id} className="nv-home-hero-indicator" data-active={index === current || undefined} />
+              <button
+                key={recommendation.media.id}
+                type="button"
+                className="nv-home-hero-indicator"
+                data-active={index === current || undefined}
+                aria-label={`第 ${index + 1} 张`}
+                aria-current={index === current || undefined}
+                onClick={() => setCurrent(index)}
+              />
             ))}
           </div>
           <div className="nv-home-hero-arrows">
-            <button type="button" className="nv-home-hero-arrow" onClick={(event) => { event.stopPropagation(); goPrev() }} aria-label="上一张">
+            <button type="button" className="nv-home-hero-arrow" onClick={goPrev} aria-label="上一张">
               <ChevronLeft size={20} aria-hidden="true" />
             </button>
-            <button type="button" className="nv-home-hero-arrow" onClick={(event) => { event.stopPropagation(); goNext() }} aria-label="下一张">
+            <button type="button" className="nv-home-hero-arrow" onClick={goNext} aria-label="下一张">
               <ChevronRight size={20} aria-hidden="true" />
             </button>
           </div>

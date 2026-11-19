@@ -61,6 +61,7 @@ const enUS: Record<string, string> = {
   'family.ratingDescNC17': 'Adults only.',
   'family.ratingUnconfirmed': 'Not reviewed',
   'family.ratingConfirmed': 'Confirmed: {label}',
+  'family.ratingLabel': 'Family rating: {label}',
   'family.ratingQuickConfirm': 'Quick confirm: All ages',
   'player.statusDirect': 'Direct play',
   'player.statusTranscoding': 'Transcoding — slightly lower quality, please wait',
@@ -108,6 +109,8 @@ const enUS: Record<string, string> = {
   // ==================== Home ====================
   'home.continueWatching': 'Continue Watching',
   'home.recentlyAdded': 'Recently Added',
+  'home.libraries': 'My Libraries',
+  'home.libraryCount': '{count} titles',
   'home.recommended': 'Recommended',
   'home.trending': 'Trending',
 
@@ -620,6 +623,7 @@ const enUS: Record<string, string> = {
   'hero.playlists': 'Playlists',
   'hero.noPlaylists': 'No playlists',
   'hero.moreActions': 'More actions',
+  'hero.viewingActions': 'Viewing',
   'hero.mediaManagement': 'Media Management',
   'hero.manualMatch': 'Manual Match',
   'hero.unmatch': 'Unmatch',
