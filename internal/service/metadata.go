@@ -354,17 +354,28 @@ type TMDbMovie struct {
 
 // TMDbMovieDetail TMDb电影详情
 type TMDbMovieDetail struct {
-	ID            int             `json:"id"`
-	Title         string          `json:"title"`
-	OriginalTitle string          `json:"original_title"`
-	Overview      string          `json:"overview"`
-	PosterPath    string          `json:"poster_path"`
-	BackdropPath  string          `json:"backdrop_path"`
-	ReleaseDate   string          `json:"release_date"`
-	VoteAverage   float64         `json:"vote_average"`
-	Runtime       int             `json:"runtime"`
-	Genres        []TMDbGenre     `json:"genres"`
-	Videos        *TMDbVideosWrap `json:"videos,omitempty"` // append_to_response=videos
+	ID            int               `json:"id"`
+	Title         string            `json:"title"`
+	OriginalTitle string            `json:"original_title"`
+	Overview      string            `json:"overview"`
+	PosterPath    string            `json:"poster_path"`
+	BackdropPath  string            `json:"backdrop_path"`
+	ReleaseDate   string            `json:"release_date"`
+	VoteAverage   float64           `json:"vote_average"`
+	Runtime       int               `json:"runtime"`
+	Genres        []TMDbGenre       `json:"genres"`
+	ReleaseDates  *TMDbReleaseDates `json:"release_dates,omitempty"`
+	Videos        *TMDbVideosWrap   `json:"videos,omitempty"` // append_to_response=videos
+}
+
+// TMDbReleaseDates records country-specific classifications returned with a movie.
+type TMDbReleaseDates struct {
+	Results []struct {
+		Country  string `json:"iso_3166_1"`
+		Releases []struct {
+			Certification string `json:"certification"`
+		} `json:"release_dates"`
+	} `json:"results"`
 }
 
 // TMDbVideosWrap TMDb视频包装
@@ -883,6 +894,9 @@ func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, ye
 	// P1: 使用置信度排序选择最佳匹配结果
 	best := s.bestMatchResult(results, searchTitle, year)
 
+	if media.TMDbID != best.ID {
+		media.TMDbRatingData = ""
+	}
 	// 获取详情
 	detail, err := s.getMovieDetail(best.ID)
 	if err != nil {
@@ -1211,7 +1225,7 @@ func (s *MetadataService) searchTMDb(mediaType, query string, year int) ([]TMDbM
 
 // getMovieDetail 获取电影详情
 func (s *MetadataService) getMovieDetail(tmdbID int) (*TMDbMovieDetail, error) {
-	apiURL := fmt.Sprintf("%s/3/movie/%d?api_key=%s&language=zh-CN&append_to_response=videos",
+	apiURL := fmt.Sprintf("%s/3/movie/%d?api_key=%s&language=zh-CN&append_to_response=videos,release_dates",
 		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
 
 	resp, err := s.tmdbGetWithRetry(apiURL)
@@ -1591,6 +1605,17 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 
 // applyMovieDetail 将电影详情应用到媒体
 func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovieDetail) {
+	// Replace the proposal only when the source actually supplied classifications.
+	// Ratings are kept separately from parent approval and never grant access.
+	if media.TMDbID != detail.ID {
+		media.TMDbRatingData = ""
+	}
+	media.TMDbID = detail.ID
+	if detail.ReleaseDates != nil {
+		raw, _ := json.Marshal(detail.ReleaseDates)
+		media.TMDbRatingData = string(raw)
+	}
+
 	if detail.Title != "" {
 		media.Title = detail.Title
 	}
@@ -2056,6 +2081,35 @@ func (s *MetadataService) DownloadURLImageForSeries(seriesID string, imageURL st
 	return s.SaveUploadedImageForSeries(seriesID, imageData, ext, imageType)
 }
 
+// refreshSeriesRating keeps third-party ratings separate from family approval.
+func (s *MetadataService) refreshSeriesRating(series *model.Series, previousID int) {
+	if series.TMDbID != previousID {
+		series.TMDbRatingData = ""
+	}
+	if series.TMDbID <= 0 || s.cfg == nil || s.cfg.Secrets.TMDbAPIKey == "" {
+		return
+	}
+	endpoint := fmt.Sprintf("%s/3/tv/%d/content_ratings?api_key=%s", s.getTMDbAPIBase(), series.TMDbID, s.cfg.Secrets.TMDbAPIKey)
+	resp, err := s.tmdbGetWithRetry(endpoint)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	var data struct {
+		Results []struct {
+			Country string `json:"iso_3166_1"`
+			Rating  string `json:"rating"`
+		} `json:"results"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return
+	}
+	raw, err := json.Marshal(data)
+	if err == nil {
+		series.TMDbRatingData = string(raw)
+	}
+}
+
 // ScrapeSeries 为剧集合集刮削元数据（以合集名称搜索，并将元数据同步到合集和各集）
 func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	if s.seriesRepo == nil {
@@ -2066,6 +2120,8 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	if err != nil {
 		return fmt.Errorf("剧集合集不存在: %s", seriesID)
 	}
+
+	previousTMDbID := series.TMDbID
 
 	s.logger.Infof("开始刮削剧集合集元数据: %s", series.Title)
 
@@ -2094,6 +2150,8 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		now := time.Now()
 		series.LastScrapeAt = &now
 		series.ScrapeStatus = evaluateSeriesScrapeStatus(series, err)
+
+		s.refreshSeriesRating(series, previousTMDbID)
 
 		// 保存合集元数据
 		if saveErr := s.seriesRepo.Update(series); saveErr != nil {
@@ -2258,6 +2316,8 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	now := time.Now()
 	series.LastScrapeAt = &now
 	series.ScrapeStatus = evaluateSeriesScrapeStatus(series, nil)
+
+	s.refreshSeriesRating(series, previousTMDbID)
 
 	// 保存合集元数据
 	if err := s.seriesRepo.Update(series); err != nil {
@@ -2543,6 +2603,7 @@ func (s *MetadataService) UnmatchMedia(mediaID string) error {
 
 	// 清除所有从 TMDb/豆瓣获取的元数据（保留文件扫描的原始信息）
 	media.TMDbID = 0
+	media.TMDbRatingData = ""
 	media.IMDbID = ""
 	media.DoubanID = ""
 	media.Overview = ""
@@ -2570,6 +2631,7 @@ func (s *MetadataService) UnmatchSeries(seriesID string) error {
 	}
 
 	series.TMDbID = 0
+	series.TMDbRatingData = ""
 	series.IMDbID = ""
 	series.DoubanID = ""
 	series.Overview = ""
@@ -2630,6 +2692,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 		return fmt.Errorf("解析 TMDb 响应失败")
 	}
 
+	previousTMDbID := series.TMDbID
 	// 应用数据
 	series.TMDbID = detail.ID
 	if detail.Name != "" {
@@ -2698,6 +2761,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 		}
 	}
 
+	s.refreshSeriesRating(series, previousTMDbID)
 	s.logger.Infof("已手动匹配剧集合集: %s -> TMDb ID %d", series.Title, tmdbID)
 	if err := s.seriesRepo.Update(series); err != nil {
 		return err
@@ -2735,7 +2799,9 @@ func (s *MetadataService) MatchMediaWithTMDb(mediaID string, tmdbID int) error {
 	}
 
 	// 应用详情
+	media.TMDbRatingData = ""
 	s.applyMovieDetail(media, detail)
+	media.TMDbID = tmdbID
 
 	// 下载海报
 	if detail.PosterPath != "" {

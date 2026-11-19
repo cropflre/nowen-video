@@ -63,6 +63,62 @@ export function mpaaToRatingLevel(mpaa: string | undefined | null): FamilyRating
   return ''
 }
 
+export interface RatingSuggestion {
+  level: Exclude<FamilyRatingLevel, ''>
+  source: string
+  original: string
+}
+
+const US_RATINGS: Record<string, Exclude<FamilyRatingLevel, ''>> = {
+  G: 'G', PG: 'PG', 'PG-13': 'PG-13', R: 'R', 'NC-17': 'NC-17',
+}
+
+// Only exact US film classifications can be mapped to these US-based controls.
+export function suggestFamilyRating(mpaa?: string | null, tmdbData?: string | null, series = false): RatingSuggestion | null {
+  const local = (mpaa || '').trim().toUpperCase()
+  const localMatch = /^(?:US\s*:\s*)?(G|PG|PG-13|R|NC-17)$/.exec(local)
+  const localLevel = localMatch ? US_RATINGS[localMatch[1]] : undefined
+  let records: { country: string; rating: string }[] = []
+  if (tmdbData) {
+    try {
+      const parsed: unknown = JSON.parse(tmdbData)
+      if (!parsed || typeof parsed !== 'object' || !Array.isArray((parsed as { results?: unknown }).results)) return null
+      for (const item of (parsed as { results: unknown[] }).results) {
+        if (!item || typeof item !== 'object') return null
+        const entry = item as { iso_3166_1?: unknown; release_dates?: unknown }
+        if (typeof entry.iso_3166_1 !== 'string') return null
+        if (series) {
+          const rating = (item as { rating?: unknown }).rating
+          if (typeof rating !== 'string') return null
+          if (rating.trim()) records.push({ country: entry.iso_3166_1.toUpperCase(), rating: rating.trim().toUpperCase() })
+          continue
+        }
+        if (!Array.isArray(entry.release_dates)) return null
+        for (const release of entry.release_dates) {
+          if (!release || typeof release !== 'object') return null
+          const rating = (release as { certification?: unknown }).certification
+          if (typeof rating !== 'string') return null
+          if (rating.trim()) records.push({ country: entry.iso_3166_1.toUpperCase(), rating: rating.trim().toUpperCase() })
+        }
+      }
+    } catch { return null }
+  }
+  const usRatings = [...new Set(records.filter((item) => item.country === 'US').map((item) => item.rating))]
+  // Mixed regional systems cannot be compared safely without a verified mapping.
+  if (records.some((item) => item.country !== 'US') || usRatings.length > 1) return null
+  const tvRatings: Record<string, Exclude<FamilyRatingLevel, ''>> = {
+    'TV-Y': 'G', 'TV-G': 'G', 'TV-Y7': 'PG', 'TV-Y7-FV': 'PG',
+    'TV-PG': 'PG', 'TV-14': 'PG-13', 'TV-MA': 'NC-17',
+  }
+  const tmdbLevel = usRatings.length === 1 ? (series ? tvRatings : US_RATINGS)[usRatings[0]] : undefined
+  if (usRatings.length && !tmdbLevel) return null
+  if (local && !localLevel) return null
+  if (localLevel && tmdbLevel && localLevel !== tmdbLevel) return null
+  if (tmdbLevel) return { level: tmdbLevel, source: 'TMDb · 美国', original: usRatings[0] }
+  if (localLevel) return { level: localLevel, source: '本地 NFO', original: localMatch![1] }
+  return null
+}
+
 /**
  * 儿童模式下，某部影片是否可进入“帮我选一部”的候选池。
  * 规则：服务端已经只把家长确认过的影片推给儿童账号，这里是前端第二道防线——

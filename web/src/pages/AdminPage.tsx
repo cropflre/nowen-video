@@ -54,7 +54,7 @@ export default function AdminPage() {
         />
 
         {!isAdvanced && (
-          <nav aria-label={t('admin.title')} className="flex gap-2 border-b border-[var(--nv-border-subtle)] pb-2">
+          <nav aria-label={t('admin.title')} className="nv-admin-main-nav">
             <Link to="#library" aria-current={view === 'library' ? 'page' : undefined} className={`nv-admin-tab${view === 'library' ? ' is-active' : ''}`}>
               <FolderOpen size={16} aria-hidden="true" />{t('admin.simple.libraries')}
             </Link>

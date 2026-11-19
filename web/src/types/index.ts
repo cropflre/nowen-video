@@ -216,6 +216,7 @@ export interface Media {
   sort_title: string
   outline: string
   original_plot: string
+  tmdb_rating_data?: string
   mpaa: string
   country_code: string
   maker: string
@@ -250,6 +251,7 @@ export interface Series {
   season_count: number
   episode_count: number
   // V2 扩展字段
+  tmdb_rating_data?: string
   tmdb_id: number
   douban_id: string
   bangumi_id: number

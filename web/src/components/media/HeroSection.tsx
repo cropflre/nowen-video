@@ -307,7 +307,7 @@ export default function HeroSection({
       </div>
 
       <div className="nv-detail-hero-inner relative mx-auto grid min-h-[clamp(28rem,48vw,42rem)] w-full max-w-[var(--nv-content-max)] items-end gap-6 px-[var(--nv-page-gutter)] pb-8 pt-24 sm:grid-cols-[12rem_minmax(0,1fr)] sm:pb-10 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8">
-        <div className="hidden sm:block">
+        <div className="nv-detail-poster-slot">
           <MediaArtwork
             src={streamApi.getPosterUrl(media.id, effectivePosterVersion)}
             alt={media.title}

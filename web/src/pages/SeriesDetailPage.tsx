@@ -530,7 +530,7 @@ export default function SeriesDetailPage() {
         onShare={handleShare}
       />
 
-      {isAdmin && <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5"><FamilyRatingEditor id={series.id} series /></div>}
+      {isAdmin && <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5"><FamilyRatingEditor id={series.id} series tmdbRatingData={series.tmdb_rating_data} /></div>}
 
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">

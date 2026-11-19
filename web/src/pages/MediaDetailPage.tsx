@@ -499,7 +499,7 @@ export default function MediaDetailPage() {
 
       {isAdmin && (
         <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5">
-          <FamilyRatingEditor id={media.id} />
+          <FamilyRatingEditor id={media.id} mpaa={media.mpaa} tmdbRatingData={media.tmdb_rating_data} />
         </div>
       )}
 

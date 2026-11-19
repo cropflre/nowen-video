@@ -227,14 +227,15 @@ type Series struct {
 	SeasonCount  int     `json:"season_count"`                                      // 季数
 	EpisodeCount int     `json:"episode_count"`                                     // 总集数
 	// V2 扩展字段
-	TMDbID    int    `json:"tmdb_id" gorm:"index"`
-	TVDbID    int    `json:"tvdb_id" gorm:"index"`
-	IMDbID    string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
-	DoubanID  string `json:"douban_id" gorm:"type:text"`
-	BangumiID int    `json:"bangumi_id" gorm:"index"` // Bangumi 条目 ID
-	Country   string `json:"country" gorm:"type:text"`
-	Language  string `json:"language" gorm:"type:text"`
-	Studio    string `json:"studio" gorm:"type:text"`
+	TMDbID         int    `json:"tmdb_id" gorm:"index"`
+	TMDbRatingData string `json:"tmdb_rating_data" gorm:"type:text"` // 剧集官方分级参考
+	TVDbID         int    `json:"tvdb_id" gorm:"index"`
+	IMDbID         string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
+	DoubanID       string `json:"douban_id" gorm:"type:text"`
+	BangumiID      int    `json:"bangumi_id" gorm:"index"` // Bangumi 条目 ID
+	Country        string `json:"country" gorm:"type:text"`
+	Language       string `json:"language" gorm:"type:text"`
+	Studio         string `json:"studio" gorm:"type:text"`
 	// 刮削状态：pending / scraped / partial / failed / manual（C 方案新增）
 	ScrapeStatus string     `json:"scrape_status" gorm:"type:text;default:pending;index"`
 	LastScrapeAt *time.Time `json:"last_scrape_at,omitempty"`
@@ -322,18 +323,19 @@ type Media struct {
 	Studio     string `json:"studio" gorm:"type:text"`        // 出品公司
 	TrailerURL string `json:"trailer_url" gorm:"type:text"`   // 预告片链接（YouTube）
 	// NFO 扩展字段（方案 B 完整建模，用于番号/成人内容等精细展示）
-	Num          string `json:"num" gorm:"index;type:text"`       // 番号（如 MIDD-835），取自 NFO <num>
-	SortTitle    string `json:"sort_title" gorm:"type:text"`      // 排序用标题，取自 NFO <sorttitle>
-	Outline      string `json:"outline" gorm:"type:text"`         // 剧情简要（短摘要），取自 NFO <outline>
-	OriginalPlot string `json:"original_plot" gorm:"type:text"`   // 原始剧情（日文/原文），取自 NFO <originalplot>
-	MPAA         string `json:"mpaa" gorm:"type:text"`            // 分级（如 JP-18+），取自 NFO <mpaa>/<customrating>
-	CountryCode  string `json:"country_code" gorm:"type:text"`    // 国家代码（JP/CN/US），取自 NFO <countrycode>
-	Maker        string `json:"maker" gorm:"index;type:text"`     // 制作商，取自 NFO <maker>
-	Publisher    string `json:"publisher" gorm:"index;type:text"` // 发行商，取自 NFO <publisher>
-	Label        string `json:"label" gorm:"index;type:text"`     // 厂牌，取自 NFO <label>
-	Tags         string `json:"tags" gorm:"type:text"`            // 用户标签（逗号分隔），取自 NFO <tag>，与 genres 并列
-	Website      string `json:"website" gorm:"type:text"`         // 官方网站，取自 NFO <website>
-	ReleaseDate  string `json:"release_date" gorm:"type:text"`    // 发行日期（可独立于首映日期），取自 NFO <releasedate>
+	Num            string `json:"num" gorm:"index;type:text"`        // 番号（如 MIDD-835），取自 NFO <num>
+	SortTitle      string `json:"sort_title" gorm:"type:text"`       // 排序用标题，取自 NFO <sorttitle>
+	Outline        string `json:"outline" gorm:"type:text"`          // 剧情简要（短摘要），取自 NFO <outline>
+	OriginalPlot   string `json:"original_plot" gorm:"type:text"`    // 原始剧情（日文/原文），取自 NFO <originalplot>
+	MPAA           string `json:"mpaa" gorm:"type:text"`             // 分级（如 JP-18+），取自 NFO <mpaa>/<customrating>
+	TMDbRatingData string `json:"tmdb_rating_data" gorm:"type:text"` // 原始官方分级，仅供家长参考
+	CountryCode    string `json:"country_code" gorm:"type:text"`     // 国家代码（JP/CN/US），取自 NFO <countrycode>
+	Maker          string `json:"maker" gorm:"index;type:text"`      // 制作商，取自 NFO <maker>
+	Publisher      string `json:"publisher" gorm:"index;type:text"`  // 发行商，取自 NFO <publisher>
+	Label          string `json:"label" gorm:"index;type:text"`      // 厂牌，取自 NFO <label>
+	Tags           string `json:"tags" gorm:"type:text"`             // 用户标签（逗号分隔），取自 NFO <tag>，与 genres 并列
+	Website        string `json:"website" gorm:"type:text"`          // 官方网站，取自 NFO <website>
+	ReleaseDate    string `json:"release_date" gorm:"type:text"`     // 发行日期（可独立于首映日期），取自 NFO <releasedate>
 	// 多CD堆叠 & 多版本聚合（P2）
 	StackGroup   string `json:"stack_group" gorm:"index;type:text"`   // 堆叠组 ID（cd1/cd2 共享同一组 ID）
 	StackOrder   int    `json:"stack_order"`                          // 堆叠顺序（1=cd1, 2=cd2...）
@@ -957,6 +959,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "sort_title", DDL: "ALTER TABLE `media` ADD COLUMN `sort_title` text DEFAULT ''"},
 			{Column: "outline", DDL: "ALTER TABLE `media` ADD COLUMN `outline` text DEFAULT ''"},
 			{Column: "original_plot", DDL: "ALTER TABLE `media` ADD COLUMN `original_plot` text DEFAULT ''"},
+			{Column: "tmdb_rating_data", DDL: "ALTER TABLE `media` ADD COLUMN `tmdb_rating_data` text DEFAULT ''"},
 			{Column: "mpaa", DDL: "ALTER TABLE `media` ADD COLUMN `mpaa` text DEFAULT ''"},
 			{Column: "country_code", DDL: "ALTER TABLE `media` ADD COLUMN `country_code` text DEFAULT ''"},
 			{Column: "maker", DDL: "ALTER TABLE `media` ADD COLUMN `maker` text DEFAULT ''"},
@@ -979,6 +982,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "last_login_ip", DDL: "ALTER TABLE `users` ADD COLUMN `last_login_ip` text DEFAULT ''"},
 		},
 		"series": {
+			{Column: "tmdb_rating_data", DDL: "ALTER TABLE `series` ADD COLUMN `tmdb_rating_data` text DEFAULT ''"},
 			{Column: "tmdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tmdb_id` integer DEFAULT 0"},
 			{Column: "tvdb_id", DDL: "ALTER TABLE `series` ADD COLUMN `tvdb_id` integer DEFAULT 0"},
 			{Column: "bangumi_id", DDL: "ALTER TABLE `series` ADD COLUMN `bangumi_id` integer DEFAULT 0"},

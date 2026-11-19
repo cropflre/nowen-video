@@ -12,7 +12,7 @@ const familyBundle = await build({
   entryPoints: [new URL('../src/utils/familyRating.ts', import.meta.url).pathname],
   bundle: true, platform: 'node', format: 'esm', write: false,
 })
-const { FAMILY_RATING_AGE_KEY, mpaaToRatingLevel, isMpaaAllowedForChild, remainingMinutesFromSeconds, isLowRemaining } = await import(`data:text/javascript;base64,${Buffer.from(familyBundle.outputFiles[0].contents).toString('base64')}`)
+const { FAMILY_RATING_AGE_KEY, suggestFamilyRating, mpaaToRatingLevel, isMpaaAllowedForChild, remainingMinutesFromSeconds, isLowRemaining } = await import(`data:text/javascript;base64,${Buffer.from(familyBundle.outputFiles[0].contents).toString('base64')}`)
 
 test('saved progress resumes unfinished media, but completed media restarts', () => {
   assert.equal(resumePosition({ position: 450, duration: 1200, completed: false }), 450)
@@ -66,6 +66,23 @@ test('mpaa strings normalize to the family rating enum', () => {
   assert.equal(mpaaToRatingLevel(''), '')
   assert.equal(mpaaToRatingLevel(undefined), '')
   assert.equal(mpaaToRatingLevel('Unrated'), '')
+})
+
+test('only explicit and non-conflicting source ratings become suggestions', () => {
+  const source = (entries) => JSON.stringify({ results: entries.map(([country, ...ratings]) => ({ iso_3166_1: country, release_dates: ratings.map(certification => ({ certification })) })) })
+  assert.equal(suggestFamilyRating('PG-13')?.level, 'PG-13')
+  assert.equal(suggestFamilyRating('Rubbish'), null)
+  assert.equal(suggestFamilyRating('JP-18+'), null)
+  assert.equal(suggestFamilyRating('', source([['US', 'R']]))?.level, 'R')
+  assert.equal(suggestFamilyRating('', source([['US', 'R', 'PG-13']])), null)
+  assert.equal(suggestFamilyRating('', source([['US', 'R'], ['GB', '15']])), null)
+  assert.equal(suggestFamilyRating('G', source([['US', 'R']])), null)
+  assert.equal(suggestFamilyRating('G', '{bad json'), null)
+  assert.equal(suggestFamilyRating('', source([['US', 'NR']])), null)
+  const tv = JSON.stringify({ results: [{ iso_3166_1: 'US', rating: 'TV-MA' }] })
+  assert.equal(suggestFamilyRating('', tv, true)?.level, 'NC-17')
+  assert.equal(suggestFamilyRating('', tv), null)
+  assert.equal(suggestFamilyRating('', JSON.stringify({ results: [{ iso_3166_1: 'US', rating: 'TV-14' }, { iso_3166_1: 'GB', rating: '15' }] }), true), null)
 })
 
 test('child suggestions only drop clearly adult mpaa labels', () => {

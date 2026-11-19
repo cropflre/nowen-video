@@ -172,3 +172,120 @@
 
 .nv-admin-simple-header > .nv-admin-header-copy { width: auto; }
 .nv-admin-simple-header > .nv-admin-toolbar { width: auto; margin-inline-start: auto; }
+
+.nv-admin-page {
+  width: 100%;
+  max-width: 1040px;
+  margin-inline: auto;
+  gap: 24px;
+}
+
+.nv-admin-simple-header { min-height: 48px; }
+
+.nv-admin-page .nv-admin-title {
+  font-size: 22px;
+  letter-spacing: -.025em;
+}
+
+.nv-admin-simple-header .nv-admin-toolbar .nv-button { color: var(--nv-text-secondary); }
+
+.nv-admin-main-nav {
+  display: flex;
+  gap: 6px;
+  padding-block: 6px 12px;
+  border-bottom: 1px solid var(--nv-border-subtle);
+}
+
+.nv-admin-main-nav .nv-admin-tab {
+  min-height: 38px;
+  padding-inline: 13px;
+  color: var(--nv-text-secondary);
+  font-size: 13px;
+}
+
+.nv-admin-main-nav .nv-admin-tab.is-active { color: var(--nv-text-primary); }
+.nv-library-manager.nv-admin-panel { border: 0; }
+
+.nv-library-manager .nv-admin-panel-header {
+  min-height: 0;
+  padding: 0 0 16px;
+  border: 0;
+  align-items: center;
+}
+
+.nv-library-manager .nv-admin-section-title { font-size: 16px; }
+.nv-library-manager .nv-admin-panel-body { padding: 0; }
+
+.nv-library-list {
+  display: grid;
+  gap: 12px;
+}
+
+.nv-library-card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--nv-border-default);
+  border-radius: 12px;
+  background: var(--nv-bg-surface);
+  box-shadow: var(--nv-shadow-card);
+}
+
+.nv-library-card-main,
+.nv-library-card-info,
+.nv-library-card-actions {
+  display: flex;
+  align-items: center;
+}
+
+.nv-library-card-main { justify-content: space-between; gap: 16px; }
+.nv-library-card-info { min-width: 0; flex: 1 1 auto; gap: 14px; }
+
+.nv-library-card-icon {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--nv-fill-active);
+  color: var(--nv-action-primary);
+}
+
+.nv-library-card-copy { min-width: 0; }
+
+.nv-library-card-title {
+  overflow-wrap: anywhere;
+  color: var(--nv-text-primary);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.nv-library-card-meta,
+.nv-library-card-path {
+  margin-top: 4px;
+  color: var(--nv-text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.nv-library-card-path {
+  overflow: hidden;
+  color: var(--nv-text-tertiary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nv-library-card-actions { flex: 0 0 auto; gap: 5px; }
+.nv-library-card > [role="alert"],
+.nv-library-card > [role="status"] { margin-top: 16px; }
+
+@media (max-width: 47.999rem) {
+  .nv-admin-page { gap: 20px; }
+  .nv-admin-page .nv-admin-title { font-size: 20px; }
+  .nv-library-manager .nv-admin-panel-header { gap: 12px; }
+  .nv-library-card { padding: 16px; }
+  .nv-library-card-main { align-items: flex-start; flex-wrap: wrap; }
+  .nv-library-card-info { flex-basis: 100%; align-items: flex-start; }
+  .nv-library-card-actions { padding-inline-start: 58px; }
+}

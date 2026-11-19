@@ -247,6 +247,9 @@ function LibraryManager({
   return (
     <>
       <AdminPanel
+        className="nv-library-manager"
+        title="影片库"
+        description={libraries.length > 0 ? `共 ${libraries.length} 个影片库` : undefined}
         actions={libraries.length > 0 ? (
           <>
             {libraries.length > 1 && (
@@ -262,7 +265,7 @@ function LibraryManager({
                 </Button>
               </>
             )}
-            <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(true)}>
+            <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
               <FolderPlus size={15} aria-hidden="true" />
               添加文件夹
             </Button>
@@ -271,7 +274,7 @@ function LibraryManager({
         bodyClassName="p-0"
       >
         {libraries.length > 0 ? (
-          <div className="divide-y divide-[var(--nv-border-subtle)]">
+          <div className="nv-library-list">
             {sortedLibraries.map((library) => (
               <LibraryRow
                 key={library.id}
@@ -380,29 +383,29 @@ function LibraryRow({
   const showProgress = total && typeof current === 'number' && Number.isFinite(current)
 
   return (
-    <article aria-label={library.name} className="space-y-3 px-4 py-4 sm:px-5">
-      <div className="flex flex-wrap items-start justify-between gap-3 sm:items-center">
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <TypeIcon size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--nv-text-secondary)]" />
-          <div className="min-w-0">
-            <h3 className="break-words text-sm font-semibold">{library.name}</h3>
-            <p className="mt-1 truncate text-xs text-[var(--nv-text-secondary)]" title={paths.join('\n')}>{path}</p>
-            <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">
+    <article aria-label={library.name} className="nv-library-card">
+      <div className="nv-library-card-main">
+        <div className="nv-library-card-info">
+          <span className="nv-library-card-icon"><TypeIcon size={20} aria-hidden="true" /></span>
+          <div className="nv-library-card-copy">
+            <h3 className="nv-library-card-title">{library.name}</h3>
+            <p className="nv-library-card-meta">
               {typeConfig.label}{typeof library.media_count === 'number' ? ` · ${library.media_count} 部影片` : ''}
               {!isScanning && !isDeleting && !failure && (library.last_scan
                 ? ` · 已更新 ${new Date(library.last_scan).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
                 : ' · 尚未更新')}
             </p>
+            <p className="nv-library-card-path" title={paths.join('\n')}><span aria-hidden="true">↳</span> {path}</p>
           </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1">
+        <div className="nv-library-card-actions">
           <Button variant="secondary" size="sm" onClick={onScan} disabled={isScanning || isDeleting}>
             <RefreshCw size={14} aria-hidden="true" className={isScanning ? 'animate-spin' : undefined} />
             更新影片
           </Button>
           <div className="relative">
-            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} disabled={isDeleting} aria-label="更多操作" aria-expanded={activeMenu}>
+            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} disabled={isDeleting} aria-label="更多操作" aria-expanded={activeMenu} aria-haspopup="true">
               <MoreHorizontal size={16} aria-hidden="true" />
             </Button>
             {activeMenu && !isDeleting && (
