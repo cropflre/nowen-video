@@ -17,7 +17,7 @@ export const libraryApi = {
     api.put<{ data: Library }>(`/libraries/${id}`, data),
 
   scanStatus: () =>
-    api.get<{ data: import('@/hooks/useWebSocket').ScanPhaseData[] }>('/libraries/scan-status'),
+    api.get<{ data: import('@/hooks/useWebSocket').ScanPhaseData[]; failures?: Record<string, string> }>('/libraries/scan-status'),
 
   scan: (id: string) =>
     api.post(`/libraries/${id}/scan`),

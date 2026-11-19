@@ -416,6 +416,9 @@ func (fw *FileWatcherService) triggerIncrementalScan(libraryID string) {
 	now := time.Now()
 	lib.LastScan = &now
 	fw.libRepo.Update(lib)
+	if err := fw.libRepo.SetScanFailure(libraryID, ""); err != nil {
+		fw.logger.Warnf("保存影片库更新状态失败: %s: %v", libraryID, err)
+	}
 
 	fw.logger.Infof("增量扫描完成: %s, 新增 %d 个媒体", lib.Name, count)
 

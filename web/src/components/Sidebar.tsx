@@ -1,11 +1,11 @@
-import { useNavigate } from 'react-router-dom'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useTranslation } from '@/i18n'
 import { useToast } from '@/components/Toast'
 import { logoutDevice } from '@/utils/logoutDevice'
 import { BottomNavigation, NavigationRailLink, NavigationRailSection } from '@/ui'
-import { ChevronLeft, ChevronRight, Film, Heart, Home, LogOut, Moon, Sun, UserRound } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, Heart, Home, LogOut, Moon, Settings, Sun, UserRound } from 'lucide-react'
 
 interface SidebarProps {
   isMobileOpen?: boolean
@@ -23,9 +23,15 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
   const isDarkTheme = theme === 'dark'
   const themeActionLabel = isDarkTheme ? t('nav.switchToLight') : t('nav.switchToDark')
   const collapseActionLabel = collapsed ? '展开侧边栏' : '收起侧边栏'
+  const canManage = user?.role === 'admin' && !user.child_mode
+  const adminLabel = t('nav.admin')
 
   const displayName = user?.nickname?.trim() || user?.username || 'Admin'
   const initials = displayName.slice(0, 1).toUpperCase()
+  const myNavigationItem = {
+    to: '/my', icon: <UserRound size={18} aria-hidden="true" />, label: t('nav.my'),
+    activeOn: ['/profile', '/history', '/playlists', '/stats', '/files', '/preprocess'],
+  }
   const navigationItems = [
     { to: '/', end: true, icon: <Home size={18} aria-hidden="true" />, label: t('nav.home') },
     {
@@ -33,10 +39,6 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
       activeOn: ['/search', '/media/', '/series/', '/collections', '/library/', '/person/'],
     },
     { to: '/favorites', icon: <Heart size={18} aria-hidden="true" />, label: t('nav.favorites') },
-    {
-      to: '/my', icon: <UserRound size={18} aria-hidden="true" />, label: t('nav.my'),
-      activeOn: ['/profile', '/history', '/playlists', '/stats', '/admin', '/files', '/preprocess'],
-    },
   ]
 
   const handleLogout = async () => {
@@ -62,16 +64,6 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
             <button
               type="button"
               className="nv-rail-collapse-toggle"
-              style={{
-                position: 'static',
-                marginInlineStart: collapsed ? 0 : 'auto',
-                width: 28,
-                minWidth: 28,
-                height: 28,
-                border: 0,
-                background: 'transparent',
-                boxShadow: 'none',
-              }}
               onClick={() => onCollapsedChange(!collapsed)}
               aria-label={collapseActionLabel}
               aria-controls="main-sidebar"
@@ -87,7 +79,7 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
 
         <nav className="nv-rail-scroll">
           <NavigationRailSection>
-            {navigationItems.map((item) => <NavigationRailLink key={item.to} {...item} />)}
+            {[...navigationItems, myNavigationItem].map((item) => <NavigationRailLink key={item.to} {...item} />)}
           </NavigationRailSection>
         </nav>
 
@@ -97,7 +89,7 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
             className="nv-rail-profile"
             onClick={() => navigate('/my')}
             aria-label={t('nav.my')}
-            title={collapsed ? displayName : undefined}
+            title={displayName}
           >
             <span className="nv-rail-avatar" aria-hidden="true">{initials}</span>
             <span className="nv-rail-profile-copy">
@@ -107,6 +99,11 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
           </button>
 
           <div className="nv-rail-footer-actions">
+            {canManage && (
+              <NavLink to="/admin" className="nv-rail-action" aria-label={adminLabel} title={adminLabel}>
+                <Settings size={15} aria-hidden="true" />
+              </NavLink>
+            )}
             <button
               type="button"
               className="nv-rail-action"
@@ -124,7 +121,7 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
         </div>
       </aside>
 
-      <BottomNavigation items={navigationItems} />
+      <BottomNavigation items={[...navigationItems, { ...myNavigationItem, activeOn: [...myNavigationItem.activeOn, '/admin'] }]} />
     </>
   )
 }

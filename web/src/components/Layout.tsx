@@ -20,7 +20,6 @@ const TITLE_BY_PREFIX: Array<[string, string]> = [
   ['/collections', '合集'],
   ['/files', '文件管理'],
   ['/preprocess', '任务中心'],
-  ['/admin', '家庭管理'],
   ['/stats', '统计'],
   ['/profile', '个人资料'],
   ['/my', '我的'],
@@ -66,7 +65,7 @@ function MinimalToolbar() {
     navigate(next ? `/search?q=${encodeURIComponent(next)}` : '/search')
   }
 
-  if (location.pathname === '/browse' || location.pathname === '/search') return null
+  if (location.pathname === '/browse' || location.pathname === '/search' || location.pathname === '/admin') return null
 
   return (
     <header className="nv-minimal-toolbar" style={SAFE_INLINE_STYLE}>
@@ -160,7 +159,6 @@ export default function Layout() {
           onCollapsedChange={setSidebarCollapsed}
         />
       )}
-      sidebarCollapsed={sidebarCollapsed}
     >
       <main
         ref={mainRef}

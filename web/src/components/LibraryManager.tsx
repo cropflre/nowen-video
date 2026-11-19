@@ -8,26 +8,19 @@ import { useDialog } from './Dialog'
 import CreateLibraryModal from './CreateLibraryModal'
 import EditLibraryModal from './EditLibraryModal'
 import {
-  ArrowUpDown,
-  Calendar,
-  ChevronRight,
   Film,
-  FolderOpen,
   FolderPlus,
-  HardDrive,
   Layers,
   MoreHorizontal,
   Pencil,
   RefreshCw,
   RotateCcw,
-  ScanLine,
   Trash2,
   Tv,
   Video,
 } from 'lucide-react'
-import clsx from 'clsx'
 import { AdminPanel, AdminStatus } from '@/components/admin/AdminPrimitives'
-import { Button, EmptyState, Tag } from '@/components/design-system'
+import { Button, EmptyState } from '@/components/design-system'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 
 const TYPE_CONFIG: Record<string, { label: string; icon: typeof Film }> = {
@@ -45,19 +38,7 @@ interface LibraryManagerProps {
   scanProgress: Record<string, ScanProgressData>
   scrapeProgress: Record<string, ScrapeProgressData>
   scanPhase: Record<string, ScanPhaseData>
-}
-
-type MainScanStage = 'scanning' | 'ai_organizing' | 'scraping'
-
-const MAIN_SCAN_STAGES: { id: MainScanStage; label: string; short: string }[] = [
-  { id: 'scanning', label: '入库进度', short: '入库' },
-  { id: 'ai_organizing', label: 'AI整理进度', short: 'AI整理' },
-  { id: 'scraping', label: '元数据刮削进度', short: '刮削' },
-]
-
-function clampPercent(value: number) {
-  if (!Number.isFinite(value)) return 0
-  return Math.max(0, Math.min(100, value))
+  scanFailures?: Record<string, string>
 }
 
 function LibraryManager({
@@ -68,12 +49,13 @@ function LibraryManager({
   scanProgress,
   scrapeProgress,
   scanPhase,
+  scanFailures,
 }: LibraryManagerProps) {
   const toast = useToast()
   const dialog = useDialog()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [sortBy, setSortBy] = useState<'name' | 'created' | 'type'>('created')
-  const [sortAsc, setSortAsc] = useState(false)
+  const [startFailures, setStartFailures] = useState<Record<string, string>>({})
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const [scanAllLoading, setScanAllLoading] = useState(false)
   const [editingLibrary, setEditingLibrary] = useState<Library | null>(null)
@@ -86,8 +68,12 @@ function LibraryManager({
     if (sortBy === 'name') cmp = a.name.localeCompare(b.name)
     else if (sortBy === 'type') cmp = a.type.localeCompare(b.type)
     else cmp = new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    return sortAsc ? -cmp : cmp
+    return cmp
   })
+
+  const clearStartFailure = (id: string) => {
+    setStartFailures(({ [id]: _previous, ...remaining }) => remaining)
+  }
 
   const handleCreate = async (data: CreateLibraryRequest) => {
     const response = await libraryApi.create(data)
@@ -101,9 +87,10 @@ function LibraryManager({
       try {
         await libraryApi.scan(created.id)
         toast.success('文件夹已添加，正在查找影片')
-      } catch {
+      } catch (error: any) {
         setScanning((current) => { const next = new Set(current); next.delete(created.id); return next })
-        toast.warning('文件夹已添加，但未能开始查找影片。请在文件夹菜单中重试扫描。')
+        setStartFailures((current) => ({ ...current, [created.id]: error?.response?.data?.error || '未能开始查找影片，请重试。' }))
+        toast.warning('文件夹已添加，但未能开始查找影片。')
       }
     }
 
@@ -119,6 +106,7 @@ function LibraryManager({
 
   const handleScan = async (id: string) => {
     if (deletingLibraries.has(id)) return
+    clearStartFailure(id)
     setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.scan(id)
@@ -128,7 +116,7 @@ function LibraryManager({
         next.delete(id)
         return next
       })
-      toast.error(err?.response?.data?.error || '扫描启动失败')
+      setStartFailures((current) => ({ ...current, [id]: err?.response?.data?.error || '未能开始更新，请重试。' }))
     }
   }
 
@@ -140,6 +128,7 @@ function LibraryManager({
     }
 
     setScanAllLoading(true)
+    setStartFailures((current) => Object.fromEntries(Object.entries(current).filter(([id]) => !toScan.some((library) => library.id === id))))
     try {
       const response = await adminApi.batchScan(toScan.map((library) => library.id))
       const started: string[] = response.data.started || []
@@ -154,7 +143,7 @@ function LibraryManager({
         toast.success(`已启动 ${started.length} 个媒体库扫描`)
       }
       if (errors.length > 0) {
-        toast.error(`${errors.length} 个媒体库扫描启动失败`)
+        setStartFailures((current) => ({ ...current, ...Object.fromEntries(errors.map(({ library_id, error }) => [library_id, error])) }))
       }
       if (started.length === 0 && errors.length === 0) {
         toast.info('没有新的媒体库扫描任务被启动')
@@ -241,6 +230,7 @@ function LibraryManager({
       variant: 'warning',
     })
     if (!ok) return
+    clearStartFailure(id)
     setScanning((current) => new Set(current).add(id))
     try {
       await libraryApi.reindex(id)
@@ -254,75 +244,50 @@ function LibraryManager({
     }
   }
 
-  const toggleSort = (field: typeof sortBy) => {
-    if (sortBy === field) setSortAsc(!sortAsc)
-    else {
-      setSortBy(field)
-      setSortAsc(false)
-    }
-  }
-
-  const cycleSort = () => toggleSort(sortBy === 'name' ? 'created' : sortBy === 'created' ? 'type' : 'name')
-
-  const formatDate = (date: string | null) => {
-    if (!date) return '从未扫描'
-    return new Date(date).toLocaleString('zh-CN', {
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
-
   return (
     <>
       <AdminPanel
-        title="媒体库管理"
-        description="管理媒体目录、内容类型和扫描索引状态。"
-        icon={<HardDrive size={18} />}
-        actions={(
+        actions={libraries.length > 0 ? (
           <>
-            <Button variant="secondary" size="sm" onClick={cycleSort} title={`排序: ${sortBy === 'name' ? '名称' : sortBy === 'type' ? '类型' : '创建时间'}`}>
-              <ArrowUpDown size={14} />
-              排序
-            </Button>
-            {libraries.length > 0 && (
-              <Button variant="secondary" size="sm" onClick={handleScanAll} loading={scanAllLoading}>
-                {scanAllLoading ? <RefreshCw size={14} className="animate-spin" /> : <ScanLine size={14} />}
-                {scanAllLoading ? '扫描中...' : '扫描全部'}
-              </Button>
+            {libraries.length > 1 && (
+              <>
+                <label className="sr-only" htmlFor="library-order">排序影片库</label>
+                <select id="library-order" className="nv-input text-sm" value={sortBy} onChange={(event) => setSortBy(event.target.value as typeof sortBy)}>
+                  <option value="created">最近添加</option>
+                  <option value="name">按名称</option>
+                  <option value="type">按类型</option>
+                </select>
+                <Button variant="secondary" size="sm" onClick={handleScanAll} loading={scanAllLoading}>
+                  全部更新
+                </Button>
+              </>
             )}
-            <Button variant="primary" size="sm" onClick={() => setShowCreateModal(true)}>
-              <FolderPlus size={15} />
-              新增媒体库
+            <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(true)}>
+              <FolderPlus size={15} aria-hidden="true" />
+              添加文件夹
             </Button>
           </>
-        )}
+        ) : undefined}
         bodyClassName="p-0"
       >
         {libraries.length > 0 ? (
-          <div className="overflow-visible">
-            <div className="hidden grid-cols-[minmax(180px,2fr)_minmax(220px,2fr)_120px_150px_120px] gap-4 border-b border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-5 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--nv-text-tertiary)] lg:grid">
-              <SortHeader active={sortBy === 'name'} asc={sortAsc} onClick={() => toggleSort('name')}>媒体库</SortHeader>
-              <span>媒体文件夹</span>
-              <SortHeader active={sortBy === 'type'} asc={sortAsc} onClick={() => toggleSort('type')}>类型</SortHeader>
-              <SortHeader active={sortBy === 'created'} asc={sortAsc} onClick={() => toggleSort('created')}>最近更新</SortHeader>
-              <span className="text-center">操作</span>
-            </div>
-
-            {sortedLibraries.map((library, index) => (
+          <div className="divide-y divide-[var(--nv-border-subtle)]">
+            {sortedLibraries.map((library) => (
               <LibraryRow
                 key={library.id}
                 library={library}
-                isLast={index === sortedLibraries.length - 1}
                 isScanning={scanning.has(library.id)}
                 isDeleting={deletingLibraries.has(library.id)}
                 progress={scanProgress[library.id]}
                 scrape={scrapeProgress[library.id]}
                 phase={scanPhase[library.id]}
+                failure={startFailures[library.id] || scanFailures?.[library.id]}
                 activeMenu={activeMenu === library.id}
                 onScan={() => handleScan(library.id)}
-                onDelete={() => handleDelete(library.id)}
+                onDelete={() => {
+                  setActiveMenu(null)
+                  void handleDelete(library.id)
+                }}
                 onMenu={() => setActiveMenu(activeMenu === library.id ? null : library.id)}
                 onCloseMenu={() => setActiveMenu(null)}
                 onEdit={() => {
@@ -333,19 +298,18 @@ function LibraryManager({
                   setActiveMenu(null)
                   handleReindex(library.id)
                 }}
-                formatDate={formatDate}
               />
             ))}
           </div>
         ) : (
           <EmptyState
             icon={<FolderPlus size={28} />}
-            title="还没有媒体库"
-            description="添加媒体库后系统将自动扫描并索引您的视频文件。"
+            title="还没有影片库"
+            description="添加一个放有电影或剧集的文件夹，系统会自动查找影片。"
             action={(
               <Button variant="primary" onClick={() => setShowCreateModal(true)}>
                 <FolderPlus size={16} />
-                新增媒体库
+                添加影片文件夹
               </Button>
             )}
           />
@@ -372,33 +336,14 @@ function LibraryManager({
   )
 }
 
-function SortHeader({
-  active,
-  asc,
-  onClick,
-  children,
-}: {
-  active: boolean
-  asc: boolean
-  onClick: () => void
-  children: React.ReactNode
-}) {
-  return (
-    <button type="button" onClick={onClick} className="flex items-center gap-1 text-left transition-colors hover:text-[var(--nv-text-primary)]">
-      {children}
-      {active && <ChevronRight size={12} className={clsx('transition-transform', asc ? '-rotate-90' : 'rotate-90')} />}
-    </button>
-  )
-}
-
 function LibraryRow({
   library,
-  isLast,
   isScanning,
   isDeleting,
   progress,
   scrape,
   phase,
+  failure,
   activeMenu,
   onScan,
   onDelete,
@@ -406,15 +351,14 @@ function LibraryRow({
   onCloseMenu,
   onEdit,
   onReindex,
-  formatDate,
 }: {
   library: Library
-  isLast: boolean
   isScanning: boolean
   isDeleting: boolean
   progress?: ScanProgressData
   scrape?: ScrapeProgressData
   phase?: ScanPhaseData
+  failure?: string
   activeMenu: boolean
   onScan: () => void
   onDelete: () => void
@@ -422,104 +366,58 @@ function LibraryRow({
   onCloseMenu: () => void
   onEdit: () => void
   onReindex: () => void
-  formatDate: (date: string | null) => string
 }) {
   const typeConfig = TYPE_CONFIG[library.type] || TYPE_CONFIG.movie
   const TypeIcon = typeConfig.icon
-  const allPaths = getLibraryPaths(library)
-  const displayPath = allPaths.length > 1 ? `${allPaths[0]} +${allPaths.length - 1}` : allPaths[0] || library.path
-
-  const activeStage: MainScanStage = phase?.phase === 'ai_organizing'
-    ? 'ai_organizing'
-    : phase?.phase === 'scraping' || (!phase && scrape)
-      ? 'scraping'
-      : 'scanning'
-  const activeStageIndex = MAIN_SCAN_STAGES.findIndex((stage) => stage.id === activeStage)
-  const stageLabel = MAIN_SCAN_STAGES[activeStageIndex]?.label || '入库进度'
-  const phaseCurrent = phase?.current || 0
-  const phaseTotal = phase?.total || 0
-  const stageProgress = activeStage === 'scraping'
-    ? scrape
-      ? { current: scrape.current, total: scrape.total }
-      : { current: phaseCurrent, total: phaseTotal }
-    : activeStage === 'ai_organizing'
-      ? { current: phaseCurrent, total: phaseTotal }
-      : { current: progress?.current || progress?.new_found || phaseCurrent, total: progress?.total || phaseTotal }
-  const stagePercent = stageProgress.total > 0
-    ? clampPercent((stageProgress.current / stageProgress.total) * 100)
-    : activeStageIndex > 0 ? 100 : 35
-  const stageMessage = activeStage === 'scraping' && scrape
-    ? `元数据刮削 [${scrape.current}/${scrape.total}] ${scrape.media_title || ''}`
-    : activeStage === 'ai_organizing' && phase?.total
-      ? `AI整理 [${phase.current || 0}/${phase.total}]`
-      : progress?.message || phase?.message || '正在入库...'
+  const paths = getLibraryPaths(library)
+  const path = paths.length > 1 ? `${paths[0]} 等 ${paths.length} 个文件夹` : paths[0] || '未配置文件夹'
+  const isScraping = phase?.phase === 'scraping' || (!phase && scrape)
+  const updatingLabel = isScraping
+    ? '正在匹配海报与资料'
+    : phase?.phase === 'ai_organizing' ? '正在整理影片' : '正在查找影片'
+  const total = isScraping ? (scrape?.total || phase?.total) : (phase?.total || progress?.total)
+  const current = isScraping ? (scrape?.current ?? phase?.current) : (phase?.current ?? progress?.current)
+  const showProgress = total && typeof current === 'number' && Number.isFinite(current)
 
   return (
-    <div className={clsx('relative', !isLast && 'border-b border-[var(--nv-border-subtle)]')}>
-      <div className="grid gap-4 px-4 py-4 transition-colors hover:bg-[var(--nv-bg-hover)] sm:px-5 lg:grid-cols-[minmax(180px,2fr)_minmax(220px,2fr)_120px_150px_120px] lg:items-center">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] text-[var(--nv-action-primary)]">
-            <TypeIcon size={19} />
-          </div>
+    <article aria-label={library.name} className="space-y-3 px-4 py-4 sm:px-5">
+      <div className="flex flex-wrap items-start justify-between gap-3 sm:items-center">
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <TypeIcon size={20} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--nv-text-secondary)]" />
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-semibold text-[var(--nv-text-primary)]">{library.name}</h3>
-            {isDeleting ? (
-              <div className="mt-1 flex items-center gap-2">
-                <AdminStatus tone="active">删除中</AdminStatus>
-                <span className="truncate text-xs text-[var(--nv-text-tertiary)]">正在清理媒体库索引</span>
-              </div>
-            ) : isScanning ? (
-              <div className="mt-1 flex items-center gap-2">
-                <AdminStatus tone="active">进行中</AdminStatus>
-                <span className="truncate text-xs text-[var(--nv-text-tertiary)]">{stageLabel}</span>
-              </div>
-            ) : null}
+            <h3 className="break-words text-sm font-semibold">{library.name}</h3>
+            <p className="mt-1 truncate text-xs text-[var(--nv-text-secondary)]" title={paths.join('\n')}>{path}</p>
+            <p className="mt-1 text-xs text-[var(--nv-text-tertiary)]">
+              {typeConfig.label}{typeof library.media_count === 'number' ? ` · ${library.media_count} 部影片` : ''}
+              {!isScanning && !isDeleting && !failure && (library.last_scan
+                ? ` · 已更新 ${new Date(library.last_scan).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                : ' · 尚未更新')}
+            </p>
           </div>
         </div>
 
-        <div className="flex min-w-0 items-center gap-2 text-sm text-[var(--nv-text-secondary)]" title={allPaths.join('\n')}>
-          <FolderOpen size={14} className="shrink-0 text-[var(--nv-text-tertiary)]" />
-          <span className="truncate font-mono text-xs sm:text-sm">{displayPath}</span>
-        </div>
-
-        <div><Tag>{typeConfig.label}</Tag></div>
-
-        <div className="flex items-center gap-2 text-xs text-[var(--nv-text-tertiary)] sm:text-sm">
-          <Calendar size={13} className="shrink-0" />
-          <span>{formatDate(library.last_scan)}</span>
-        </div>
-
-        <div className="flex items-center gap-1 lg:justify-center">
-          <Button variant="ghost" size="sm" iconOnly onClick={onScan} disabled={isScanning || isDeleting} title={isDeleting ? '媒体库正在删除' : '扫描媒体文件'} aria-label="扫描媒体文件">
-            <RefreshCw size={16} className={isScanning ? 'animate-spin text-[var(--nv-action-primary)]' : undefined} />
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            iconOnly
-            onClick={onDelete}
-            disabled={isDeleting}
-            title={isDeleting ? '媒体库正在删除' : isScanning ? '媒体库正在扫描，点击可重新确认状态' : '删除媒体库'}
-            aria-label={isDeleting ? '正在删除媒体库' : '删除媒体库'}
-          >
-            {isDeleting ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
+        <div className="flex shrink-0 items-center gap-1">
+          <Button variant="secondary" size="sm" onClick={onScan} disabled={isScanning || isDeleting}>
+            <RefreshCw size={14} aria-hidden="true" className={isScanning ? 'animate-spin' : undefined} />
+            更新影片
           </Button>
           <div className="relative">
-            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} disabled={isDeleting} aria-label="更多操作">
-              <MoreHorizontal size={16} />
+            <Button variant="ghost" size="sm" iconOnly onClick={onMenu} disabled={isDeleting} aria-label="更多操作" aria-expanded={activeMenu}>
+              <MoreHorizontal size={16} aria-hidden="true" />
             </Button>
             {activeMenu && !isDeleting && (
               <>
                 <div className="fixed inset-0 z-[var(--nv-z-dropdown)]" onClick={onCloseMenu} />
                 <div className="absolute right-0 top-full z-[calc(var(--nv-z-dropdown)+1)] mt-1 w-44 overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] py-1 shadow-[var(--nv-shadow-elevated)]">
-                  <button type="button" onClick={onEdit} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]">
-                    <Pencil size={14} />
-                    编辑媒体库
-                  </button>
-                  <button type="button" onClick={onReindex} disabled={isScanning || isDeleting} className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-[var(--nv-text-secondary)] transition-colors hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)] disabled:opacity-50">
-                    <RotateCcw size={14} />
-                    重建索引
-                  </button>
+                  <Button variant="ghost" size="sm" className="w-full !justify-start" onClick={onEdit}>
+                    <Pencil size={14} aria-hidden="true" />编辑影片库
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full !justify-start" onClick={onReindex} disabled={isScanning}>
+                    <RotateCcw size={14} aria-hidden="true" />重建索引
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full !justify-start text-[var(--nv-status-danger)]" onClick={onDelete}>
+                    <Trash2 size={14} aria-hidden="true" />删除影片库
+                  </Button>
                 </div>
               </>
             )}
@@ -527,53 +425,26 @@ function LibraryRow({
         </div>
       </div>
 
-      {isScanning && !isDeleting && (progress || scrape || phase) && (
-        <div className="px-4 pb-4 sm:px-5">
-          <div className="rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] p-3">
-            <div className="grid grid-cols-3 gap-2">
-              {MAIN_SCAN_STAGES.map((stage, index) => {
-                const done = index < activeStageIndex
-                const active = index === activeStageIndex
-                return (
-                  <div
-                    key={stage.id}
-                    className={clsx(
-                      'rounded-[var(--nv-radius-sm)] border px-2.5 py-2',
-                      active ? 'border-[var(--nv-border-hover)] bg-[var(--nv-bg-active)]' : 'border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface)]',
-                    )}
-                  >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={clsx('truncate text-[11px] font-semibold', active ? 'text-[var(--nv-action-primary)]' : done ? 'text-[var(--nv-status-success)]' : 'text-[var(--nv-text-tertiary)]')}>
-                        {index + 1}. {stage.short}
-                      </span>
-                      <span className={clsx('text-[10px]', active ? 'text-[var(--nv-action-primary)]' : done ? 'text-[var(--nv-status-success)]' : 'text-[var(--nv-text-disabled)]')}>
-                        {done ? '完成' : active ? '进行中' : '等待'}
-                      </span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="text-[11px] font-semibold text-[var(--nv-action-primary)]">{stageLabel}</span>
-              <span className="text-[11px] font-mono text-[var(--nv-text-tertiary)]">
-                {stageProgress.total > 0 ? `${stageProgress.current}/${stageProgress.total}` : `已发现 ${progress?.new_found || 0}`}
-              </span>
-            </div>
-            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-[var(--nv-bg-control)]">
-              <div className="h-full rounded-full bg-[var(--nv-action-primary)] transition-[width] duration-300" style={{ width: `${stagePercent}%` }} />
-            </div>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="truncate text-[11px] text-[var(--nv-text-tertiary)]">{stageMessage}</span>
-              {activeStage === 'scraping' && scrape && scrape.total > 0 && (
-                <span className="shrink-0 text-[11px] text-[var(--nv-text-secondary)]">成功 {scrape.success} · 失败 {scrape.failed}</span>
-              )}
-            </div>
-          </div>
+      {isDeleting ? (
+        <p role="status" className="text-sm text-[var(--nv-text-secondary)]">正在移除影片库…</p>
+      ) : isScanning ? (
+        <div role="status" className="space-y-1 text-sm text-[var(--nv-text-secondary)]">
+          <p>{updatingLabel}{showProgress ? ` · ${current}/${total}` : ''}</p>
+          <progress
+            aria-label={updatingLabel}
+            max={showProgress ? total : undefined}
+            value={showProgress ? Math.max(0, Math.min(current, total)) : undefined}
+            className="block h-1.5 w-full accent-[var(--nv-action-primary)]"
+          />
         </div>
-      )}
-    </div>
+      ) : failure ? (
+        <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <AdminStatus tone="danger">更新失败</AdminStatus>
+          <p className="text-sm text-[var(--nv-text-secondary)]">{failure}</p>
+          <Button variant="secondary" size="sm" onClick={onEdit}>检查路径</Button>
+        </div>
+      ) : null}
+    </article>
   )
 }
 

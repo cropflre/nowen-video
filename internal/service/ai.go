@@ -2,7 +2,6 @@ package service
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -290,11 +289,6 @@ func supportsJSONResponseFormat(provider string) bool {
 }
 
 func (s *AIService) ChatCompletion(systemPrompt, userPrompt string, temperature float64, maxTokens int) (string, error) {
-	return s.ChatCompletionContext(context.Background(), systemPrompt, userPrompt, temperature, maxTokens)
-}
-
-// ChatCompletionContext lets interactive callers bound queueing, cooldowns and HTTP retries.
-func (s *AIService) ChatCompletionContext(ctx context.Context, systemPrompt, userPrompt string, temperature float64, maxTokens int) (string, error) {
 	if !s.IsEnabled() {
 		return "", fmt.Errorf("AI 服务未启用")
 	}
@@ -320,11 +314,7 @@ func (s *AIService) ChatCompletionContext(ctx context.Context, systemPrompt, use
 	}
 
 	// 并发控制
-	select {
-	case s.semaphore <- struct{}{}:
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
+	s.semaphore <- struct{}{}
 	defer func() { <-s.semaphore }()
 
 	// 构建请求体（一次构建，多次重试复用）
@@ -356,11 +346,9 @@ func (s *AIService) ChatCompletionContext(ctx context.Context, systemPrompt, use
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// 限流（每次重试前都过一遍间隔限流）
-		if err := s.rateLimitContext(ctx); err != nil {
-			return "", err
-		}
+		s.rateLimit()
 
-		req, err := http.NewRequestWithContext(ctx, "POST", apiURL, bytes.NewReader(bodyBytes))
+		req, err := http.NewRequest("POST", apiURL, bytes.NewReader(bodyBytes))
 		if err != nil {
 			return "", fmt.Errorf("创建请求失败: %w", err)
 		}
@@ -369,9 +357,6 @@ func (s *AIService) ChatCompletionContext(ctx context.Context, systemPrompt, use
 
 		resp, err := s.client.Do(req)
 		if err != nil {
-			if ctx.Err() != nil {
-				return "", ctx.Err()
-			}
 			// 网络错误：可重试，写入全局冷却闸（让其他并发请求一起等）
 			lastErr = fmt.Errorf("AI API 请求失败: %w", err)
 			if attempt < maxAttempts {
@@ -571,21 +556,6 @@ func (s *AIService) SetCache(key, value string) {
 // 关键点：cooldownUntil 用 cooldownMu 短暂上锁读取，sleep 时不持锁，
 // 防止 N 个请求互相阻塞导致退避后再次同时打 API。
 func (s *AIService) rateLimit() {
-	_ = s.rateLimitContext(context.Background())
-}
-
-func waitAIContext(ctx context.Context, d time.Duration) error {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-timer.C:
-		return nil
-	}
-}
-
-func (s *AIService) rateLimitContext(ctx context.Context) error {
 	// 1) 全局 429 冷却闸
 	for {
 		s.cooldownMu.Lock()
@@ -601,9 +571,7 @@ func (s *AIService) rateLimitContext(ctx context.Context) error {
 			wait = 30 * time.Second // 上限保护
 		}
 		s.logger.Debugf("AI 全局冷却中，等待 %v（原因: %s）", wait, reason)
-		if err := waitAIContext(ctx, wait); err != nil {
-			return err
-		}
+		time.Sleep(wait)
 		// 循环再次确认（其他请求可能在我们 sleep 期间又触发了新的 cooldown 延期）
 	}
 
@@ -612,24 +580,17 @@ func (s *AIService) rateLimitContext(ctx context.Context) error {
 	interval := time.Duration(s.cfg.RequestIntervalMs) * time.Millisecond
 	s.cfgMu.RUnlock()
 	if interval <= 0 {
-		return ctx.Err()
+		return
 	}
 
-	for !s.rateMu.TryLock() {
-		if err := waitAIContext(ctx, 10*time.Millisecond); err != nil {
-			return err
-		}
-	}
+	s.rateMu.Lock()
 	defer s.rateMu.Unlock()
 
 	elapsed := time.Since(s.lastRequest)
 	if elapsed < interval {
-		if err := waitAIContext(ctx, interval-elapsed); err != nil {
-			return err
-		}
+		time.Sleep(interval - elapsed)
 	}
 	s.lastRequest = time.Now()
-	return ctx.Err()
 }
 
 // triggerCooldown 触发全局 429 冷却闸。

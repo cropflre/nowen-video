@@ -30,7 +30,6 @@ func AutoMigrateLite(db *gorm.DB, enableAI bool) error {
 		&FamilyViewingLease{},
 		&DeviceSession{},
 		&DevicePairing{},
-		&AgentRun{},
 		&PlaybackStats{},
 		&ScrapeTask{},
 		&ScrapeHistory{},

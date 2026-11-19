@@ -213,9 +213,15 @@ func (h *LibraryHandler) Scan(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "扫描已启动"})
 }
 
-// ScanStatus 获取当前仍在运行的扫描进度
+// ScanStatus 获取正在运行的扫描进度与最近失败原因
 func (h *LibraryHandler) ScanStatus(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"data": h.libService.ActiveScanPhases()})
+	result := gin.H{"data": h.libService.ActiveScanPhases()}
+	if failures, err := h.libService.RecentScanFailures(); err == nil {
+		result["failures"] = failures
+	} else {
+		h.logger.Warnf("读取影片库更新失败原因出错: %v", err)
+	}
+	c.JSON(http.StatusOK, result)
 }
 
 // Delete 删除媒体库

@@ -7,7 +7,6 @@ import { useToast } from '@/components/Toast'
 import { useTranslation } from '@/i18n'
 import { logoutDevice } from '@/utils/logoutDevice'
 import { Button, Input, PageContainer, Section, Tag } from '@/components/design-system'
-import AssistantWindowSetting from '@/components/AssistantWindowSetting'
 
 export default function ProfilePage() {
   const { user, setAuth, updateUser } = useAuthStore()
@@ -116,8 +115,6 @@ export default function ProfilePage() {
             </div>
           </div>
         </section>
-
-        <AssistantWindowSetting />
 
         <Section
           title={t('profile.updateUsername')}

@@ -432,6 +432,16 @@ const zhCN: Record<string, string> = {
 
   // ==================== 管理后台 ====================
   'admin.title': '系统管理',
+  'admin.simple.libraries': '影片库',
+  'admin.simple.family': '家人',
+  'admin.simple.advanced': '高级设置',
+  'admin.simple.backToManage': '返回管理',
+  'admin.simple.backToAdvanced': '返回高级设置',
+  'admin.simple.storage': '存储与缓存',
+  'admin.simple.playback': '播放与转码',
+  'admin.simple.metadata': '元数据与 AI',
+  'admin.simple.diagnostics': '系统诊断',
+  'admin.simple.maintenance': '数据维护',
   'admin.searchPlaceholder': '搜索设置项...',
   'admin.connected': '实时连接',
   'admin.disconnected': '未连接',

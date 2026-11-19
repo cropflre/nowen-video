@@ -381,6 +381,16 @@ const jaJP: Record<string, string> = {
 
   // ==================== 管理（追加） ====================
   'admin.title': 'システム管理',
+  'admin.simple.libraries': 'ライブラリ',
+  'admin.simple.family': '家族',
+  'admin.simple.advanced': '詳細設定',
+  'admin.simple.backToManage': '管理に戻る',
+  'admin.simple.backToAdvanced': '詳細設定に戻る',
+  'admin.simple.storage': 'ストレージとキャッシュ',
+  'admin.simple.playback': '再生とトランスコード',
+  'admin.simple.metadata': 'メタデータと AI',
+  'admin.simple.diagnostics': 'システム診断',
+  'admin.simple.maintenance': 'データのメンテナンス',
   'admin.searchPlaceholder': '設定を検索...',
   'admin.connected': '接続中',
   'admin.disconnected': '未接続',

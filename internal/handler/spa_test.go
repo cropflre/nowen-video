@@ -21,7 +21,7 @@ func TestSPAFallbackSeparatesMissingAPIsFromBrowserRoutes(t *testing.T) {
 	for _, tc := range []struct {
 		method, path string
 		status       int
-	}{{"GET", "/api", 404}, {"GET", "/api/unknown", 404}, {"POST", "/api/agent/unknown", 404}, {"GET", "/browse", 200}, {"GET", "/api-like-browser-route", 200}} {
+	}{{"GET", "/api", 404}, {"GET", "/api/unknown", 404}, {"POST", "/api/unknown", 404}, {"GET", "/browse", 200}, {"GET", "/api-like-browser-route", 200}} {
 		t.Run(tc.method+tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()
 			r.ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))

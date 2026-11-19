@@ -381,6 +381,16 @@ const enUS: Record<string, string> = {
 
   // ==================== Admin (extra) ====================
   'admin.title': 'System Admin',
+  'admin.simple.libraries': 'Libraries',
+  'admin.simple.family': 'Family',
+  'admin.simple.advanced': 'Advanced settings',
+  'admin.simple.backToManage': 'Back to management',
+  'admin.simple.backToAdvanced': 'Back to advanced settings',
+  'admin.simple.storage': 'Storage and cache',
+  'admin.simple.playback': 'Playback and transcoding',
+  'admin.simple.metadata': 'Metadata and AI',
+  'admin.simple.diagnostics': 'Diagnostics',
+  'admin.simple.maintenance': 'Data maintenance',
   'admin.searchPlaceholder': 'Search settings...',
   'admin.connected': 'Connected',
   'admin.disconnected': 'Disconnected',

@@ -127,9 +127,10 @@ type Library struct {
 	Path string `json:"path" gorm:"type:text;not null"`
 	// ExtraPaths 额外媒体文件夹列表（JSON 数组），用于支持多个目录
 	// 对外字段名为 extra_paths；聚合后的完整路径列表请使用 AllPaths()
-	ExtraPaths string     `json:"extra_paths" gorm:"type:text"`
-	Type       string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
-	LastScan   *time.Time `json:"last_scan"`
+	ExtraPaths      string     `json:"extra_paths" gorm:"type:text"`
+	Type            string     `json:"type" gorm:"type:text;default:movie"` // movie / tvshow / mixed / other
+	LastScan        *time.Time `json:"last_scan"`
+	LastScanFailure string     `json:"-" gorm:"type:text;default:''"`
 	// 高级设置
 	PreferLocalNFO    bool   `json:"prefer_local_nfo" gorm:"default:true"`         // 优先读取本地NFO和图片
 	MinFileSize       int    `json:"min_file_size" gorm:"default:3"`               // 排除小于此大小(MB)的视频文件
@@ -878,7 +879,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&FamilyViewingLease{},
 		&DeviceSession{},
 		&DevicePairing{},
-		&AgentRun{},
 		&PlaybackStats{},
 		&ScrapeTask{},
 		&ScrapeHistory{},

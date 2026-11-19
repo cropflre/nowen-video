@@ -28,7 +28,25 @@ func (r *LibraryRepo) List() ([]model.Library, error) {
 }
 
 func (r *LibraryRepo) Update(lib *model.Library) error {
-	return r.db.Save(lib).Error
+	return r.db.Omit("LastScanFailure").Save(lib).Error
+}
+
+func (r *LibraryRepo) ScanFailures() (map[string]string, error) {
+	var libs []model.Library
+	if err := r.db.Select("id", "last_scan_failure").Where("last_scan_failure <> ?", "").Find(&libs).Error; err != nil {
+		return nil, err
+	}
+	failures := make(map[string]string, len(libs))
+	for _, lib := range libs {
+		failures[lib.ID] = lib.LastScanFailure
+	}
+	return failures, nil
+}
+
+// SetScanFailure updates only the scan result so a concurrent settings edit
+// cannot overwrite a failure loaded from an older copy of the library.
+func (r *LibraryRepo) SetScanFailure(id, message string) error {
+	return r.db.Model(&model.Library{}).Where("id = ?", id).UpdateColumn("last_scan_failure", message).Error
 }
 
 func (r *LibraryRepo) Delete(id string) error {

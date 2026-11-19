@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -237,6 +238,66 @@ func (s *LibraryService) clearScanPhaseState(libraryID string) {
 	}
 }
 
+// RecentScanFailures returns the latest failed update, if any, for each library.
+func (s *LibraryService) RecentScanFailures() (map[string]string, error) {
+	return s.repo.ScanFailures()
+}
+
+func (s *LibraryService) saveScanFailure(libraryID, message string) {
+	if err := s.repo.SetScanFailure(libraryID, message); err != nil {
+		s.logger.Warnf("保存影片库更新状态失败: %s: %v", libraryID, err)
+	}
+}
+
+func (s *LibraryService) beginScan(lib *model.Library) {
+	s.setScanPhaseState(&ScanPhaseData{
+		LibraryID: lib.ID, LibraryName: lib.Name, Phase: "scanning",
+		StepCurrent: 1, StepTotal: 3, Message: "正在检查影片文件夹",
+	})
+}
+
+func (s *LibraryService) reportScanFailure(lib *model.Library, message string) {
+	s.saveScanFailure(lib.ID, message)
+	s.clearScanPhaseState(lib.ID)
+	if s.wsHub != nil {
+		s.wsHub.BroadcastEvent(EventScanFailed, &ScanProgressData{
+			LibraryID: lib.ID, LibraryName: lib.Name, Phase: "scanning", Message: message,
+		})
+	}
+}
+
+func (s *LibraryService) checkScanFolders(lib *model.Library) bool {
+	paths := lib.AllPaths()
+	if len(paths) == 0 {
+		s.logger.Errorf("媒体库未配置任何路径 (媒体库: %s)", lib.Name)
+		s.reportScanFailure(lib, "还没有配置影片文件夹")
+		return false
+	}
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err == nil && !info.IsDir() {
+			s.logger.Errorf("媒体库路径不是目录: %s (媒体库: %s)", path, lib.Name)
+			s.reportScanFailure(lib, "配置的路径不是文件夹")
+			return false
+		}
+		if err == nil {
+			var dir *os.File
+			dir, err = os.Open(path)
+			if err == nil {
+				// 检查目录能否实际读取，避免只凭 stat 成功就清理旧索引。
+				_, err = dir.Readdirnames(1)
+				_ = dir.Close()
+			}
+		}
+		if err != nil && err != io.EOF {
+			s.logger.Errorf("媒体库路径不可访问: %s (媒体库: %s) err=%v", path, lib.Name, err)
+			s.reportScanFailure(lib, "文件夹无法访问。请确认已挂载，并允许服务读取。")
+			return false
+		}
+	}
+	return true
+}
+
 // Scan 触发扫描（异步）- 包含文件扫描和元数据刮削
 func (s *LibraryService) Scan(id string) error {
 	lib, err := s.repo.FindByID(id)
@@ -249,32 +310,13 @@ func (s *LibraryService) Scan(id string) error {
 		return ErrScanInProgress
 	}
 
+	s.beginScan(lib)
 	go func() {
 		defer s.scanning.Delete(id)
 		defer s.clearScanPhaseState(id)
 
-		// 异步检查路径（网络驱动器可能较慢，不阻塞 HTTP 响应）
-		allPaths := lib.AllPaths()
-		if len(allPaths) == 0 {
-			s.logger.Errorf("媒体库未配置任何路径 (媒体库: %s)", lib.Name)
+		if !s.checkScanFolders(lib) {
 			return
-		}
-		totalEntries := 0
-		for _, p := range allPaths {
-			info, err := os.Stat(p)
-			if err != nil {
-				s.logger.Errorf("媒体库路径不可访问: %s (媒体库: %s) err=%v", p, lib.Name, err)
-				return
-			}
-			if !info.IsDir() {
-				s.logger.Errorf("媒体库路径不是目录: %s (媒体库: %s)", p, lib.Name)
-				return
-			}
-			entries, _ := os.ReadDir(p)
-			totalEntries += len(entries)
-		}
-		if totalEntries == 0 {
-			s.logger.Warnf("媒体库所有路径均为空 (媒体库: %s)", lib.Name)
 		}
 
 		// 用户可感知的主阶段固定为：1. 入库进度 → 2. AI 整理进度 → 3. 元数据刮削进度。
@@ -318,9 +360,10 @@ func (s *LibraryService) Scan(id string) error {
 
 		// 第一步：扫描文件。scan_completed / onScanComplete 由完整多阶段流程结束时统一发送，避免前端提前刷新。
 		broadcastPhase("scanning", fmt.Sprintf("正在扫描媒体文件: %s", lib.Name))
-		count, err := s.scanner.ScanLibraryWithOptions(lib, ScanLibraryOptions{SuppressCompletedEvent: true, SuppressCompletionCallback: true})
+		count, err := s.scanner.ScanLibraryWithOptions(lib, ScanLibraryOptions{SuppressCompletedEvent: true, SuppressCompletionCallback: true, SuppressFailedEvent: true})
 		if err != nil {
 			s.logger.Errorf("扫描媒体库失败: %s, 错误: %v", lib.Name, err)
+			s.reportScanFailure(lib, "读取影片时出错。请检查文件夹后重试。")
 			return
 		}
 
@@ -418,6 +461,8 @@ func (s *LibraryService) Scan(id string) error {
 				s.logger.Infof("媒体库 %s 标记 %d 个同片副本（列表默认隐藏）", lib.Name, marked)
 			}
 		}
+
+		s.saveScanFailure(id, "")
 
 		// 广播全部完成事件
 		if s.wsHub != nil {
@@ -752,21 +797,13 @@ func (s *LibraryService) Reindex(id string) error {
 		return ErrScanInProgress
 	}
 
+	s.beginScan(lib)
 	go func() {
 		defer s.scanning.Delete(id)
 		defer s.clearScanPhaseState(id)
 
-		// 异步检查路径（网络驱动器可能较慢，不阻塞 HTTP 响应）
-		for _, p := range lib.AllPaths() {
-			info, err := os.Stat(p)
-			if err != nil {
-				s.logger.Errorf("媒体库路径不可访问: %s (媒体库: %s) err=%v", p, lib.Name, err)
-				return
-			}
-			if !info.IsDir() {
-				s.logger.Errorf("媒体库路径不是目录: %s (媒体库: %s)", p, lib.Name)
-				return
-			}
+		if !s.checkScanFolders(lib) {
+			return
 		}
 
 		// 用户可感知的主阶段固定为：1. 入库进度 → 2. AI 整理进度 → 3. 元数据刮削进度。
@@ -810,15 +847,17 @@ func (s *LibraryService) Reindex(id string) error {
 		// 清理旧索引属于重建索引准备工作，不单独占主进度阶段。
 		if err := s.cleanLibraryIndexData(id); err != nil {
 			s.logger.Errorf("清除媒体库旧索引数据失败: %s, 错误: %v", lib.Name, err)
+			s.reportScanFailure(lib, "无法清理旧索引。请重试或查看系统日志。")
 			return
 		}
 		s.logger.Infof("已清除媒体库 %s 的旧索引数据（含媒体、合集、分类、演职员、收藏和播放历史关联）", lib.Name)
 
 		// 第一步：重新扫描文件。scan_completed / onScanComplete 由完整重建流程结束时统一发送，避免前端提前刷新。
 		broadcastPhase("scanning", fmt.Sprintf("正在扫描媒体文件: %s", lib.Name))
-		count, err := s.scanner.ScanLibraryWithOptions(lib, ScanLibraryOptions{SuppressCompletedEvent: true, SuppressCompletionCallback: true})
+		count, err := s.scanner.ScanLibraryWithOptions(lib, ScanLibraryOptions{SuppressCompletedEvent: true, SuppressCompletionCallback: true, SuppressFailedEvent: true})
 		if err != nil {
 			s.logger.Errorf("重建索引扫描失败: %s, 错误: %v", lib.Name, err)
+			s.reportScanFailure(lib, "重新读取影片时出错。请检查文件夹后重试。")
 			return
 		}
 
@@ -915,6 +954,8 @@ func (s *LibraryService) Reindex(id string) error {
 				s.logger.Infof("媒体库 %s 重建索引后标记 %d 个同片副本（列表默认隐藏）", lib.Name, marked)
 			}
 		}
+
+		s.saveScanFailure(id, "")
 
 		// 广播全部完成事件
 		if s.wsHub != nil {

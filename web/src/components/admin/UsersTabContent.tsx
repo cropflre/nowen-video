@@ -49,6 +49,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   const toast = useToast()
   const dialog = useDialog()
   const [libraries, setLibraries] = useState<Library[]>([])
+  const [managingUser, setManagingUser] = useState<string | null>(null)
   const [editingUser, setEditingUser] = useState<string | null>(null)
   const [loadingPerm, setLoadingPerm] = useState(false)
   const [savingPerm, setSavingPerm] = useState(false)
@@ -257,21 +258,22 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
   return (
     <div className="space-y-5">
       <AdminPanel
-        title="用户管理"
-        description="创建账号、管理访问权限与登录状态。管理员账号不会显示禁用或删除操作。"
+        title="家庭成员"
         icon={<Users size={18} />}
         actions={(
           <div className="flex flex-wrap items-center gap-2">
-            <div className="relative min-w-[220px] flex-1 sm:flex-none">
-              <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]" />
-              <Input
-                value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
-                placeholder="搜索用户名 / 昵称 / 邮箱"
-                className="pl-9 sm:w-64"
-              />
-            </div>
-            <Button variant="primary" onClick={() => setShowCreateModal(true)}>
+            {(users.length > 8 || keyword) && (
+              <div className="relative min-w-0 flex-1 sm:flex-none">
+                <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--nv-text-tertiary)]" />
+                <Input
+                  value={keyword}
+                  onChange={(event) => setKeyword(event.target.value)}
+                  placeholder="搜索用户名 / 昵称 / 邮箱"
+                  className="pl-9 sm:w-64"
+                />
+              </div>
+            )}
+            <Button variant="secondary" size="sm" onClick={() => setShowCreateModal(true)}>
               <UserPlus size={15} />
               新建用户
             </Button>
@@ -279,11 +281,6 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
         )}
         bodyClassName="p-0"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-[var(--nv-border-subtle)] px-5 py-3 text-xs text-[var(--nv-text-tertiary)] sm:px-6">
-          <span>当前显示 {filteredUsers.length} 位用户</span>
-          <span>总计 {users.length}</span>
-        </div>
-
         {filteredUsers.length === 0 ? (
           <EmptyState
             icon={<Users size={24} />}
@@ -295,7 +292,7 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
           <div className="divide-y divide-[var(--nv-border-subtle)]">
             {filteredUsers.map((user) => (
               <div key={user.id} className={user.disabled ? 'bg-[var(--nv-bg-surface-soft)] opacity-75' : undefined}>
-                <div className="flex flex-col gap-4 px-5 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--nv-bg-active)] text-sm font-semibold text-[var(--nv-action-primary)]">
                       {user.username.charAt(0).toUpperCase()}
@@ -309,59 +306,78 @@ export default function UsersTab({ users, setUsers }: UsersTabProps) {
                         {user.disabled && <Tag tone="danger">已禁用</Tag>}
                         {user.must_change_pwd && <Tag tone="warning">需改密</Tag>}
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
-                        <span>注册 {new Date(user.created_at).toLocaleDateString('zh-CN')}</span>
-                        <span>最近登录 {formatLastLogin(user)}</span>
-                        {user.last_login_ip && <span title="最近登录 IP">IP {user.last_login_ip}</span>}
-                        {user.email && <span className="truncate">{user.email}</span>}
-                      </div>
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    {user.role !== 'admin' && (
-                      <Button
-                        size="sm"
-                        variant={editingUser === user.id ? 'primary' : 'secondary'}
-                        onClick={() => void openPermEditor(user.id)}
-                        disabled={savingPerm}
-                      >
-                        <Shield size={14} />
-                        权限
-                      </Button>
-                    )}
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => {
-                        setResetPwdUser(user)
-                        setResetPwdValue('')
-                        setResetForceChange(true)
-                      }}
-                    >
-                      <KeyRound size={14} />
-                      密码
-                    </Button>
-                    {user.role !== 'admin' && (
-                      <Button size="sm" variant="ghost" onClick={() => handleToggleDisabled(user)}>
-                        {user.disabled ? <RotateCcw size={14} /> : <Ban size={14} />}
-                        {user.disabled ? '启用' : '禁用'}
-                      </Button>
-                    )}
-                    {user.role !== 'admin' && (
-                      <Button
-                        size="sm"
-                        variant="danger"
-                        iconOnly
-                        aria-label={`删除用户 ${user.username}`}
-                        title="删除用户"
-                        onClick={() => handleDeleteUser(user.id)}
-                      >
-                        <Trash2 size={15} />
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-expanded={managingUser === user.id}
+                    aria-controls={managingUser === user.id ? `member-${user.id}-actions` : undefined}
+                    aria-label={managingUser === user.id ? `收起 ${user.username} 的管理` : `管理 ${user.username}`}
+                    onClick={() => {
+                      closePermEditor()
+                      setManagingUser(managingUser === user.id ? null : user.id)
+                    }}
+                    disabled={savingPerm}
+                  >
+                    {managingUser === user.id ? '收起' : '管理'}
+                  </Button>
                 </div>
+
+                {managingUser === user.id && (
+                  <div id={`member-${user.id}-actions`} className="space-y-3 border-t border-[var(--nv-border-subtle)] px-4 py-3 sm:px-6">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--nv-text-tertiary)]">
+                      <span>注册 {new Date(user.created_at).toLocaleDateString('zh-CN')}</span>
+                      <span>最近登录 {formatLastLogin(user)}</span>
+                      {user.last_login_ip && <span title="最近登录 IP">IP {user.last_login_ip}</span>}
+                      {user.email && <span className="truncate">{user.email}</span>}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {user.role !== 'admin' && (
+                        <Button
+                          size="sm"
+                          variant={editingUser === user.id ? 'primary' : 'secondary'}
+                          onClick={() => void openPermEditor(user.id)}
+                          disabled={savingPerm}
+                        >
+                          <Shield size={14} />
+                          权限
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => {
+                          setResetPwdUser(user)
+                          setResetPwdValue('')
+                          setResetForceChange(true)
+                        }}
+                      >
+                        <KeyRound size={14} />
+                        密码
+                      </Button>
+                      {user.role !== 'admin' && (
+                        <Button size="sm" variant="ghost" onClick={() => handleToggleDisabled(user)}>
+                          {user.disabled ? <RotateCcw size={14} /> : <Ban size={14} />}
+                          {user.disabled ? '启用' : '禁用'}
+                        </Button>
+                      )}
+                      {user.role !== 'admin' && (
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          iconOnly
+                          aria-label={`删除用户 ${user.username}`}
+                          title="删除用户"
+                          onClick={() => handleDeleteUser(user.id)}
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {editingUser === user.id && (
                   <div className="border-t border-[var(--nv-border-subtle)] bg-[var(--nv-bg-surface-soft)] px-5 py-5 sm:px-6">

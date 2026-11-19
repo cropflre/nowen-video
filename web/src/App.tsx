@@ -7,7 +7,6 @@ import { DialogProvider } from '@/components/Dialog'
 import { Toaster } from 'react-hot-toast'
 import { ViewingPreferenceBridge } from '@/components/ViewingPreferences'
 import DeviceSessionBridge from '@/components/DeviceSessionBridge'
-import ViewerAssistant from '@/components/ViewerAssistant'
 import Layout from '@/components/Layout'
 import TitleBar from '@/components/TitleBar'
 import CapabilityAdminGuard from '@/components/CapabilityAdminGuard'
@@ -108,6 +107,11 @@ function ForceChangePasswordRoute() {
   return <ForceChangePasswordPage />
 }
 
+function AdminRoute() {
+  const user = useAuthStore((state) => state.user)
+  return user?.role === 'admin' && !user.child_mode ? <AdminPage /> : <Navigate to="/" replace />
+}
+
 function DeviceApprovalRoute() {
   const identity = useAuthStore(state => `${state.user?.id}:${state.user?.role}:${state.user?.child_mode}`)
   return <div className="mx-auto w-full max-w-3xl p-6"><DeviceApprovalPage key={identity} /></div>
@@ -133,7 +137,6 @@ export default function App() {
           <ServerProfileLoader />
           <ViewingPreferenceBridge />
           <DeviceSessionBridge />
-          <ViewerAssistant />
           <CapabilityAdminGuard />
           <DesktopServerPicker />
           <DesktopEventBinder />
@@ -184,14 +187,14 @@ export default function App() {
                     <Route path="profile" element={<ProfilePage />} />
                     <Route path="stats" element={<StatsPage />} />
 
-                    <Route path="admin" element={<AdminPage />} />
+                    <Route path="admin" element={<AdminRoute />} />
                     <Route path="files" element={<FileManagerPage />} />
                     <Route path="scrape" element={<Navigate to="/files?tab=scrape" replace />} />
 
                     <Route
                       path="preprocess"
                       element={
-                        <CapabilityRoute capability="preprocess" fallback="/admin#dashboard">
+                        <CapabilityRoute capability="preprocess" fallback="/admin">
                           <PreprocessLayout />
                         </CapabilityRoute>
                       }
@@ -202,7 +205,7 @@ export default function App() {
                     <Route
                       path="subtitle-preprocess"
                       element={
-                        <CapabilityRoute capability="preprocess" fallback="/admin#dashboard">
+                        <CapabilityRoute capability="preprocess" fallback="/admin">
                           <Navigate to="/preprocess/subtitle" replace />
                         </CapabilityRoute>
                       }

@@ -256,7 +256,6 @@ func main() {
 	api := r.Group("/api")
 	api.Use(jwtMiddleware, handler.ChildAccessGate(repos.DB()))
 	handler.RegisterFamilyPlayback(api, repos.DB())
-	handler.RegisterViewerAgent(api, repos.DB(), services.AI, services.Library)
 	handlers.Auth.RegisterDeviceManagement(api)
 	{
 		// 媒体库

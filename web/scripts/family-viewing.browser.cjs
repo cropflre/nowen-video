@@ -39,24 +39,6 @@ let browser;
    const json=(data,status=200)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
    if(p==='/api/ws') return route.abort();
    const fixtureUser=()=>request.headers()['authorization']==='Bearer paired-token'&&state.pairing.approvedUser?state.pairing.approvedUser:{id:admin?'admin':'viewer',username:'家人',role:admin?'admin':'user',child_mode:child,viewing_preferences:state.preferences};
-   if(p==='/api/agent/chat') {
-    const body=request.postDataJSON();state.agentMessages=(state.agentMessages||[]).concat(body);
-    if(state.agentDelay)await new Promise(resolve=>setTimeout(resolve,state.agentDelay));
-    if(state.failAgent)return json({error:'暂时无法读取影视库'},503);
-    const card=item=>({id:item.media.id,kind:'media',title:item.media.title,year:item.media.year,rating:item.media.rating,duration:item.media.duration});
-    const actions={'暂停':'pause','继续播放':'resume','声音小一点':'volume_down','静音':'mute','取消静音':'unmute','字体大一点':'large_text_on','中文字幕':'subtitle_zh','关闭字幕':'subtitle_off'};
-    const reply={message:'从你可以观看的影视中找到了这些，可以直接播放或加入想看。',cards:items.slice(0,2).map(card),mode:state.agentFallback?'fallback':'basic',search:{query:'',genre:'喜剧',type:'movie',year_min:0,year_max:0,min_rating:0,max_minutes:0,unwatched:false}};
-    if(actions[body.message]){reply.action={kind:actions[body.message],...(body.current_media_id?{target:{id:body.current_media_id,kind:'media'}}:{})};reply.cards=[];reply.message='';}
-    if(body.message==='把第二部加入想看'){reply.action={kind:'favorite',target:body.context[1]};reply.cards=[];reply.message='';}
-    if(body.message==='移出想看家庭影片 2'){reply.action={kind:'unfavorite',target:{id:'movie-2',kind:'media'}};reply.cards=[];reply.message='';}
-    if(body.message==='继续看')reply.cards=[{...card(items[0]),position:30}];
-    if(state.agentEmpty){reply.cards=[];reply.message='没有找到符合条件的影片。可以减少条件，或直接输入片名。';}
-    return json({data:reply});
-   }
-   if(/^\/api\/users\/me\/favorites\/[^/]+$/.test(p)&&['POST','DELETE'].includes(request.method())) {
-    if(state.failAgentFavorite)return json({error:'想看暂时无法保存'},503);
-    state.agentFavorites=(state.agentFavorites||[]).concat({id:p.split('/').at(-1),method:request.method()});return json({message:'ok'});
-   }
    if(p==='/api/auth/login')return json({token:'fixture-token',user:fixtureUser()});
    if(p==='/api/auth/refresh')return json({error:'device revoked'},401);
    if(p==='/api/users/me/device-status')return state.forceDeviceRevoke?json({error:'device revoked'},401):json({data:{current_id:state.currentDevice}});
@@ -127,6 +109,7 @@ let browser;
     if(request.method()==='POST') {state.libraryCreates++;state.libraryBody=request.postDataJSON();return json({data:{id:'created-library',...state.libraryBody,path:state.libraryBody.paths[0],created_at:new Date().toISOString()}},201);}
     return json({data:state.libraryCreates?[{id:'created-library',...state.libraryBody,path:state.libraryBody.paths[0],created_at:new Date().toISOString()}]:state.empty?[]:[{id:'lib-1',name:'家里的影片',type:'movie',media_count:50}]});
    }
+   if(p==='/api/libraries/scan-status')return json({data:state.scanPhases||[],failures:state.scanFailures||{}});
    if(p==='/api/libraries/created-library/scan') {state.scans++;return state.failScan?json({error:'fixture scan failure'},503):json({message:'started'});}
 
    if(p==='/api/media/mixed') return json({data:state.empty?[]:items,total:state.empty?0:50,movie_count:50,series_count:0});
@@ -161,7 +144,7 @@ let browser;
  }
  async function visible(page,text){await page.getByText(text,{exact:true}).first().waitFor({state:'visible',timeout:10000});}
  let env,page;
- if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_DEVICES_ONLY&&!process.env.FAMILY_AGENT_ONLY){
+ if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_DEVICES_ONLY){
  env=await setup();page=env.page;
  await page.goto(base);await visible(page,'继续观看');
  assert.deepEqual(await page.locator('.nv-rail-section-links .nv-rail-label').allTextContents(),['首页','找片','想看','我的']);
@@ -225,31 +208,41 @@ let browser;
  env.state.episode=true;await page.goto(base+'/play/movie-1');await page.waitForFunction(()=>document.querySelector('video')?.currentTime>=30);await page.waitForTimeout(150);assert.equal(env.state.subtitleFetches||0,0);
  await page.locator('video').evaluate(v=>v.dispatchEvent(new Event('ended')));await page.waitForTimeout(5500);assert(page.url().endsWith('/play/movie-1'));
  env.state.preferences.subtitle_language='zh';env.state.profileDelay=500;await page.reload();await visible(page,'中文字幕示例');assert(env.state.subtitleFetches>0);checks.push('player honors subtitles Off, preferred Chinese subtitles and disabled automatic next episode');await env.ctx.close();
- env=await setup({admin:true});page=env.page;await page.goto(base+'/my');await page.getByRole('button',{name:'创建家庭邀请',exact:true}).waitFor();await page.getByRole('button',{name:'创建家庭邀请',exact:true}).click();
+ env=await setup({admin:true});page=env.page;await page.goto(base+'/my');await page.getByRole('link',{name:'系统管理',exact:true}).click();
+ await page.getByRole('navigation',{name:'系统管理'}).getByRole('link',{name:'影片库',exact:true}).waitFor();assert.equal(await page.getByRole('searchbox').count(),0);
+ await page.getByRole('link',{name:'家人',exact:true}).click();await page.getByRole('button',{name:'创建家庭邀请',exact:true}).waitFor();await page.getByRole('button',{name:'创建家庭邀请',exact:true}).click();
  await page.getByRole('textbox',{name:'家庭邀请链接',exact:true}).waitFor();const invitationURL=await page.getByRole('textbox',{name:'家庭邀请链接',exact:true}).inputValue();assert(invitationURL.endsWith('/login#invite=family-once'));assert.equal(env.state.invites.length,1);
  await page.getByRole('button',{name:'撤销邀请',exact:true}).click();await page.getByRole('textbox',{name:'家庭邀请链接',exact:true}).waitFor({state:'hidden'});assert.equal(env.state.invites.length,0);
  await page.goto(invitationURL);await visible(page,'家人邀请你加入。设置账号和密码后，就能开始观看。');assert.equal(await page.getByRole('textbox',{name:'邀请码',exact:true}).inputValue(),'family-once');assert.deepEqual(env.errors,[]);checks.push('family invite creates a one-use link, revokes it, and pre-fills registration with public signups closed');await env.ctx.close();
  env=await setup({admin:true,empty:true});page=env.page;
- await page.route('**/family-library-test',route=>route.fulfill({contentType:'text/html',body:`<!doctype html><html><head><meta charset="UTF-8"></head><body><div id="root"></div><script type="module">
- import RefreshRuntime from '/@react-refresh';RefreshRuntime.injectIntoGlobalHook(window);window.$RefreshReg$=()=>{};window.$RefreshSig$=()=>type=>type;window.__vite_plugin_react_preamble_installed__=true;
- </script><script type="module">
- import React from '${reactURL}';const {useState}=React;
- import ReactDOM from '${reactDOMURL}';const {createRoot}=ReactDOM;
- import LibraryManager from '/src/components/LibraryManager.tsx';
- import {ToastProvider} from '${toastURL}';
- import {DialogProvider} from '${dialogURL}';
- import '/src/styles/global.css';import '/src/styles/fluent.css';import '/src/styles/design-system.css';import '/src/styles/admin-design-system.css';import '/src/styles/ui.css';
- function Harness(){const [libraries,setLibraries]=useState([]);const [scanning,setScanning]=useState(new Set());return React.createElement(LibraryManager,{libraries,setLibraries,scanning,setScanning,scanProgress:{},scrapeProgress:{},scanPhase:{}})}
- createRoot(document.getElementById('root')).render(React.createElement(ToastProvider,null,React.createElement(DialogProvider,null,React.createElement(Harness))));
- </script></body></html>`}));
- await page.goto(base+'/family-library-test');await page.getByRole('button',{name:'新增媒体库',exact:true}).first().click();
+ await page.goto(base+'/admin');
+ const addFolder=page.getByRole('button',{name:'添加影片文件夹',exact:true});await addFolder.waitFor();
+ assert.equal(await addFolder.count(),1);await addFolder.click();
  const libraryModal=page.getByRole('dialog',{name:'添加影片文件夹',exact:true});await libraryModal.waitFor();assert.equal(await libraryModal.getByPlaceholder('请输入媒体库名称').inputValue(),'电影');
  await libraryModal.getByRole('button',{name:/^电视节目/}).click();assert.equal(await libraryModal.getByPlaceholder('请输入媒体库名称').inputValue(),'电视节目');
  await libraryModal.getByPlaceholder('请输入媒体库名称').fill('家里的故事');await libraryModal.getByRole('button',{name:/^混合影片/}).click();assert.equal(await libraryModal.getByPlaceholder('请输入媒体库名称').inputValue(),'家里的故事');
  await libraryModal.getByPlaceholder(/主路径/).fill('/media/family');env.state.failScan=true;
  await libraryModal.getByRole('button',{name:'添加并查找影片',exact:true}).evaluate(button=>{button.click();button.click()});
  await libraryModal.waitFor({state:'hidden'});assert.equal(env.state.libraryCreates,1);assert.equal(env.state.scans,1);assert.equal(env.state.libraryBody.organize_output_dir,'');assert.equal(env.state.libraryBody.auto_organize_mode,'rule_only');
- await visible(page,'文件夹已添加，但未能开始查找影片。请在文件夹菜单中重试扫描。');assert.deepEqual(env.errors,[]);checks.push('folder setup suggests names, preserves edits, prevents duplicate creation, starts scanning and retains success after scan failure');await env.ctx.close();
+ await visible(page,'更新失败');await page.getByRole('button',{name:'检查路径',exact:true}).waitFor();
+ env.state.failScan=false;env.state.scanPhases=[{library_id:'created-library',library_name:'家里的故事',phase:'scanning',current:1,total:2}];
+ await page.getByRole('button',{name:'更新影片',exact:true}).click();await page.getByRole('progressbar',{name:'正在查找影片'}).waitFor();
+ env.state.scanFailures={'created-library':'文件夹无法访问。请确认已挂载，并允许服务读取。'};
+ env.state.scanPhases=[];await visible(page,env.state.scanFailures['created-library']);
+ await page.reload();await visible(page,env.state.scanFailures['created-library']);
+ await page.getByRole('button',{name:'检查路径',exact:true}).click();await page.getByRole('dialog').waitFor();
+ await page.waitForFunction(()=>document.querySelector('input[placeholder^="主路径"]')?.value==='/media/family');
+ assert.equal(await page.getByRole('dialog').getByPlaceholder(/主路径/).inputValue(),'/media/family');
+ assert.deepEqual(env.errors,[]);checks.push('default management opens library setup, avoids duplicate creation, and surfaces saved scan failures with a direct path editor');await env.ctx.close();
+ env=await setup({admin:true,mobile:true});page=env.page;await page.goto(base+'/my');
+ await page.getByRole('link',{name:/管理影片与家人/}).click();await page.getByRole('link',{name:'高级设置',exact:true}).click();
+ await page.getByRole('link',{name:'数据维护',exact:true}).click();await page.getByRole('heading',{name:'数据维护',exact:true}).waitFor();
+ assert.equal(await page.getByRole('button',{name:'清空数据',exact:true}).count(),0);
+ await visible(page,'危险操作');await page.getByText('危险操作',{exact:true}).click();
+ await page.getByRole('button',{name:'清空数据',exact:true}).waitFor();
+ await page.goto(base+'/admin#dashboard');await page.getByRole('heading',{name:'高级设置',exact:true}).waitFor();
+ assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+ assert.deepEqual(env.errors,[]);checks.push('mobile admin can reach advanced settings; cleanup is collapsed and the old dashboard link still works');await env.ctx.close();
  env=await setup();page=env.page;env.state.favoriteTitle='上个账号的影片';env.state.delayFavorites=true;
  await page.goto(base+'/favorites');for(let tries=0;!env.state.favoriteRequests&&tries<500;tries++) await new Promise(resolve=>setTimeout(resolve,10));assert(env.state.favoriteRequests,'favorites request did not start');env.state.favoriteTitle='当前账号的影片';
  await page.evaluate(async(authURL)=>{const {useAuthStore}=await import(authURL);useAuthStore.getState().setAuth('second-token',{id:'second-viewer',username:'第二位家人',role:'user'})},authURL);
@@ -257,7 +250,7 @@ let browser;
  env.state.favoriteTitle='重新登录后的影片';await page.evaluate(async(authURL)=>{const {useAuthStore}=await import(authURL);useAuthStore.getState().setAuth('fixture-token',{id:'viewer',username:'家人',role:'user'})},authURL);
  await visible(page,'重新登录后的影片');assert.equal(await page.getByText('当前账号的影片',{exact:true}).count(),0);assert.deepEqual(env.errors,[]);checks.push('switching accounts isolates cached favorites and rejects delayed responses from the previous account');await env.ctx.close();
  }
- if(!process.env.FAMILY_DEVICES_ONLY&&!process.env.FAMILY_AGENT_ONLY){
+ if(!process.env.FAMILY_DEVICES_ONLY){
  env=await setup({child:true,mobile:true});page=env.page;let childSockets=0;page.on('websocket',socket=>{if(new URL(socket.url()).pathname==='/api/ws')childSockets++});
  await page.goto(base+'/my');await page.locator('p').filter({hasText:/^儿童空间$/}).waitFor();assert.equal(await page.getByRole('switch',{name:'自动播放下一集',exact:true}).isDisabled(),true);await visible(page,'今天的观看时间');assert.equal(await page.getByRole('link',{name:/观影统计/}).count(),0);assert.equal(await page.getByRole('link',{name:/播放列表/}).count(),0);assert.equal(await page.getByRole('button',{name:'创建家庭邀请',exact:true}).count(),0);
  await page.goto(base+'/admin');await visible(page,'继续观看');assert.equal(new URL(page.url()).pathname,'/');assert.equal(childSockets,0);assert.deepEqual(env.errors,[]);checks.push('child account shows its own space, hides adult management and unsupported menus, and does not connect to global events');
@@ -272,7 +265,7 @@ let browser;
  function Harness(){const [users,setUsers]=useState([{id:'child-test',username:'小朋友',role:'user',created_at:'2026-10-26T00:00:00Z'}]);return React.createElement(UsersTab,{users,setUsers})}
  createRoot(document.getElementById('root')).render(React.createElement(ToastProvider,null,React.createElement(DialogProvider,null,React.createElement(Harness))));
  </script></body></html>`}));
- await page.goto(base+'/family-children-test');await page.getByRole('button',{name:'权限',exact:true}).click();await page.getByRole('switch',{name:'儿童空间',exact:true}).check();
+ await page.goto(base+'/family-children-test');await page.getByRole('button',{name:'管理 小朋友',exact:true}).click();await page.getByRole('button',{name:'权限',exact:true}).click();await page.getByRole('switch',{name:'儿童空间',exact:true}).check();
  assert.equal(await page.locator('select').inputValue(),'G');assert.equal(await page.locator('select option[value="NC-17"]').count(),0);
  await page.getByRole('button',{name:'家里的影片',exact:true}).click();await page.locator('select').selectOption('PG');await page.getByRole('switch',{name:'允许儿童自动连播',exact:true}).check();await page.screenshot({path:path.join(outputDir,'child-permissions.png'),fullPage:true});await page.getByRole('button',{name:'保存权限',exact:true}).click();await visible(page,'权限已保存，该账号需要重新登录');assert.equal(env.state.policy.child_mode,true);assert.equal(env.state.policy.allow_auto_play_next,true);assert.equal(env.state.policy.allowed_libraries,'lib-1');assert.equal(env.state.policy.max_rating_level,'PG');
  checks.push('parent enables child policy with explicit libraries and a child-appropriate rating; adult ratings are unavailable');
@@ -284,7 +277,7 @@ let browser;
  env=await setup({child:true});page=env.page;env.state.familyLimit=60;env.state.denyStart=true;await page.goto(base+'/play/movie-1');await visible(page,'今天的观看时间已用完，休息一下吧');assert.equal(await page.locator('video').count(),0);checks.push('exhausted child budget prevents creating a player before any media loads');await env.ctx.close();
  env=await setup({child:true});page=env.page;env.state.familyLimit=60;env.state.failRenew=true;await page.clock.install();await page.goto(base+'/play/movie-1');await page.waitForFunction(()=>document.querySelector('video')?.currentTime>=30);await page.clock.fastForward(5100);await visible(page,'暂时无法确认观看时间，请稍后重试');assert.equal(await page.locator('video').count(),0);assert.equal(env.state.viewingRenews,1);checks.push('failed authorization renewal stops the limited child player without silently continuing');await env.ctx.close();
  }
- if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_AGENT_ONLY){
+ if(!process.env.FAMILY_CHILDREN_ONLY){
  const paired={};let requester=await setup({unauthenticated:true,pairingState:paired,mobile:true});page=requester.page;await page.goto(base+'/login');await page.getByRole('button',{name:'用已登录设备授权',exact:true}).click();await page.getByRole('textbox',{name:'设备名称',exact:true}).fill('客厅平板');await page.getByRole('button',{name:'生成配对码',exact:true}).click();await visible(page,'ABCD-2345');
  assert((await page.getByRole('img',{name:'用已登录手机扫描的设备配对二维码',exact:true}).getAttribute('src')).startsWith('data:image/svg+xml'));assert.equal(paired.approved,false);assert(!page.url().includes(paired.request.secret));await page.screenshot({path:path.join(outputDir,'device-pairing.png'),fullPage:true});
  const approver=await setup({admin:true,pairingState:paired});const approval=approver.page;await approval.goto(base+'/pair#code=ABCD-2345');await visible(approval,'ABCD-2345');await visible(approval,'客厅平板');assert.equal(paired.approved,false);await visible(approval,'这会让新设备拥有管理员权限。给家人使用时，请先登录对应家人的账号。');await approval.getByRole('button',{name:'确认授权此账号',exact:true}).click();await visible(approval,'已确认，请回到新设备。配对只可使用一次。');
@@ -293,21 +286,6 @@ let browser;
  env=await setup();page=env.page;await page.goto(base+'/my');await visible(page,'客厅设备');await page.getByRole('button',{name:'退出 客厅设备',exact:true}).click();await page.getByRole('button',{name:'取消',exact:true}).click();assert.equal(env.state.deletedDevice,undefined);env.state.failDeviceDelete=true;await page.getByRole('button',{name:'退出 客厅设备',exact:true}).click();await page.getByRole('button',{name:'确认退出',exact:true}).click();await visible(page,'设备未能退出，请重试');await visible(page,'客厅设备');env.state.failDeviceDelete=false;await page.getByRole('button',{name:'退出 客厅设备',exact:true}).click();await page.getByRole('button',{name:'确认退出',exact:true}).click();await visible(page,'设备已退出');assert.equal(env.state.deletedDevice,'device-living');assert.equal(env.state.devices.length,1);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('nowen-auth')).state.isAuthenticated),true);await page.screenshot({path:path.join(outputDir,'login-devices.png'),fullPage:true});await page.getByRole('button',{name:'退出全部设备',exact:true}).click();await page.getByRole('button',{name:'确认退出',exact:true}).click();await page.waitForURL(base+'/login');assert.equal(env.state.revokeAllCount,1);assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('nowen-auth')).state.isAuthenticated),false);assert.deepEqual(env.errors,[]);checks.push('device removal confirms intent, preserves state on failure, leaves other sessions active and signs out after all-device revocation');await env.ctx.close();
  env=await setup();page=env.page;await page.goto(base+'/my');await visible(page,'登录设备');env.state.forceDeviceRevoke=true;await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForURL(base+'/login');await page.getByRole('button',{name:'用已登录设备授权',exact:true}).waitFor();assert.equal(await page.evaluate(()=>JSON.parse(localStorage.getItem('nowen-auth')).state.isAuthenticated),false);assert.deepEqual(env.errors,[]);checks.push('an already-open page detects device revocation on focus and cannot restore access through refresh');await env.ctx.close();
  env=await setup({unauthenticated:true});page=env.page;await page.goto(base+'/pair#code=ABCD-2345');await page.getByRole('link',{name:'登录后确认',exact:true}).click();await page.getByRole('textbox',{name:'用户名',exact:true}).fill('family');await page.getByLabel('密码',{exact:true}).fill('family-password');await page.getByRole('button',{name:'进入深空',exact:true}).click();await visible(page,'ABCD-2345');await page.getByRole('button',{name:'确认授权此账号',exact:true}).waitFor();assert.equal(env.state.pairing.approved,undefined);assert.deepEqual(env.errors,[]);checks.push('QR approval survives password login and still requires a separate explicit review and confirmation');await env.ctx.close();
- }
- if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_DEVICES_ONLY){
- const openAssistant=async page=>{await page.getByRole('button',{name:'打开观影助手',exact:true}).click();return page.getByRole('dialog',{name:'观影助手',exact:true});};
- const say=async(page,text)=>{await page.getByRole('textbox',{name:'告诉助手你想做什么',exact:true}).fill(text);await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByRole('button',{name:'发送消息',exact:true}).waitFor({state:'visible'});await page.getByRole('status').filter({hasText:'正在处理'}).waitFor({state:'hidden'});};
- env=await setup();page=env.page;await page.goto(base+'/');let assistant=await openAssistant(page);await assistant.getByRole('button',{name:'帮我找一部喜剧',exact:true}).click();await visible(page,'2. 家庭影片 2');await say(page,'把第二部加入想看');await visible(page,'已加入想看。');assert.deepEqual(env.state.agentFavorites,[{id:'movie-2',method:'POST'}]);assert.equal(env.state.agentMessages.at(-1).context[1].id,'movie-2');await say(page,'移出想看家庭影片 2');await visible(page,'已移出想看。');assert.equal(env.state.agentFavorites.at(-1).method,'DELETE');await page.screenshot({path:path.join(outputDir,'viewer-assistant-desktop.png'),fullPage:true});assert.deepEqual(env.errors,[]);checks.push('viewer chat returns actionable cards, resolves the second result and acknowledges actual add/remove watchlist API responses');await env.ctx.close();
-
- env=await setup();page=env.page;await page.goto(base+'/');assistant=await openAssistant(page);await assistant.getByRole('button',{name:'帮我找一部喜剧',exact:true}).click();await visible(page,'2. 家庭影片 2');env.state.failAgentFavorite=true;await say(page,'把第二部加入想看');await page.getByText(/未能完成：想看暂时无法保存/).waitFor();assert.equal(await assistant.getByText('已加入想看。',{exact:true}).count(),0);env.state.failAgent=true;await say(page,'找动画');await page.getByText(/未能完成：暂时无法读取影视库/).waitFor();env.state.failAgent=false;env.state.agentFallback=true;env.state.agentEmpty=true;await say(page,'找动画');await visible(page,'智能理解暂时不可用，已使用基础找片。可以简化条件或输入片名。');await visible(page,'没有找到符合条件的影片。可以减少条件，或直接输入片名。');assert.deepEqual(env.errors,[]);checks.push('failed writes and failed chat never claim success; empty and model-fallback results explain a useful next step');await env.ctx.close();
-
- env=await setup({child:true,mobile:true});page=env.page;await page.setViewportSize({width:320,height:720});env.state.preferences.auto_play_next=false;await page.goto(base+'/');assistant=await openAssistant(page);await assistant.getByRole('button',{name:'字体大一点',exact:true}).click();await visible(page,'已开启大字模式。');assert.equal(env.state.preferences.large_text,true);assert.equal(env.state.preferences.auto_play_next,false);assert.equal(await page.evaluate(()=>document.documentElement.dataset.largeText),'true');await say(page,'中文字幕');await visible(page,'字幕偏好已保存为中文。实际显示取决于影片是否有可用字幕。');assert.equal(env.state.preferences.subtitle_language,'zh');env.state.failPreferences=true;await say(page,'关闭字幕');await page.getByText(/未能完成：fixture preferences failure/).waitFor();assert.equal(env.state.preferences.subtitle_language,'zh');assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(outputDir,'viewer-assistant-mobile-large-text.png'),fullPage:true});await page.keyboard.press('Escape');await assistant.waitFor({state:'hidden'});assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute('aria-label')),'打开观影助手');assert.deepEqual(env.errors,[]);checks.push('chat saves large text and subtitle preferences at 320px without changing child autoplay, preserves failed settings and restores keyboard focus');await env.ctx.close();
-
- env=await setup({child:true});page=env.page;env.state.familyLimit=60;await page.goto(base+'/play/movie-1');await page.locator('video').waitFor();await page.waitForFunction(()=>{const v=document.querySelector('video');return v&&v.readyState>=2});assistant=await openAssistant(page);await say(page,'暂停');await visible(page,'已暂停当前网页的播放。');assert.equal(await page.locator('video').evaluate(v=>v.paused),true);await say(page,'继续播放');await visible(page,'已继续当前网页的播放。');assert.equal(await page.locator('video').evaluate(v=>v.paused),false);await say(page,'声音小一点');await visible(page,'当前网页音量为 90%。');assert(Math.abs(await page.locator('video').evaluate(v=>v.volume)-0.9)<0.01);await say(page,'暂停');env.state.denyStart=true;await say(page,'继续播放');await page.getByText(/未能完成：暂时不能继续观看/).waitFor();assert.equal(await page.evaluate(()=>document.querySelector('video')?.paused!==false),true);assert(env.state.viewingStarts>=2);assert.deepEqual(env.errors,[]);checks.push('current-page commands operate a real video node, acknowledge playback and volume, and cannot resume when the child viewing grant is refused');await env.ctx.close();
-
- env=await setup();page=env.page;await page.goto(base+'/');assistant=await openAssistant(page);await assistant.getByRole('button',{name:'帮我找一部喜剧',exact:true}).click();await visible(page,'2. 家庭影片 2');env.state.agentDelay=500;await page.getByRole('textbox',{name:'告诉助手你想做什么',exact:true}).fill('把第二部加入想看');await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.evaluate(async url=>{const {useAuthStore}=await import(url);useAuthStore.getState().setAuth('other-token',{id:'other',username:'另一个家人',role:'user'});},authURL);await page.getByRole('dialog',{name:'观影助手',exact:true}).waitFor({state:'hidden'});await new Promise(resolve=>setTimeout(resolve,700));assistant=await openAssistant(page);assert.equal(await assistant.getByText('2. 家庭影片 2',{exact:true}).count(),0);assert.equal(env.state.agentFavorites,undefined);assert.deepEqual(env.errors,[]);checks.push('switching accounts clears conversation and discards an in-flight old-account action before any write');await env.ctx.close();
-
- env=await setup();page=env.page;await page.goto(base+'/');assistant=await openAssistant(page);await assistant.getByRole('button',{name:'继续看',exact:true}).click();await visible(page,'影片 · 2026 · 8.2 分 · 2 分钟 · 已看到 0 分钟');await assistant.getByRole('button',{name:'接着看',exact:true}).click();await page.waitForURL(base+'/play/movie-1');await page.waitForFunction(()=>{const v=document.querySelector('video');return v&&v.currentTime>=29});assert.deepEqual(env.errors,[]);checks.push('chat resume cards navigate through the existing player and restore saved progress instead of inventing playback success');await env.ctx.close();
  }
  const report = {passed:checks.length,checks,outputDir};
  fs.writeFileSync(path.join(outputDir, 'report.json'), JSON.stringify(report,null,2));

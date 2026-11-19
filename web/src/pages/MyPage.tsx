@@ -1,7 +1,6 @@
 import { Link } from 'react-router-dom'
 import { BarChart3, ChevronRight, Clock, Heart, ListVideo, Moon, Server, Settings, Sun, UserRound } from 'lucide-react'
 import { Button, Section } from '@/components/design-system'
-import FamilyInvite from '@/components/FamilyInvite'
 import ViewingPreferences from '@/components/ViewingPreferences'
 import ChildViewingSummary from '@/components/ChildViewingSummary'
 import LoginDevices from '@/components/LoginDevices'
@@ -62,10 +61,8 @@ export default function MyPage() {
         </div>
       </Section>
 
-      {user?.role === 'admin' && <FamilyInvite />}
-
-      {user?.role === 'admin' && (
-        <Section title="家庭管理">
+      {user?.role === 'admin' && !user.child_mode && (
+        <Section title="家庭管理" className="md:hidden">
           <Link to="/admin" className="group flex min-h-14 items-center gap-3 border-y border-[var(--nv-border-subtle)] py-3">
             <Server size={20} aria-hidden="true" />
             <span className="min-w-0 flex-1">

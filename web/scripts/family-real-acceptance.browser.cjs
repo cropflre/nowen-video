@@ -53,17 +53,6 @@ async function login(role) {
   assert(token);
   return { context, page, token, errors };
 }
-async function assistant(page) {
-  const dialog = page.getByRole('dialog', { name: '观影助手', exact: true });
-  if (!await dialog.isVisible()) await page.getByRole('button', { name: '打开观影助手', exact: true }).click();
-  return dialog;
-}
-async function say(page, message) {
-  await assistant(page);
-  await page.getByRole('textbox', { name: '告诉助手你想做什么', exact: true }).fill(message);
-  await page.getByRole('button', { name: '发送消息', exact: true }).click();
-  await page.getByRole('status').filter({ hasText: '正在处理' }).waitFor({ state: 'hidden' });
-}
 async function visible(page, text) { await page.getByText(text, { exact: true }).last().waitFor({ state: 'visible' }); }
 
 (async () => {
@@ -74,9 +63,8 @@ async function visible(page, text) { await page.getByText(text, { exact: true })
   }
   assert(ready,'isolated backend did not become ready');
   browser = await chromium.launch({ headless: true, args: ['--autoplay-policy=no-user-gesture-required'] });
-  await step('real service health, Agent authentication and unknown API contract', async () => {
+  await step('real service health and unknown API contract', async () => {
     const health = await api('GET', '/health'); assert.equal(health.status, 'ok'); assert(health.capabilities);
-    await api('POST', '/agent/chat', null, { message: '继续看' }, 401);
     await api('GET', '/acceptance-route-that-does-not-exist', null, undefined, 404);
   });
   const admin = await login('admin');
@@ -88,45 +76,35 @@ async function visible(page, text) { await page.getByText(text, { exact: true })
     for (const account of [admin, viewer, child]) { const status = await api('GET', '/users/me/device-status', account.token); assert(status.data.current_id); }
     const profile = await api('GET', '/users/me', child.token); assert.equal(profile.data.child_mode, true); assert.equal(profile.data.viewing_preferences.auto_play_next, false);
   });
-  await step('management inspection uses actual counts and remains administrator-only', async () => {
-    await say(admin.page,'检查影视库');await visible(admin.page,'1 个影视库 · 100 部影片');
-    const summary=(await api('POST','/agent/chat',admin.token,{message:'检查影视库'})).data.management;
-    assert.equal(summary.library_count,1);assert.equal(summary.media_count,100);assert.equal(summary.libraries[0].media_count,100);
-    for(const token of [viewer.token,child.token])await api('POST','/agent/chat',token,{message:'检查影视库'},403);
-    await say(admin.page,'检查任务');await admin.page.getByRole('log',{name:'观影对话'}).getByText(/任务检查完成：/).waitFor();
-  });
-  await step('real catalog search and Agent card operate on current NAS media', async () => {
+  await step('real catalog returns current NAS media', async () => {
     const catalog = await api('GET', '/media/mixed?size=200', viewer.token); assert(catalog.total >= 100);
-    await say(viewer.page, '搜索' + media.title);
-    await viewer.page.getByRole('log', { name: '观影对话' }).getByText('1. ' + media.title, { exact: true }).waitFor();
-    const reply = await api('POST', '/agent/chat', viewer.token, { message: '搜索' + media.title }); assert(reply.data.cards.some(card => card.id === media.id)); assert.equal(reply.data.mode, 'basic');
-    await viewer.page.screenshot({ path: path.join(output, 'real-nas-agent.png'), fullPage: true });
+    const detail = await api('GET', '/media/' + media.id, viewer.token); assert.equal(detail.data.title, media.title);
     return { accessible_media: catalog.total };
   });
-  if (manifest.live_ai) await step('real Bailian model finds actual NAS media through the chat UI', async () => {
-    const result = viewer.page.waitForResponse(response => response.url().endsWith('/api/agent/chat') && response.request().method() === 'POST');
-    await say(viewer.page, '帮我找九十分钟以内的电影');
-    const reply = (await (await result).json()).data;
-    assert.equal(reply.mode, 'ai'); assert.equal(reply.search.max_minutes, 90); assert.equal(reply.search.type, 'movie');
-    assert(reply.cards.length > 0 && reply.cards.every(card => card.kind === 'media' && card.duration > 0 && card.duration <= 90 * 60));
-    return { model: manifest.live_ai, matched_movies: reply.cards.length };
-  });
-  await step('chat watchlist add/remove persists through actual APIs and SQLite', async () => {
-    await say(viewer.page, '收藏' + media.title); await visible(viewer.page, '已加入想看。');
+  await step('watchlist changes from the detail page persist through actual APIs and SQLite', async () => {
+    await viewer.page.goto(manifest.frontend + '/media/' + media.id);
+    await viewer.page.getByRole('button', { name: '加入想看', exact: true }).click();
+    const remove = viewer.page.getByRole('button', { name: '移出想看', exact: true });
+    await remove.waitFor();
     assert.equal((await api('GET', '/users/me/favorites/' + media.id + '/check', viewer.token)).data, true);
-    await say(viewer.page, '取消收藏' + media.title); await visible(viewer.page, '已移出想看。');
+    await remove.click();
+    await viewer.page.getByRole('button', { name: '加入想看', exact: true }).waitFor();
     assert.equal((await api('GET', '/users/me/favorites/' + media.id + '/check', viewer.token)).data, false);
   });
-  await step('chat preferences persist on reload and mobile large text stays usable', async () => {
-    await say(viewer.page, '字体大一点'); await visible(viewer.page, '已开启大字模式。');
-    await say(viewer.page, '中文字幕'); await visible(viewer.page, '字幕偏好已保存为中文。实际显示取决于影片是否有可用字幕。');
+  await step('viewing preferences persist on reload and mobile large text stays usable', async () => {
+    await viewer.page.goto(manifest.frontend + '/my');
+    await viewer.page.getByRole('switch', { name: '大字模式', exact: true }).check();
+    await viewer.page.waitForFunction(() => document.documentElement.dataset.largeText === 'true');
+    const saved = viewer.page.waitForResponse(response => new URL(response.url()).pathname === '/api/users/me' && response.request().method() === 'PUT' && response.ok());
+    await viewer.page.getByRole('combobox', { name: '默认字幕', exact: true }).selectOption('zh');
+    await saved;
     await viewer.page.reload();
     await viewer.page.waitForFunction(() => document.documentElement.dataset.largeText === 'true');
     const profile = await api('GET', '/users/me', viewer.token); assert.equal(profile.data.viewing_preferences.subtitle_language, 'zh');
-    await viewer.page.setViewportSize({ width: 320, height: 720 }); await assistant(viewer.page);
+    await viewer.page.setViewportSize({ width: 320, height: 720 });
     assert(await viewer.page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     await viewer.page.screenshot({ path: path.join(output, 'real-nas-mobile.png'), fullPage: true });
-    await viewer.page.keyboard.press('Escape'); await viewer.page.setViewportSize({ width: 1440, height: 900 });
+    await viewer.page.setViewportSize({ width: 1440, height: 900 });
   });
   await step('real SMB MKV plays through automatic browser playback preparation', async () => {
     const info = await api('GET', '/stream/' + media.id + '/info', viewer.token);
@@ -135,15 +113,6 @@ async function visible(page, text) { await page.getByText(text, { exact: true })
     const playback = await viewer.page.locator('video').evaluate(video => ({ time: video.currentTime, width: video.videoWidth, height: video.videoHeight, ready: video.readyState }));
     assert(playback.width > 0);
     return { first_decoded_playback_ms: Date.now() - started, method: info.data.playback_plan?.method, ...playback };
-  });
-  await step('chat pause/resume and volume acknowledge the real NAS video', async () => {
-    await say(viewer.page, '暂停'); await visible(viewer.page, '已暂停当前网页的播放。'); assert.equal(await viewer.page.locator('video').evaluate(video => video.paused), true);
-    const input = viewer.page.getByRole('textbox', { name: '告诉助手你想做什么', exact: true }); await input.fill(''); await input.press('k'); await input.press('Space');
-    assert.equal(await viewer.page.locator('video').evaluate(video => video.paused), true, 'typing must not trigger playback shortcuts');
-    await say(viewer.page, '继续播放'); await visible(viewer.page, '已继续当前网页的播放。'); assert.equal(await viewer.page.locator('video').evaluate(video => video.paused), false);
-    await say(viewer.page, '静音'); await visible(viewer.page, '当前网页已静音。'); assert.equal(await viewer.page.locator('video').evaluate(video => video.muted), true);
-    await viewer.page.keyboard.press('Escape');
-    assert.equal(new URL(viewer.page.url()).pathname, '/play/' + media.id, 'Escape should close the assistant and stay in the player');
   });
   await step('real watching progress survives leaving and re-entering the player', async () => {
     await viewer.page.waitForFunction(() => document.querySelector('video')?.currentTime >= 8, null, { timeout: 30000 });
@@ -158,10 +127,9 @@ async function visible(page, text) { await page.getByText(text, { exact: true })
     await viewer.page.goto(manifest.frontend + '/my');
     return { persisted_seconds: progress.position };
   });
-  await step('child real catalog and direct media/stream/Agent requests enforce reviewed scope', async () => {
+  await step('child real catalog and direct media/stream requests enforce reviewed scope', async () => {
     const list = await api('GET', '/media/mixed?size=200', child.token); assert.equal(list.total, 1);
     for (const route of ['/media/' + hidden.id, '/stream/' + hidden.id + '/info', '/stream/' + hidden.id + '/direct']) await api('GET', route, child.token, undefined, [403, 404]);
-    const reply = await api('POST', '/agent/chat', child.token, { message: '播放第二部', context: [{ id: media.id, kind: 'media' }, { id: hidden.id, kind: 'media' }] }); assert.equal(reply.data.action, undefined);
     assert.equal((await api('GET', '/users/me/family-controls', child.token)).data.daily_limit_seconds, 60);
   });
   await step('limited child plays real NAS media and server stops it at budget expiry', async () => {

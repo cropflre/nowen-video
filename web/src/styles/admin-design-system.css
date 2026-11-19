@@ -156,3 +156,15 @@
   .nv-admin-panel-header,
   .nv-admin-panel-body { padding-inline: 0; }
 }
+
+.nv-admin-simple-header {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nv-space-2);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.nv-admin-simple-header > .nv-admin-header-copy { width: auto; }
+.nv-admin-simple-header > .nv-admin-toolbar { width: auto; margin-inline-start: auto; }
