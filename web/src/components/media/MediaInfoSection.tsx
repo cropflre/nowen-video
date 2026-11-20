@@ -1,10 +1,13 @@
 import { useState, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { streamApi } from '@/api'
 import type { Media, MediaPlayInfo, MediaPerson } from '@/types'
 import { Button, EmptyState, Tag } from '@/components/design-system'
+import { PersonCard } from '@/ui'
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Info, Shapes, Tags } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
+import { formatDuration, getDisplayDurationSeconds } from '@/utils/format'
 import DetailSectionTitle from './DetailSectionTitle'
 
 interface MediaInfoSectionProps {
@@ -13,18 +16,9 @@ interface MediaInfoSectionProps {
   persons: MediaPerson[]
 }
 
-function formatRuntime(minutes: number): string {
-  if (!minutes || minutes <= 0) return ''
-  const hours = Math.floor(minutes / 60)
-  const mins = minutes % 60
-  if (hours === 0) return `${mins}min`
-  if (mins === 0) return `${hours}h`
-  return `${hours}h ${mins}min`
-}
-
 function DetailItem({ label, children, wide = false }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
   return (
-    <div className={clsx('min-w-0 py-2.5', wide && 'sm:col-span-2')}>
+    <div className={clsx('min-w-0 border-b border-[var(--nv-border-subtle)] py-2.5', wide && 'sm:col-span-2')}>
       <div className="text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{label}</div>
       <div className="mt-1 min-w-0 text-[13px] leading-5 text-[var(--nv-text-secondary)]">{children}</div>
     </div>
@@ -66,10 +60,11 @@ function SourceLink({ href, children }: { href: string; children: ReactNode }) {
 
 export default function MediaInfoSection({ media, playInfo: _playInfo, persons }: MediaInfoSectionProps) {
   const { t } = useTranslation()
-  const [plotExpanded, setPlotExpanded] = useState(false)
+  const navigate = useNavigate()
   const [origPlotExpanded, setOrigPlotExpanded] = useState(false)
-  const isLongPlot = (media.overview?.length || 0) > 200
   const isLongOrigPlot = (media.original_plot?.length || 0) > 120
+  // 展示用片长与 Hero 共用同一值：文件实际时长优先，缺失时用刮削片长换算。
+  const displaySeconds = getDisplayDurationSeconds(media.duration, media.runtime)
 
   const directors = persons.filter((person) => person.role === 'director')
   const actors = persons.filter((person) => person.role === 'actor')
@@ -85,11 +80,12 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
 
   const hasMetaTable = !!(
     extractedNum || media.maker || media.publisher || media.label || media.studio || media.release_date ||
-    media.premiered || media.mpaa || media.country || media.language || media.runtime || media.website ||
+    media.premiered || media.mpaa || media.country || media.language || displaySeconds > 0 || media.website ||
     directors.length > 0 || actors.length > 0
   )
 
-  const hasIntro = !!(media.tagline || media.outline || media.overview || media.original_plot)
+  // 简介全文只在 Hero 出现一次，这里只留 Hero 没有的补充文字（标语/梗概/原文剧情）。
+  const hasIntroExtras = !!(media.tagline || media.outline || media.original_plot)
   const hasClassifications = genreList.length > 0 || (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
 
   return (
@@ -101,7 +97,7 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
         </div>
       )}
 
-      {hasIntro ? (
+      {hasIntroExtras ? (
         <section className="nv-media-info-intro py-5 sm:py-6">
           <div className="mb-4">
             <DetailSectionTitle icon={<FileText size={17} />}>影片简介</DetailSectionTitle>
@@ -124,21 +120,6 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
               </div>
             )}
 
-            {media.overview && (
-              <div>
-                {media.outline && media.outline !== media.overview && <SectionLabel>{t('mediaInfo.plot')}</SectionLabel>}
-                <p className={clsx('text-sm leading-7 text-[var(--nv-text-secondary)]', !plotExpanded && isLongPlot && 'line-clamp-3')}>
-                  {media.overview}
-                </p>
-                {isLongPlot && (
-                  <Button type="button" variant="ghost" size="sm" className="mt-1.5" onClick={() => setPlotExpanded((value) => !value)}>
-                    {plotExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-                    {plotExpanded ? t('mediaInfo.collapse') : t('mediaInfo.expandAll')}
-                  </Button>
-                )}
-              </div>
-            )}
-
             {media.original_plot && (
               <div className="border-t border-[var(--nv-border-subtle)] pt-4">
                 <SectionLabel>{t('mediaInfo.originalPlot')}</SectionLabel>
@@ -155,14 +136,14 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
             )}
           </div>
         </section>
-      ) : (
+      ) : !media.overview ? (
         <EmptyState
           className="nv-detail-tab-empty-state"
           icon={<FileText size={23} aria-hidden="true" />}
           title="暂无简介"
           description="当前媒体暂未提供剧情简介或相关文字信息。"
         />
-      )}
+      ) : null}
 
       {hasClassifications && (
         <section className="nv-media-info-classifications grid gap-5 py-5 sm:grid-cols-2 sm:py-6">
@@ -198,49 +179,56 @@ export default function MediaInfoSection({ media, playInfo: _playInfo, persons }
         <section className="nv-media-info-metadata py-5 sm:py-6">
           <div className="mb-2 flex items-center justify-between gap-3">
             <DetailSectionTitle icon={<Info size={17} />}>影片详情</DetailSectionTitle>
-            <span className="text-[10px] uppercase tracking-[0.1em] text-[var(--nv-text-tertiary)]">Metadata</span>
           </div>
 
-          <div className="nv-media-info-grid grid divide-y divide-[var(--nv-border-subtle)] text-sm sm:grid-cols-2 sm:divide-y-0">
-            <div className="nv-media-info-column divide-y divide-[var(--nv-border-subtle)] sm:pr-8">
-              {extractedNum && <DetailItem label={t('mediaInfo.num')}><span className="font-mono tracking-wide">{extractedNum}</span></DetailItem>}
-              {directors.length > 0 && <DetailItem label={t('mediaInfo.director')}>{directors.map((director) => director.person?.name || '').filter(Boolean).join(' / ')}</DetailItem>}
-              {media.runtime > 0 && <DetailItem label={t('mediaInfo.runtime')}>{formatRuntime(media.runtime)} <span className="text-xs text-[var(--nv-text-tertiary)]">({t('mediaInfo.runtimeMinutes', { minutes: media.runtime })})</span></DetailItem>}
-              {(media.release_date || media.premiered) && <DetailItem label={t('mediaInfo.releaseDate')}>{media.release_date || media.premiered}</DetailItem>}
-              {media.mpaa && <DetailItem label={t('mediaInfo.mpaa')}>{media.mpaa}</DetailItem>}
-              {media.country && <DetailItem label={t('mediaInfo.country')}>{media.country}{media.country_code && <span className="ml-1 text-xs text-[var(--nv-text-tertiary)]">({media.country_code})</span>}</DetailItem>}
-            </div>
-
-            <div className="nv-media-info-column divide-y divide-[var(--nv-border-subtle)] sm:border-l sm:border-[var(--nv-border-subtle)] sm:pl-8">
-              {media.language && <DetailItem label={t('mediaInfo.language')}>{media.language}</DetailItem>}
-              {media.studio && <DetailItem label={t('mediaInfo.studio')}>{media.studio}</DetailItem>}
-              {media.maker && media.maker !== media.studio && <DetailItem label={t('mediaInfo.maker')}>{media.maker}</DetailItem>}
-              {media.publisher && <DetailItem label={t('mediaInfo.publisher')}>{media.publisher}</DetailItem>}
-              {media.label && media.label !== media.publisher && <DetailItem label={t('mediaInfo.label')}>{media.label}</DetailItem>}
-              {media.website && (
-                <DetailItem label={t('mediaInfo.website')}>
-                  <a href={media.website} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 text-[var(--nv-text-secondary)] hover:text-[var(--nv-text-primary)]">
-                    <span className="truncate">{media.website}</span><ExternalLink size={12} className="shrink-0" aria-hidden="true" />
-                  </a>
-                </DetailItem>
-              )}
-            </div>
+          {/* 扁平流式网格：不再分固定左右两栏，某项缺失时后面的项自动补位，不留空栏。 */}
+          <div className="nv-media-info-grid grid gap-x-8 text-sm sm:grid-cols-2">
+            {extractedNum && <DetailItem label={t('mediaInfo.num')}><span className="font-mono tracking-wide">{extractedNum}</span></DetailItem>}
+            {directors.length > 0 && <DetailItem label={t('mediaInfo.director')}>{directors.map((director) => director.person?.name || '').filter(Boolean).join(' / ')}</DetailItem>}
+            {displaySeconds > 0 && <DetailItem label={t('mediaInfo.runtime')}>{formatDuration(displaySeconds)}</DetailItem>}
+            {(media.release_date || media.premiered) && <DetailItem label={t('mediaInfo.releaseDate')}>{media.release_date || media.premiered}</DetailItem>}
+            {media.mpaa && <DetailItem label={t('mediaInfo.mpaa')}>{media.mpaa}</DetailItem>}
+            {media.country && <DetailItem label={t('mediaInfo.country')}>{media.country}{media.country_code && <span className="ml-1 text-xs text-[var(--nv-text-tertiary)]">({media.country_code})</span>}</DetailItem>}
+            {media.language && <DetailItem label={t('mediaInfo.language')}>{media.language}</DetailItem>}
+            {media.studio && <DetailItem label={t('mediaInfo.studio')}>{media.studio}</DetailItem>}
+            {media.maker && media.maker !== media.studio && <DetailItem label={t('mediaInfo.maker')}>{media.maker}</DetailItem>}
+            {media.publisher && <DetailItem label={t('mediaInfo.publisher')}>{media.publisher}</DetailItem>}
+            {media.label && media.label !== media.publisher && <DetailItem label={t('mediaInfo.label')}>{media.label}</DetailItem>}
+            {media.website && (
+              <DetailItem label={t('mediaInfo.website')}>
+                <a href={media.website} target="_blank" rel="noopener noreferrer" className="inline-flex max-w-full items-center gap-1 text-[var(--nv-text-secondary)] hover:text-[var(--nv-text-primary)]">
+                  <span className="truncate">{media.website}</span><ExternalLink size={12} className="shrink-0" aria-hidden="true" />
+                </a>
+              </DetailItem>
+            )}
 
             {actors.length > 0 && (
-              <div className="border-t border-[var(--nv-border-subtle)] sm:col-span-2">
-                <DetailItem label={t('mediaInfo.actors')} wide>
-                  <span className="line-clamp-2">
-                    {actors.slice(0, 8).map((actor) => {
-                      const name = actor.person?.name || ''
-                      return actor.character ? `${name}${t('mediaInfo.asCharacter', { character: actor.character })}` : name
-                    }).filter(Boolean).join(' / ')}
-                  </span>
-                </DetailItem>
+              <div className="py-2.5 sm:col-span-2">
+                <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{t('mediaInfo.actors')}</div>
+                <div className="nv-cast-rail" role="list" aria-label={t('mediaInfo.actors')}>
+                  {actors.slice(0, 8).map((actor) => {
+                    const name = actor.person?.name || ''
+                    if (!name) return null
+                    const subtitle = actor.character
+                      ? t('mediaInfo.asCharacter', { character: actor.character })
+                      : undefined
+                    return (
+                      <PersonCard
+                        key={actor.id}
+                        name={name}
+                        subtitle={subtitle}
+                        imageSrc={actor.person?.id ? streamApi.getPersonProfileUrl(actor.person.id) : null}
+                        onClick={actor.person_id ? () => navigate(`/person/${actor.person_id}`) : undefined}
+                        ariaLabel={subtitle ? `${name} · ${subtitle}` : name}
+                      />
+                    )
+                  })}
+                </div>
               </div>
             )}
 
             {(media.tmdb_id > 0 || media.douban_id || media.bangumi_id > 0) && (
-              <div className="border-t border-[var(--nv-border-subtle)] py-3 sm:col-span-2">
+              <div className="py-3 sm:col-span-2">
                 <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{t('mediaInfo.dataSource')}</div>
                 <div className="flex flex-wrap gap-1.5">
                   {media.tmdb_id > 0 && <SourceLink href={`https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}`}>TMDb #{media.tmdb_id}</SourceLink>}

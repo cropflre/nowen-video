@@ -496,6 +496,9 @@ const enUS: Record<string, string> = {
 
   // ==================== Media Detail (extra) ====================
   'mediaDetail.loadFailed': 'Failed to load media details',
+  'mediaDetail.watchedPercent': 'Watched {percent}%',
+  'mediaDetail.lastWatchedAt': 'Last watched to {position} / {duration}',
+  'mediaDetail.editRating': 'Change rating',
   'mediaDetail.favoriteFailed': 'Favorite operation failed',
   'mediaDetail.scrapeSuccess': 'Metadata scraped successfully',
   'mediaDetail.scrapeFailed': 'Metadata scraping failed, please check TMDb config or network/proxy',

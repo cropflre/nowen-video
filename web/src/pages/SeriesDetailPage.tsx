@@ -19,7 +19,7 @@ import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import type { Media, MediaPerson, SeasonInfo, Series, WatchHistory } from '@/types'
-import { ChevronDown, ChevronLeft, ChevronUp, FileText, Pencil, RefreshCw } from 'lucide-react'
+import { ChevronLeft, FileText, Pencil, RefreshCw } from 'lucide-react'
 
 const HISTORY_PAGE_SIZE = 50
 const HISTORY_FETCH_CONCURRENCY = 6
@@ -146,7 +146,6 @@ export default function SeriesDetailPage() {
   const [seasons, setSeasons] = useState<SeasonInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [isFavorited, setIsFavorited] = useState(false)
-  const [overviewExpanded, setOverviewExpanded] = useState(false)
   const [activeTab, setActiveTab] = useState<SeriesDetailTab>('episodes')
   const [posterVersion, setPosterVersion] = useState<number>(() => Date.now())
   const [historyMap, setHistoryMap] = useState<Record<string, WatchHistory>>({})
@@ -192,7 +191,6 @@ export default function SeriesDetailPage() {
     setLoading(true)
     setHistoryMap({})
     setIsFavorited(false)
-    setOverviewExpanded(false)
     setActiveTab('episodes')
 
     Promise.all([seriesApi.detail(id), seriesApi.seasons(id)])
@@ -481,7 +479,6 @@ export default function SeriesDetailPage() {
     )
   }
 
-  const isLongOverview = (series.overview?.length || 0) > 240
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
 
   return (
@@ -566,20 +563,8 @@ export default function SeriesDetailPage() {
             </section>
 
             <section id="series-overview" className="nv-detail-content-section nv-detail-tab-panel nv-series-overview-panel" role="tabpanel" tabIndex={0} aria-labelledby="series-tab-overview" hidden={activeTab !== 'overview'}>
-              {series.overview ? (
-                <div className="nv-series-overview-copy">
-                  <span className="nv-series-tab-eyebrow">OVERVIEW</span>
-                  <h2>剧情简介</h2>
-                  {series.orig_title && series.orig_title !== series.title && <p className="nv-series-overview-original">{series.orig_title}</p>}
-                  <p className={!overviewExpanded && isLongOverview ? 'line-clamp-4' : undefined}>{series.overview}</p>
-                  {isLongOverview && (
-                    <Button type="button" variant="ghost" size="sm" className="nv-series-overview-toggle" onClick={() => setOverviewExpanded((expanded) => !expanded)}>
-                      {overviewExpanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
-                      {overviewExpanded ? '收起' : '展开全部'}
-                    </Button>
-                  )}
-                </div>
-              ) : (
+              {/* 简介全文只在 Hero 出现一次（可展开），这里只保留无简介时的空态与类型。 */}
+              {!series.overview && (
                 <EmptyState className="nv-detail-tab-empty-state" icon={<FileText size={23} aria-hidden="true" />} title="暂无简介" description="当前剧集暂未提供剧情简介或相关文字信息。" />
               )}
 

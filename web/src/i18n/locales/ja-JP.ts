@@ -495,6 +495,9 @@ const jaJP: Record<string, string> = {
 
   // ==================== メディア詳細（追加） ====================
   'mediaDetail.loadFailed': 'メディア詳細の読み込みに失敗しました',
+  'mediaDetail.watchedPercent': '視聴済み {percent}%',
+  'mediaDetail.lastWatchedAt': '前回 {position} / {duration} まで視聴',
+  'mediaDetail.editRating': 'レーティングを変更',
   'mediaDetail.favoriteFailed': 'お気に入り操作に失敗しました',
   'mediaDetail.scrapeSuccess': 'メタデータのスクレイプに成功しました',
   'mediaDetail.scrapeFailed': 'メタデータのスクレイプに失敗しました。TMDb 設定またはネットワーク/プロキシを確認してください',

@@ -15,6 +15,12 @@ const familyBundle = await build({
 })
 const { FAMILY_RATING_AGE_KEY, suggestFamilyRating, mpaaToRatingLevel, isMpaaAllowedForChild, remainingMinutesFromSeconds, isLowRemaining } = await import(`data:text/javascript;base64,${Buffer.from(familyBundle.outputFiles[0].contents).toString('base64')}`)
 
+const formatBundle = await build({
+  entryPoints: [new URL('../src/utils/format.ts', import.meta.url).pathname],
+  bundle: true, platform: 'node', format: 'esm', write: false,
+})
+const { getDisplayDurationSeconds } = await import(`data:text/javascript;base64,${Buffer.from(formatBundle.outputFiles[0].contents).toString('base64')}`)
+
 test('saved progress resumes unfinished media, but completed media restarts', () => {
   assert.equal(resumePosition({ position: 450, duration: 1200, completed: false }), 450)
   assert.equal(resumePosition({ position: 450, duration: 1200, completed: true }), 0)
@@ -156,4 +162,11 @@ test('subtitle preference matches language names and codes without accepting unr
   assert.equal(subtitleMatchesLanguage('French', 'en'), false)
   assert.equal(subtitleMatchesLanguage('undefined', 'en'), false)
   assert.equal(subtitleMatchesLanguage('', 'zh'), false)
+})
+
+test('display duration prefers the probed file duration over scraped runtime', () => {
+  assert.equal(getDisplayDurationSeconds(5160, 148), 5160)
+  assert.equal(getDisplayDurationSeconds(0, 148), 8880)
+  assert.equal(getDisplayDurationSeconds(0, 0), 0)
+  assert.equal(getDisplayDurationSeconds(-1, -2), 0)
 })

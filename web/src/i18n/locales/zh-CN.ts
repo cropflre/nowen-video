@@ -547,6 +547,9 @@ const zhCN: Record<string, string> = {
 
   // ==================== 媒体详情（补充） ====================
   'mediaDetail.loadFailed': '加载媒体详情失败',
+  'mediaDetail.watchedPercent': '已看 {percent}%',
+  'mediaDetail.lastWatchedAt': '上次观看至 {position} / {duration}',
+  'mediaDetail.editRating': '修改分级',
   'mediaDetail.favoriteFailed': '未能更新想看列表，请重试',
   'mediaDetail.scrapeSuccess': '元数据刮削成功',
   'mediaDetail.scrapeFailed': '元数据刮削失败，请检查 TMDb 配置或网络/代理',

@@ -1,7 +1,15 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 
 export type HeroHeadingLevel = 'h1' | 'h2'
+
+export interface HeroOverviewToggle {
+  expanded: boolean
+  onToggle: () => void
+  expandLabel: string
+  collapseLabel: string
+}
 
 export interface HeroContentProps {
   title: ReactNode
@@ -10,6 +18,8 @@ export interface HeroContentProps {
   meta?: ReactNode
   badges?: ReactNode
   overview?: ReactNode
+  /** 传入时简介可展开/收起；不传则保持原有 3 行截断、无切换按钮。 */
+  overviewToggle?: HeroOverviewToggle
   supplemental?: ReactNode
   actions?: ReactNode
   headingLevel?: HeroHeadingLevel
@@ -24,6 +34,7 @@ export function HeroContent({
   meta,
   badges,
   overview,
+  overviewToggle,
   supplemental,
   actions,
   headingLevel = 'h1',
@@ -69,9 +80,21 @@ export function HeroContent({
       )}
 
       {overview && (
-        <div className="nv-media-hero-overview mt-4 line-clamp-3 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]">
+        <div className={clsx('nv-media-hero-overview mt-4 max-w-4xl text-sm leading-7 text-[var(--nv-text-secondary)]', !overviewToggle?.expanded && 'line-clamp-3')}>
           {overview}
         </div>
+      )}
+
+      {overview && overviewToggle && (
+        <button
+          type="button"
+          onClick={overviewToggle.onToggle}
+          aria-expanded={overviewToggle.expanded}
+          className="nv-media-hero-overview-toggle mt-1.5 inline-flex w-fit items-center gap-1 text-xs font-medium text-[var(--nv-text-secondary)] transition-colors hover:text-[var(--nv-text-primary)]"
+        >
+          {overviewToggle.expanded ? <ChevronUp size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+          {overviewToggle.expanded ? overviewToggle.collapseLabel : overviewToggle.expandLabel}
+        </button>
       )}
 
       {supplemental && <div className="nv-media-hero-supplemental">{supplemental}</div>}

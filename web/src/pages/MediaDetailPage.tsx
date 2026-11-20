@@ -1,4 +1,4 @@
-import FamilyRatingEditor from '@/components/media/FamilyRatingEditor'
+import DetailStatusStrip from '@/components/media/DetailStatusStrip'
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { adminApi, mediaApi, playlistApi, recommendApi, streamApi, userApi } from '@/api'
@@ -21,7 +21,6 @@ import {
   CollectionCarousel,
   DetailSectionTitle,
   HeroSection,
-  MediaDetailSidebar,
   MediaDetailTechOverview,
   MediaInfoSection,
   MediaTechSpecs,
@@ -497,11 +496,7 @@ export default function MediaDetailPage() {
         onDelete={() => setShowDeleteConfirm(true)}
       />
 
-      {isAdmin && (
-        <div className="mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pt-5">
-          <FamilyRatingEditor id={media.id} mpaa={media.mpaa} tmdbRatingData={media.tmdb_rating_data} />
-        </div>
-      )}
+      <DetailStatusStrip media={media} watchProgress={watchProgress} isAdmin={isAdmin} />
 
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
@@ -576,7 +571,6 @@ export default function MediaDetailPage() {
             </details>
           </main>
 
-          <MediaDetailSidebar media={media} playInfo={playInfo} techSpecs={techSpecs} fileInfo={fileInfo} playbackStats={playbackStats} isAdmin={isAdmin} onManageSubtitles={() => setShowSubtitleManager(true)} />
         </div>
       </div>
 

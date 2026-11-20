@@ -8,7 +8,7 @@ import { Button, Tag, buttonClassName } from '@/components/design-system'
 import { HeroContent, MediaArtwork } from '@/ui'
 import { useTranslation } from '@/i18n'
 import { episodeLabel, resumePosition } from '@/utils/viewing'
-import { formatDuration, formatDurationShort, formatTime } from '@/utils/format'
+import { formatDuration, formatDurationShort, getDisplayDurationSeconds } from '@/utils/format'
 import type { Media, MediaPlayInfo, Playlist, WatchHistory } from '@/types'
 import {
   Check,
@@ -119,13 +119,15 @@ export default function HeroSection({
     : media.title
 
   const isResume = !!watchProgress && resumePosition(watchProgress) > 0
-  const watchDuration = watchProgress?.duration || media.duration || 0
-  const watchPercent = watchProgress && watchDuration > 0
-    ? Math.min(100, Math.max(0, Math.round((watchProgress.position / watchDuration) * 100)))
-    : 0
+  // 展示用时长：文件实际时长（秒）优先，缺失时用刮削片长（分钟）换算。
+  // 详情区用同一值，不再各说各话。
+  const displaySeconds = getDisplayDurationSeconds(media.duration, media.runtime)
   const playLabel = isResume
     ? t('hero.continuePlayAt', { time: formatDurationShort(watchProgress.position) })
     : t('media.play')
+
+  const [overviewExpanded, setOverviewExpanded] = useState(false)
+  const isLongOverview = (media.overview?.length || 0) > 200
 
   const episodeEyebrow = media.media_type === 'episode' && media.series_id ? (
     <Link
@@ -331,8 +333,7 @@ export default function HeroSection({
                 </span>
               )}
               {media.year > 0 && <span>{media.year}</span>}
-              {media.duration > 0 && <span>{formatDuration(media.duration)}</span>}
-              {media.resolution && <Tag tone="quality">{media.resolution}</Tag>}
+              {displaySeconds > 0 && <span>{formatDuration(displaySeconds)}</span>}
               {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
                 <Link
                   key={genre}
@@ -342,21 +343,15 @@ export default function HeroSection({
                   <Tag>{genre.trim()}</Tag>
                 </Link>
               ))}
-              {media.video_codec && <Tag>{media.video_codec}</Tag>}
-              {media.country && <span>{media.country}</span>}
             </>
           )}
           overview={media.overview || undefined}
-          supplemental={watchProgress && watchDuration > 0 ? (
-            <div className="nv-detail-hero-watch-progress" aria-label={`已观看 ${watchPercent}%`}>
-              <div className="nv-detail-hero-watch-progress-label">
-                上次观看至 {formatTime(watchProgress.position)} / {formatTime(watchDuration)}
-              </div>
-              <div className="nv-detail-hero-watch-progress-track">
-                <span style={{ width: `${watchPercent}%` }} />
-              </div>
-            </div>
-          ) : undefined}
+          overviewToggle={isLongOverview ? {
+            expanded: overviewExpanded,
+            onToggle: () => setOverviewExpanded((value) => !value),
+            expandLabel: t('mediaInfo.expandAll'),
+            collapseLabel: t('mediaInfo.collapse'),
+          } : undefined}
           actions={heroActions}
         />
       </div>

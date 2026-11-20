@@ -21,6 +21,17 @@ export function formatDuration(seconds: number): string {
   return `${m} 分钟`
 }
 
+/**
+ * 详情页展示用时长（秒）。
+ * 文件实际时长（duration，探针秒数）优先；缺失时用刮削片长（runtime，分钟）换算；
+ * 两者都没有返回 0，不要编造时长。
+ */
+export function getDisplayDurationSeconds(durationSeconds: number, runtimeMinutes: number): number {
+  if (durationSeconds > 0) return durationSeconds
+  if (runtimeMinutes > 0) return runtimeMinutes * 60
+  return 0
+}
+
 /** 格式化时长（秒 → "Xh Ym" 短格式） */
 export function formatDurationShort(seconds: number): string {
   if (!seconds) return '-'

@@ -155,11 +155,10 @@
   color: var(--nv-text-primary);
 }
 
-/* Hills Lite puts the primary play/action strip before the editorial title. */
+/* 视觉顺序与 DOM 顺序一致：标题在上、操作按钮在下，播放按钮不再被裁到画面外。 */
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions {
-  order: 1;
-  gap: 5px;
-  margin: 0 0 9px;
+  gap: 8px;
+  margin: 16px 0 0;
 }
 .nv-media-detail-page .nv-detail-hero .nv-hero-content-eyebrow { order: 2; }
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-title { order: 3; }
@@ -167,6 +166,7 @@
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-meta { order: 5; }
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-badges { order: 6; }
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview { order: 7; }
+.nv-media-detail-page .nv-detail-hero .nv-media-hero-overview-toggle { order: 7; }
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-supplemental { order: 8; }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-title {
@@ -265,15 +265,25 @@
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions .nv-button,
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions a {
-  min-height: 31px;
-  height: 31px;
-  padding-inline: 10px;
-  border-radius: 5px;
-  font-size: 10.5px;
+  min-height: 40px;
+  height: 40px;
+  padding-inline: 14px;
+  border-radius: 8px;
+  font-size: 13px;
 }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions a[data-variant="primary"] {
   min-width: 154px;
+  min-height: 44px;
+  height: 44px;
+  padding-inline: 20px;
+  font-size: 14px;
+}
+
+.nv-media-hero-overview-toggle:focus-visible {
+  outline: 2px solid var(--nv-action-primary);
+  outline-offset: 2px;
+  border-radius: 0.25rem;
 }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions .nv-button--secondary,
@@ -592,7 +602,8 @@
   .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions a[data-variant='primary'] { min-width: 0; }
   .nv-media-detail-page .nv-detail-subtitle-tab { align-items: flex-start; flex-wrap: wrap; gap: 10px; }
   .nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle,
-  .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview { display: none; }
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview,
+  .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview-toggle { display: none; }
   .nv-media-detail-page .nv-detail-content-shell { padding-top: 12px; }
   .nv-media-detail-page .nv-detail-section-tabs {
     position: sticky;

@@ -38,6 +38,9 @@ export default function SeriesHero({
   const [menuOpen, setMenuOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const genres = (series.genres || '').split(',').map((item) => item.trim()).filter(Boolean)
+  // 简介全文只在 Hero 出现一次（可展开），简介 tab 不再重复全文。
+  const [overviewExpanded, setOverviewExpanded] = useState(false)
+  const isLongOverview = (series.overview?.length || 0) > 200
 
   useEffect(() => {
     setImageLoaded(false)
@@ -135,6 +138,12 @@ export default function SeriesHero({
             </Link>
           ))}
           overview={series.overview || undefined}
+          overviewToggle={isLongOverview ? {
+            expanded: overviewExpanded,
+            onToggle: () => setOverviewExpanded((value) => !value),
+            expandLabel: '展开全部',
+            collapseLabel: '收起',
+          } : undefined}
           actions={actions}
         />
       </div>
