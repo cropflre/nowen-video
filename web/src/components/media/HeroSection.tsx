@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { streamApi } from '@/api'
 import { usePosterVersion } from '@/stores/mediaRefresh'
 import { useToast } from '@/components/Toast'
-import { Button, Tag, buttonClassName } from '@/components/design-system'
+import { Button, buttonClassName } from '@/components/design-system'
 import { HeroContent, MediaArtwork } from '@/ui'
 import { useTranslation } from '@/i18n'
 import { episodeLabel, resumePosition } from '@/utils/viewing'
@@ -334,15 +334,6 @@ export default function HeroSection({
               )}
               {media.year > 0 && <span>{media.year}</span>}
               {displaySeconds > 0 && <span>{formatDuration(displaySeconds)}</span>}
-              {media.genres && media.genres.split(',').slice(0, 3).map((genre) => (
-                <Link
-                  key={genre}
-                  to={`/search?q=${encodeURIComponent(genre.trim())}`}
-                  className="transition-opacity hover:opacity-80"
-                >
-                  <Tag>{genre.trim()}</Tag>
-                </Link>
-              ))}
             </>
           )}
           overview={media.overview || undefined}

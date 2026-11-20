@@ -21,8 +21,9 @@ import {
   CollectionCarousel,
   DetailSectionTitle,
   HeroSection,
+  MediaDetailsSection,
   MediaDetailTechOverview,
-  MediaInfoSection,
+  MediaSynopsisSection,
   MediaTechSpecs,
   RecommendationCarousel,
   TrailerModal,
@@ -35,15 +36,12 @@ import SubtitleManager from '@/components/SubtitleManager'
 import SubtitleSearchPanel from '@/components/SubtitleSearchPanel'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
 import { Button, EmptyState } from '@/components/design-system'
-import { DetailTabs } from '@/ui'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
 import { ArrowLeft, Captions } from 'lucide-react'
-
-type DetailTab = 'overview' | 'cast' | 'subtitles' | 'related'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -79,7 +77,6 @@ export default function MediaDetailPage() {
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
   const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
-  const [activeTab, setActiveTab] = useState<DetailTab>('overview')
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
@@ -116,7 +113,6 @@ export default function MediaDetailPage() {
     setLoading(true)
     setPersons([])
     setWatchProgress(null)
-    setActiveTab('overview')
 
     Promise.all([
       mediaApi.detail(id),
@@ -421,8 +417,8 @@ export default function MediaDetailPage() {
         <div className="skeleton nv-detail-toolbar-skeleton" aria-hidden="true" />
         <div className="skeleton nv-detail-hero-skeleton" aria-hidden="true" />
         <div className="nv-detail-content-shell space-y-4 px-[var(--nv-page-gutter)]" aria-hidden="true">
-          <div className="skeleton h-11 rounded-[var(--nv-radius-control)]" />
           <div className="skeleton h-44 rounded-[var(--nv-radius-card)]" />
+          <div className="skeleton h-24 rounded-[var(--nv-radius-card)]" />
         </div>
       </div>
     )
@@ -501,28 +497,15 @@ export default function MediaDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <DetailTabs
-              value={activeTab}
-              onChange={setActiveTab}
-              ariaLabel="详情页章节导航"
-              items={[
-                { value: 'overview', label: '简介', panelId: 'detail-overview', tabId: 'detail-tab-overview' },
-                { value: 'cast', label: '演职人员', panelId: 'detail-cast', tabId: 'detail-tab-cast' },
-                { value: 'subtitles', label: '字幕', panelId: 'detail-subtitles', tabId: 'detail-tab-subtitles' },
-                { value: 'related', label: '相关推荐', panelId: 'detail-related', tabId: 'detail-tab-related' },
-              ]}
-            />
+            <MediaSynopsisSection media={media} />
 
-            <section id="detail-overview" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-overview" hidden={activeTab !== 'overview'}>
-              <MediaInfoSection media={media} playInfo={playInfo} persons={persons} />
-              {id && <div className="nv-detail-tab-secondary-section"><CommentSection mediaId={id} /></div>}
-            </section>
-
-            <section id="detail-cast" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-cast" hidden={activeTab !== 'cast'}>
+            <section id="cast" className="nv-detail-content-section">
               <CastGrid persons={persons} />
             </section>
 
-            <section id="detail-subtitles" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-subtitles" hidden={activeTab !== 'subtitles'}>
+            <MediaDetailsSection media={media} persons={persons} />
+
+            <section id="subtitles" className="nv-detail-content-section">
               {enhancedLoading && !hasSubtitleData ? (
                 <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" role="status" aria-label="正在加载字幕信息" />
               ) : hasSubtitleData ? (
@@ -550,12 +533,18 @@ export default function MediaDetailPage() {
               )}
             </section>
 
-            <section id="detail-related" className="nv-detail-content-section nv-detail-tab-panel" role="tabpanel" tabIndex={0} aria-labelledby="detail-tab-related" hidden={activeTab !== 'related'}>
+            <section id="recommendations" className="nv-detail-content-section space-y-6">
               {media.media_type === 'movie' && id && (
-                <div className="nv-detail-tab-secondary-section nv-detail-tab-secondary-section-first"><CollectionCarousel mediaId={id} /></div>
+                <CollectionCarousel mediaId={id} />
               )}
               <RecommendationCarousel recommendations={recommendations} />
             </section>
+
+            {id && (
+              <section id="reviews" className="nv-detail-content-section">
+                <CommentSection mediaId={id} />
+              </section>
+            )}
             <details className="nv-detail-tech-details mt-6">
               <summary>更多信息与片段</summary>
               <div className="nv-detail-tech-details-body space-y-6">

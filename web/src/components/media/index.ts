@@ -1,5 +1,5 @@
 export { default as HeroSection } from './HeroSectionWithBackdrop'
-export { default as MediaInfoSection } from './MediaInfoSection'
+export { MediaDetailsSection, MediaSynopsisSection } from './MediaInfoSection'
 export { default as MediaTechSpecs } from './MediaTechSpecs'
 export { default as MediaDetailSidebar } from './MediaDetailSidebar'
 export { default as MediaDetailTechOverview } from './MediaDetailTechOverview'
