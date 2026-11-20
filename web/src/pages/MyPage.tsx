@@ -32,6 +32,19 @@ export default function MyPage() {
         </div>
       </section>
 
+      {user?.role === 'admin' && !user.child_mode && (
+        <Section title="家庭管理">
+          <Link to="/admin#users" className="group flex min-h-14 items-center gap-3 border-y border-[var(--nv-border-subtle)] py-3">
+            <Server size={20} aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">管理影片与家人</span>
+              <span className="mt-1 block text-sm text-[var(--nv-text-tertiary)]">管理家人账号、儿童观看权限与邀请</span>
+            </span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </Link>
+        </Section>
+      )}
+
       <Section title="我的内容">
         <div className="divide-y divide-[var(--nv-border-subtle)] border-y border-[var(--nv-border-subtle)]">
           {entries.filter((entry) => !user?.child_mode || !['/playlists','/stats'].includes(entry.to)).map(({ to, title, description, icon: Icon }) => (
@@ -61,18 +74,6 @@ export default function MyPage() {
         </div>
       </Section>
 
-      {user?.role === 'admin' && !user.child_mode && (
-        <Section title="家庭管理" className="md:hidden">
-          <Link to="/admin" className="group flex min-h-14 items-center gap-3 border-y border-[var(--nv-border-subtle)] py-3">
-            <Server size={20} aria-hidden="true" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">管理影片与家人</span>
-              <span className="mt-1 block text-sm text-[var(--nv-text-tertiary)]">添加影片文件夹、管理账号和处理播放问题</span>
-            </span>
-            <ChevronRight size={18} aria-hidden="true" />
-          </Link>
-        </Section>
-      )}
     </div>
   )
 }

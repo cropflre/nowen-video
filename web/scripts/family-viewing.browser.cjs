@@ -148,6 +148,25 @@ let browser;
  env=await setup();page=env.page;
  await page.goto(base);await visible(page,'继续观看');
  assert.deepEqual(await page.locator('.nv-rail-section-links .nv-rail-label').allTextContents(),['首页','找片','想看','我的']);
+ const contrast = await page.evaluate(() => {
+  const parse = (value) => { const hex = value.match(/#([0-9a-f]{6})/i); if (hex) return { rgb: [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16)), alpha: 1 }; const m = value.match(/rgba?\(([^)]+)\)/); const parts = m[1].split(',').map(Number); return { rgb: parts.slice(0, 3), alpha: parts.length > 3 ? parts[3] : 1 }; };
+  const luminance = (rgb) => { const linear = rgb.map((c) => { const s = c / 255; return s <= 0.04045 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); }); return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]; };
+  const root = document.documentElement; const originalTheme = root.getAttribute('data-theme') || 'dark'; const out = {};
+  for (const theme of ['dark', 'light']) {
+   root.setAttribute('data-theme', theme);
+   const cs = getComputedStyle(root); const canvas = parse(cs.getPropertyValue('--nv-bg-canvas')).rgb; out[theme] = {};
+   for (const name of ['--nv-text-tertiary', '--nv-text-secondary']) {
+    const fg = parse(cs.getPropertyValue(name));
+    const blended = fg.rgb.map((v, i) => fg.alpha * v + (1 - fg.alpha) * canvas[i]);
+    const l1 = luminance(blended), l2 = luminance(canvas);
+    out[theme][name] = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+   }
+  }
+  root.setAttribute('data-theme', originalTheme); return out;
+ });
+ assert(contrast.dark['--nv-text-tertiary'] >= 4.5 && contrast.light['--nv-text-tertiary'] >= 4.5, `tertiary contrast below AA: ${JSON.stringify(contrast)}`);
+ assert(contrast.dark['--nv-text-secondary'] >= 4.5 && contrast.light['--nv-text-secondary'] >= 4.5, `secondary contrast below AA: ${JSON.stringify(contrast)}`);
+ checks.push('tertiary and secondary text meet WCAG AA 4.5:1 on canvas in dark and light themes');
  const continueBox=await page.getByText('继续观看',{exact:true}).first().boundingBox();const heroBox=await page.locator('.nv-hero-carousel').boundingBox();assert(continueBox.y<heroBox.y);
  assert.equal(await page.locator('.nv-home-library-section').count(),1);
  assert.equal(await page.locator('.nv-home-library-tile').count(),1);
@@ -205,7 +224,7 @@ let browser;
  env=await setup({admin:true,empty:true});page=env.page;await page.goto(base);await page.getByRole('link',{name:'添加影片文件夹',exact:true}).waitFor();assert.equal(await page.getByRole('link',{name:'添加影片文件夹',exact:true}).getAttribute('href'),'/admin#library');checks.push('empty admin home points to the actual library settings tab');await env.ctx.close();
  env=await setup({failHome:true});page=env.page;await page.goto(base);await visible(page,'暂时无法加载影片');assert.equal(await page.getByText('还没有可看的影片',{exact:true}).count(),0);env.state.failHome=false;await page.getByRole('button',{name:'重试',exact:true}).last().click();await visible(page,'继续观看');checks.push('home network failure is distinct from empty content and can recover');await env.ctx.close();
  env=await setup({failBrowse:true});page=env.page;await page.goto(base+'/browse');await visible(page,'暂时无法加载影片');env.state.failBrowse=false;await page.getByRole('button',{name:'重试',exact:true}).click();await page.locator('.nv-media-card').first().waitFor();checks.push('browse request failure has a working retry instead of infinite skeleton');await env.ctx.close();
- env=await setup({mobile:true});page=env.page;await page.goto(base);await visible(page,'继续观看');assert.deepEqual(await page.locator('.nv-mobile-nav-label').allTextContents(),['首页','找片','想看','我的']);
+ env=await setup({mobile:true});page=env.page;await page.goto(base);await visible(page,'继续观看');assert.deepEqual(await page.locator('.nv-mobile-nav-label').allTextContents(),['首页','找片','搜索','想看','我的']);await page.getByRole('link',{name:'搜索',exact:true}).click();await page.waitForURL(base+'/search');await page.getByRole('searchbox',{name:'搜索媒体库'}).waitFor();await page.waitForFunction(()=>document.querySelector('.nv-mobile-nav-item.active .nv-mobile-nav-label')?.textContent==='搜索');assert.deepEqual(await page.locator('.nv-mobile-nav-item.active .nv-mobile-nav-label').allTextContents(),['搜索']);await page.goto(base);await visible(page,'继续观看');
  await page.screenshot({path:path.join(outputDir, 'mobile.png'),fullPage:true});
  assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
  await page.goto(base+'/browse');await page.locator('.nv-media-card').first().waitFor();assert.equal(await page.locator('.nv-media-card-play').first().evaluate(e=>getComputedStyle(e).opacity),'1');
@@ -236,9 +255,19 @@ let browser;
  await page.getByRole('switch',{name:'自动播放下一集',exact:true}).uncheck();await page.waitForFunction(()=>!document.querySelector('[aria-label="自动播放下一集"]').checked);assert.equal(env.state.preferences.auto_play_next,false);
  await page.getByRole('combobox',{name:'默认字幕',exact:true}).selectOption('off');await page.waitForTimeout(100);assert.equal(env.state.preferences.subtitle_language,'off');
  await page.setViewportSize({width:320,height:720});assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));await page.screenshot({path:path.join(outputDir,'large-text.png'),fullPage:true});assert.deepEqual(env.errors,[]);checks.push('large text, subtitle and autoplay preferences persist at 320px; failed saves restore the previous state');
+ await page.setViewportSize({width:390,height:844});
+ for (const [url, marker] of [[base, '继续观看'], [base+'/media/movie-1', '简介'], [base+'/my', '我的内容']]) { await page.goto(url); await visible(page, marker); assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `large-text overflow at 390px on ${url}`); }
+ await page.screenshot({path:path.join(outputDir,'large-text-390.png'),fullPage:true});checks.push('large text at 390px has no horizontal overflow on home, detail and my pages');
  env.state.episode=true;await page.goto(base+'/play/movie-1');await page.waitForFunction(()=>document.querySelector('video')?.currentTime>=30);await page.waitForTimeout(150);assert.equal(env.state.subtitleFetches||0,0);
  await page.locator('video').evaluate(v=>v.dispatchEvent(new Event('ended')));await page.waitForTimeout(5500);assert(page.url().endsWith('/play/movie-1'));
  env.state.preferences.subtitle_language='zh';env.state.profileDelay=500;await page.reload();await visible(page,'中文字幕示例');assert(env.state.subtitleFetches>0);checks.push('player honors subtitles Off, preferred Chinese subtitles and disabled automatic next episode');await env.ctx.close();
+ env=await setup();page=env.page;await page.goto(base+'/my');await page.getByRole('switch',{name:'大字模式',exact:true}).check();await page.waitForFunction(()=>document.documentElement.dataset.largeText==='true');await page.reload();await page.waitForFunction(()=>document.documentElement.dataset.largeText==='true');
+ for (const [url, marker] of [[base, '继续观看'], [base+'/media/movie-1', '简介'], [base+'/my', '我的内容']]) { await page.goto(url); await visible(page, marker); assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `large-text overflow at 1440px on ${url}`); }
+ await page.screenshot({path:path.join(outputDir,'large-text-1440.png'),fullPage:true});
+ await page.goto(base+'/my');await page.getByRole('button',{name:'切换浅色模式',exact:true}).click();await page.waitForFunction(()=>document.documentElement.dataset.theme==='light');
+ for (const [url, marker] of [[base, '继续观看'], [base+'/media/movie-1', '简介'], [base+'/my', '我的内容']]) { await page.goto(url); await visible(page, marker); assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth), `large-text light-theme overflow at 1440px on ${url}`); }
+ await page.screenshot({path:path.join(outputDir,'large-text-1440-light.png'),fullPage:true});assert.deepEqual(env.errors,[]);checks.push('large text at 1440px has no horizontal overflow on home, detail and my pages in dark and light themes');await env.ctx.close();
+ env=await setup({admin:true});page=env.page;await page.goto(base+'/my');await page.getByRole('link',{name:'管理影片与家人'}).click();await page.waitForURL(base+'/admin#users');await page.getByRole('button',{name:'创建家庭邀请',exact:true}).waitFor();assert.deepEqual(env.errors,[]);checks.push('my page links parent family management directly to the admin family tab');await env.ctx.close();
  env=await setup({admin:true});page=env.page;await page.goto(base+'/my');await page.getByRole('link',{name:'系统管理',exact:true}).click();
  await page.getByRole('navigation',{name:'系统管理'}).getByRole('link',{name:'影片库',exact:true}).waitFor();assert.equal(await page.getByRole('searchbox').count(),0);
  await page.getByRole('link',{name:'家人',exact:true}).click();await page.getByRole('button',{name:'创建家庭邀请',exact:true}).waitFor();await page.getByRole('button',{name:'创建家庭邀请',exact:true}).click();

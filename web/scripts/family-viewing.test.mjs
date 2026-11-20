@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { build } from 'esbuild'
 
@@ -107,6 +108,45 @@ test('remaining seconds convert to display minutes and low-time detection', () =
   assert.equal(isLowRemaining(301), false)
   assert.equal(isLowRemaining(0), false)
   assert.equal(isLowRemaining(null), false)
+})
+
+test('tertiary and secondary text meet WCAG AA 4.5:1 on canvas in both themes', () => {
+  // Reads the frozen token source (ui-theme.css) so a later token regression fails here.
+  const css = readFileSync(new URL('../src/styles/ui-theme.css', import.meta.url), 'utf8')
+  const block = (theme) => {
+    const match = css.match(new RegExp(`\\[data-theme="${theme}"\\]\\s*\\{([\\s\\S]*?)\\n\\}`))
+    assert.ok(match, `${theme} theme block missing`)
+    return match[1]
+  }
+  const token = (text, name) => {
+    const match = text.match(new RegExp(`--nv-${name}:\\s*([^;]+);`))
+    assert.ok(match, `--nv-${name} missing`)
+    return match[1].trim()
+  }
+  const parseColor = (value) => {
+    const rgba = value.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/)
+    if (rgba) return { rgb: rgba.slice(1, 4).map(Number), alpha: rgba[4] === undefined ? 1 : Number(rgba[4]) }
+    const hex = value.match(/#([0-9a-f]{6})/i)
+    assert.ok(hex, `unparsable color ${value}`)
+    return { rgb: [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16)), alpha: 1 }
+  }
+  const luminance = (rgb) => {
+    const linear = rgb.map((c) => {
+      const s = c / 255
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+  }
+  for (const theme of ['dark', 'light']) {
+    const text = block(theme)
+    const canvas = parseColor(token(text, 'bg-canvas')).rgb
+    for (const name of ['text-tertiary', 'text-secondary']) {
+      const fg = parseColor(token(text, name))
+      const blended = fg.rgb.map((v, i) => fg.alpha * v + (1 - fg.alpha) * canvas[i])
+      const ratio = (Math.max(luminance(blended), luminance(canvas)) + 0.05) / (Math.min(luminance(blended), luminance(canvas)) + 0.05)
+      assert.ok(ratio >= 4.5, `${theme} --nv-${name} contrast is ${ratio.toFixed(2)}:1, below WCAG AA 4.5:1`)
+    }
+  }
 })
 
 test('subtitle preference matches language names and codes without accepting unrelated words', () => {

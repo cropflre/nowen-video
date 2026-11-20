@@ -5,7 +5,7 @@ import { useTranslation } from '@/i18n'
 import { useToast } from '@/components/Toast'
 import { logoutDevice } from '@/utils/logoutDevice'
 import { BottomNavigation, NavigationRailLink, NavigationRailSection } from '@/ui'
-import { ChevronLeft, ChevronRight, Film, Heart, Home, LogOut, Moon, Settings, Sun, UserRound } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Film, Heart, Home, LogOut, Moon, Search, Settings, Sun, UserRound } from 'lucide-react'
 
 interface SidebarProps {
   isMobileOpen?: boolean
@@ -39,6 +39,16 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
       activeOn: ['/search', '/media/', '/series/', '/collections', '/library/', '/person/'],
     },
     { to: '/favorites', icon: <Heart size={18} aria-hidden="true" />, label: t('nav.favorites') },
+  ]
+  // Mobile bottom nav only: a fifth Search entry. The desktop rail keeps its
+  // four items, and '/search' no longer highlights Browse once Search exists.
+  const searchNavigationItem = { to: '/search', icon: <Search size={18} aria-hidden="true" />, label: t('nav.search') }
+  const bottomNavigationItems = [
+    navigationItems[0],
+    { ...navigationItems[1], activeOn: (navigationItems[1].activeOn ?? []).filter((prefix) => prefix !== '/search') },
+    searchNavigationItem,
+    navigationItems[2],
+    { ...myNavigationItem, activeOn: [...myNavigationItem.activeOn, '/admin'] },
   ]
 
   const handleLogout = async () => {
@@ -121,7 +131,7 @@ export default function Sidebar({ collapsed = false, onCollapsedChange }: Sideba
         </div>
       </aside>
 
-      <BottomNavigation items={[...navigationItems, { ...myNavigationItem, activeOn: [...myNavigationItem.activeOn, '/admin'] }]} />
+      <BottomNavigation items={bottomNavigationItems} />
     </>
   )
 }

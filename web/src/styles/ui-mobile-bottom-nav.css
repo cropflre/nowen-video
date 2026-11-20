@@ -34,7 +34,7 @@
     inset: auto max(8px, env(safe-area-inset-right, 0px)) var(--nv-mobile-nav-offset) max(8px, env(safe-area-inset-left, 0px));
     height: var(--nv-mobile-nav-height);
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 3px;
     border: 1px solid var(--nv-border-default);
     border-radius: 16px;

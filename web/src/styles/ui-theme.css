@@ -56,7 +56,8 @@
   --nv-bg-active: var(--nv-fill-active);
   --nv-text-primary: #ededee;
   --nv-text-secondary: rgba(237, 237, 238, .72);
-  --nv-text-tertiary: rgba(237, 237, 238, .46);
+  /* WCAG AA: tertiary on canvas/surface/elevated is 5.52–5.95:1 (was 4.01–4.18:1 at .46). */
+  --nv-text-tertiary: rgba(237, 237, 238, .58);
   --nv-text-disabled: rgba(245, 241, 246, .28);
   --nv-bg-overlay: rgba(4, 3, 5, .76);
   --nv-focus-ring: rgba(245, 241, 246, .34);
@@ -95,7 +96,8 @@
   --nv-bg-active: var(--nv-fill-active);
   --nv-text-primary: #151515;
   --nv-text-secondary: rgba(21, 21, 21, .70);
-  --nv-text-tertiary: rgba(21, 21, 21, .46);
+  /* WCAG AA: tertiary on canvas/surface is 4.86–5.10:1 (was 2.98–3.07:1 at .46). */
+  --nv-text-tertiary: rgba(21, 21, 21, .62);
   --nv-text-disabled: rgba(33, 28, 35, .30);
   --nv-bg-overlay: rgba(20, 16, 22, .38);
   --nv-focus-ring: rgba(33, 28, 35, .28);
