@@ -1,6 +1,7 @@
 package com.nowen.video.v2.feature.main
 
 import android.media.AudioManager
+import android.net.Uri
 import android.os.SystemClock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -83,6 +84,7 @@ import com.nowen.video.v2.core.model.episodeDisplayName
 import com.nowen.video.v2.core.model.seasonDisplayName
 import com.nowen.video.v2.core.model.userEpisodeTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.math.BigDecimal
 import javax.inject.Inject
 import kotlin.math.abs
 import kotlinx.coroutines.CoroutineScope
@@ -131,7 +133,8 @@ data class PlayerUiState(
     val sessionManaged: Boolean = false,
     val sessionId: String = "",
     val sessionGenerationId: Long = 0L,
-    val sessionOffsetMs: Long = 0L,
+    val sourceOffsetMs: Long = 0L,
+    val remuxSeekCount: Int = 0,
     val sessionHeartbeatIntervalMs: Long = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
     val sessionProfileId: String = "auto",
     val sessionMaxBitrate: Int = 0,
@@ -212,7 +215,8 @@ class PlayerViewModel @Inject constructor(
                     sessionManaged = false,
                     sessionId = "",
                     sessionGenerationId = 0L,
-                    sessionOffsetMs = 0L,
+                    sourceOffsetMs = 0L,
+                    remuxSeekCount = 0,
                     sessionHeartbeatIntervalMs = DEFAULT_SESSION_HEARTBEAT_INTERVAL_MS,
                     sessionProfileId = "auto",
                     sessionMaxBitrate = 0,
@@ -313,7 +317,15 @@ class PlayerViewModel @Inject constructor(
                 return@launch
             }
 
-            val resolved = resolveServerResource(baseUrl, stream.preferredUrl)
+            // Plain Remux copies the A/V codecs but drops embedded subtitles. Media3 can
+            // read the original MKV, so keep those tracks when the A/V codecs are compatible.
+            val preserveEmbeddedSubtitles = stream.playbackMethod == "remux" &&
+                stream.fileExt.equals(".mkv", ignoreCase = true) &&
+                subtitles?.embedded?.isNotEmpty() == true
+            val playbackPath = if (preserveEmbeddedSubtitles) {
+                "/api/stream/${Uri.encode(mediaId)}/direct"
+            } else stream.preferredUrl
+            val resolved = resolveServerResource(baseUrl, playbackPath)
             if (resolved.isNullOrBlank()) {
                 _state.update { it.copy(loading = false, error = "服务器没有返回可播放地址") }
                 return@launch
@@ -322,26 +334,28 @@ class PlayerViewModel @Inject constructor(
                 ?.takeUnless { it == resolved }
                 .orEmpty()
             val fallbackMethod = plan?.fallbackMethod.orEmpty()
+            val diagnostics = PlaybackDiagnostics(
+                method = if (preserveEmbeddedSubtitles) "direct" else stream.playbackMethod,
+                methodLabel = if (preserveEmbeddedSubtitles) playbackMethodLabel("direct") else stream.playbackMethodLabel,
+                reasonCode = if (preserveEmbeddedSubtitles) "android_matroska_subtitles" else stream.playbackReasonCode,
+                reason = if (preserveEmbeddedSubtitles) "直接播放 MKV，保留内嵌字幕" else stream.playbackReason,
+                fallbackUrl = fallbackResolved,
+                fallbackMethod = fallbackMethod,
+                fallbackMethodLabel = playbackMethodLabel(fallbackMethod),
+            )
             _state.update {
                 it.copy(
                     loading = false,
                     title = title,
                     playbackUrl = resolved,
-                    resumePositionMs = resumeMs,
+                    resumePositionMs = if (diagnostics.isRemux) 0L else resumeMs,
+                    sourceOffsetMs = if (diagnostics.isRemux) clampRemuxStartMs(resumeMs, durationMs) else 0L,
                     mediaDurationMs = durationMs,
                     externalSubtitles = subtitles?.external.orEmpty(),
                     nextEpisode = nextEpisode,
                     previousEpisode = previousEpisode,
                     seriesEpisodes = seriesEpisodes,
-                    playbackDiagnostics = PlaybackDiagnostics(
-                        method = stream.playbackMethod,
-                        methodLabel = stream.playbackMethodLabel,
-                        reasonCode = stream.playbackReasonCode,
-                        reason = stream.playbackReason,
-                        fallbackUrl = fallbackResolved,
-                        fallbackMethod = fallbackMethod,
-                        fallbackMethodLabel = playbackMethodLabel(fallbackMethod),
-                    ),
+                    playbackDiagnostics = diagnostics,
                 )
             }
         }
@@ -387,7 +401,7 @@ class PlayerViewModel @Inject constructor(
                 sessionManaged = true,
                 sessionId = result.session.id,
                 sessionGenerationId = result.session.currentGenerationId,
-                sessionOffsetMs = offsetMs.coerceAtLeast(0L),
+                sourceOffsetMs = offsetMs.coerceAtLeast(0L),
                 sessionHeartbeatIntervalMs = result.heartbeatIntervalSec.coerceAtLeast(5).toLong() * 1_000L,
                 sessionProfileId = generation?.profileId?.takeIf(String::isNotBlank)
                     ?: plan.sessionTemplate?.profileId.orEmpty().ifBlank { "auto" },
@@ -488,10 +502,18 @@ class PlayerViewModel @Inject constructor(
     fun absolutePositionMs(relativePositionMs: Long): Long {
         val current = _state.value
         return absolutePlaybackPositionMs(
-            sessionManaged = current.sessionManaged,
-            generationOffsetMs = current.sessionOffsetMs,
+            sourceOffsetMs = current.sourceOffsetMs,
             relativePositionMs = relativePositionMs,
         )
+    }
+
+    fun seekRemux(targetMs: Long, durationMs: Long) {
+        _state.update { current ->
+            current.copy(
+                sourceOffsetMs = clampRemuxStartMs(targetMs, durationMs),
+                remuxSeekCount = current.remuxSeekCount + 1,
+            )
+        }
     }
 
     fun restartPlaybackSession(targetPositionMs: Long, reason: String = "seek") {
@@ -542,7 +564,7 @@ class PlayerViewModel @Inject constructor(
                         playbackUrl = playlist,
                         resumePositionMs = 0L,
                         sessionGenerationId = result.session.currentGenerationId,
-                        sessionOffsetMs = target,
+                        sourceOffsetMs = target,
                         sessionHeartbeatIntervalMs = result.heartbeatIntervalSec.coerceAtLeast(5).toLong() * 1_000L,
                         sessionProfileId = result.session.generation?.profileId?.takeIf(String::isNotBlank)
                             ?: it.sessionProfileId,
@@ -558,8 +580,8 @@ class PlayerViewModel @Inject constructor(
     fun heartbeat(relativePositionMs: Long, relativeBufferedEndMs: Long, paused: Boolean) {
         val current = _state.value
         if (!current.sessionManaged || current.sessionId.isBlank() || current.sessionGenerationId <= 0L) return
-        val position = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativePositionMs)
-        val buffered = absolutePlaybackPositionMs(true, current.sessionOffsetMs, relativeBufferedEndMs).coerceAtLeast(position)
+        val position = absolutePlaybackPositionMs(current.sourceOffsetMs, relativePositionMs)
+        val buffered = absolutePlaybackPositionMs(current.sourceOffsetMs, relativeBufferedEndMs).coerceAtLeast(position)
         viewModelScope.launch {
             repository.heartbeatPlaybackSession(
                 current.sessionId,
@@ -578,8 +600,7 @@ class PlayerViewModel @Inject constructor(
         if (current.sessionRestarting) return
         val diagnostics = current.playbackDiagnostics
         val absolutePosition = absolutePlaybackPositionMs(
-            current.sessionManaged,
-            current.sessionOffsetMs,
+            current.sourceOffsetMs,
             relativePositionMs,
         )
 
@@ -676,21 +697,25 @@ class PlayerViewModel @Inject constructor(
                 .takeUnless { it == "自动选择" }
                 ?: playbackMethodLabel(fallbackMethod)
             val previousMethodLabel = diagnostics.methodLabel
+            val fallbackDiagnostics = diagnostics.copy(
+                method = fallbackMethod,
+                methodLabel = fallbackMethodLabel,
+                reasonCode = "client_playback_fallback",
+                reason = "原播放方式（$previousMethodLabel）失败，已自动切换到服务端备用地址",
+                fallbackUrl = "",
+                fallbackMethod = "",
+                fallbackMethodLabel = "",
+                usingFallback = true,
+                lastError = error.errorCodeName,
+            )
             _state.update {
                 it.copy(
                     playbackUrl = diagnostics.fallbackUrl,
-                    resumePositionMs = absolutePosition.coerceAtLeast(0L),
-                    playbackDiagnostics = diagnostics.copy(
-                        method = fallbackMethod,
-                        methodLabel = fallbackMethodLabel,
-                        reasonCode = "client_playback_fallback",
-                        reason = "原播放方式（$previousMethodLabel）失败，已自动切换到服务端备用地址",
-                        fallbackUrl = "",
-                        fallbackMethod = "",
-                        fallbackMethodLabel = "",
-                        usingFallback = true,
-                        lastError = error.errorCodeName,
-                    ),
+                    resumePositionMs = if (fallbackDiagnostics.isRemux) 0L else absolutePosition,
+                    sourceOffsetMs = if (fallbackDiagnostics.isRemux) {
+                        clampRemuxStartMs(absolutePosition, current.mediaDurationMs)
+                    } else 0L,
+                    playbackDiagnostics = fallbackDiagnostics,
                     fallbackNotice = "播放失败，已自动切换到$fallbackMethodLabel",
                     error = null,
                 )
@@ -714,8 +739,7 @@ class PlayerViewModel @Inject constructor(
         if (mediaId.isBlank()) return
         val current = _state.value
         val absolutePosition = absolutePlaybackPositionMs(
-            current.sessionManaged,
-            current.sessionOffsetMs,
+            current.sourceOffsetMs,
             positionMs,
         )
         val effectiveDuration = current.mediaDurationMs.takeIf { it > 0L } ?: durationMs
@@ -751,7 +775,7 @@ class PlayerViewModel @Inject constructor(
                 sessionManaged = false,
                 sessionId = "",
                 sessionGenerationId = 0L,
-                sessionOffsetMs = 0L,
+                sourceOffsetMs = 0L,
                 sessionRestarting = false,
             )
         }
@@ -807,6 +831,7 @@ fun PlayerScreen(
     var subtitleTracks by remember { mutableStateOf(emptyList<PlayerTrackChoice>()) }
     var audioAutomatic by remember { mutableStateOf(true) }
     var subtitlesDisabled by remember { mutableStateOf(false) }
+    var showSubtitlePicker by rememberSaveable(mediaId) { mutableStateOf(false) }
     var playerView by remember { mutableStateOf<PlayerView?>(null) }
     var showNextEpisodePanel by rememberSaveable(mediaId) { mutableStateOf(false) }
     var showEpisodeList by rememberSaveable(mediaId) { mutableStateOf(false) }
@@ -853,10 +878,21 @@ fun PlayerScreen(
         controlsEpoch += 1
     }
 
+    fun selectSubtitle(choice: PlayerTrackChoice?) {
+        subtitlesDisabled = choice == null
+        player.trackSelectionParameters = if (choice == null) {
+            disableTextTracks(player.trackSelectionParameters)
+        } else {
+            applyTrackChoice(player.trackSelectionParameters, C.TRACK_TYPE_TEXT, choice)
+        }
+    }
+
     fun reportCurrentProgress(force: Boolean) {
         val current = viewModel.state.value
         val exoDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-        val duration = current.mediaDurationMs.takeIf { it > 0L } ?: exoDuration ?: 0L
+        val duration = current.mediaDurationMs.takeIf { it > 0L }
+            ?: exoDuration?.let { viewModel.absolutePositionMs(it) }
+            ?: 0L
         viewModel.reportProgress(
             mediaId = mediaId,
             positionMs = player.currentPosition.coerceAtLeast(0L),
@@ -881,32 +917,44 @@ fun PlayerScreen(
         ?: 0L
 
     fun seekToAbsolute(targetMs: Long, reason: String) {
+        val current = viewModel.state.value
+        if (current.sessionRestarting) return
         val duration = effectiveDurationMs()
-        if (duration <= 0L) return
         val target = clampPlaybackTargetMs(targetMs, duration)
         seekPreviewMs = null
-        displayPositionMs = target
-        if (state.sessionManaged) {
-            player.pause()
-            isPlaying = false
-            viewModel.restartPlaybackSession(target, reason)
-        } else {
-            player.seekTo(target)
+        when {
+            current.sessionManaged -> {
+                player.pause()
+                viewModel.restartPlaybackSession(target, reason)
+            }
+            current.playbackDiagnostics.isRemux -> viewModel.seekRemux(target, duration)
+            else -> player.seekTo(target)
         }
         revealControls()
     }
 
     fun seekBy(deltaMs: Long) {
-        val base = seekPreviewMs ?: displayPositionMs
+        val base = viewModel.absolutePositionMs(player.currentPosition)
         seekToAbsolute(base + deltaMs, "android_gesture_seek")
     }
 
     BackHandler { leavePlayback("navigate_back", onBack) }
 
-    LaunchedEffect(state.playbackUrl, state.resumePositionMs, state.externalSubtitles, session.activeServer?.baseUrl) {
+    val playbackUri = remember(state.playbackUrl, state.playbackDiagnostics.isRemux, state.sourceOffsetMs) {
+        val uri = Uri.parse(state.playbackUrl)
+        if (state.playbackDiagnostics.isRemux && state.sourceOffsetMs > 0L) {
+            uri.buildUpon()
+                .appendQueryParameter("start", BigDecimal.valueOf(state.sourceOffsetMs, 3).toPlainString())
+                .build()
+        } else uri
+    }
+    LaunchedEffect(player, playbackUri, state.remuxSeekCount, state.resumePositionMs, state.externalSubtitles, session.activeServer?.baseUrl) {
         if (state.playbackUrl.isNotBlank()) {
+            val playWhenReady = !state.playbackDiagnostics.isRemux ||
+                player.currentMediaItem?.mediaId != state.playbackUrl || player.playWhenReady
             val item = MediaItem.Builder()
-                .setUri(state.playbackUrl)
+                .setMediaId(state.playbackUrl)
+                .setUri(playbackUri)
                 .setSubtitleConfigurations(
                     externalSubtitleConfigurations(
                         baseUrl = session.activeServer?.baseUrl,
@@ -917,7 +965,7 @@ fun PlayerScreen(
             if (state.resumePositionMs > 0L && !state.sessionManaged) player.setMediaItem(item, state.resumePositionMs)
             else player.setMediaItem(item)
             player.prepare()
-            player.playWhenReady = true
+            player.playWhenReady = playWhenReady
         }
     }
 
@@ -969,13 +1017,13 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(player, state.sessionManaged, state.sessionOffsetMs, state.mediaDurationMs) {
+    LaunchedEffect(player, state.sourceOffsetMs, state.mediaDurationMs) {
         while (true) {
-            displayPositionMs = if (state.sessionManaged) viewModel.absolutePositionMs(player.currentPosition)
-            else player.currentPosition.coerceAtLeast(0L)
+            displayPositionMs = viewModel.absolutePositionMs(player.currentPosition)
             val reportedDuration = state.mediaDurationMs.takeIf { it > 0L }
             val exoDuration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-            playerDurationMs = reportedDuration ?: exoDuration ?: playerDurationMs
+            playerDurationMs = reportedDuration ?: exoDuration?.let { viewModel.absolutePositionMs(it) }
+                ?: playerDurationMs
             delay(250L)
         }
     }
@@ -1008,17 +1056,16 @@ fun PlayerScreen(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
-                if (duration != null) playerDurationMs = duration
+                if (duration != null) playerDurationMs = viewModel.absolutePositionMs(duration)
                 if (playbackState == Player.STATE_ENDED) {
                     val current = viewModel.state.value
-                    val relativeEnd = if (current.sessionManaged) {
+                    val relativeEnd = if ((current.sessionManaged || current.playbackDiagnostics.isRemux) && current.mediaDurationMs > 0L) {
                         relativePlaybackPositionMs(
-                            sessionManaged = true,
-                            generationOffsetMs = current.sessionOffsetMs,
+                            sourceOffsetMs = current.sourceOffsetMs,
                             absolutePositionMs = current.mediaDurationMs,
                         )
                     } else {
-                        player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: current.mediaDurationMs
+                        duration ?: player.currentPosition
                     }
                     viewModel.reportProgress(
                         mediaId = mediaId,
@@ -1051,7 +1098,7 @@ fun PlayerScreen(
                 val current = viewModel.state.value
                 if (reason == Player.DISCONTINUITY_REASON_SEEK && current.sessionManaged) {
                     val target = clampPlaybackTargetMs(
-                        current.sessionOffsetMs + newPosition.positionMs.coerceAtLeast(0L),
+                        current.sourceOffsetMs + newPosition.positionMs.coerceAtLeast(0L),
                         current.mediaDurationMs,
                     )
                     player.pause()
@@ -1221,7 +1268,7 @@ fun PlayerScreen(
                     },
                     hasSubtitleTracks = subtitleTracks.isNotEmpty(),
                     onSubtitleClick = {
-                        showSettings = true
+                        showSubtitlePicker = true
                         controlsVisible = false
                     },
                     onPlayPause = {
@@ -1348,6 +1395,21 @@ fun PlayerScreen(
         }
     }
 
+    if (showSubtitlePicker) {
+        SubtitlePickerDialog(
+            tracks = subtitleTracks,
+            onDismiss = {
+                showSubtitlePicker = false
+                revealControls()
+            },
+            onSelect = { choice ->
+                selectSubtitle(choice)
+                showSubtitlePicker = false
+                revealControls()
+            },
+        )
+    }
+
     if (showEpisodeList) {
         EpisodePickerDialog(
             title = state.title,
@@ -1399,18 +1461,7 @@ fun PlayerScreen(
             subtitleTracks = subtitleTracks,
             subtitlesDisabled = subtitlesDisabled,
             danmakuAvailable = danmakuPreferences.apiBaseUrl.isNotBlank(),
-            onSubtitleTrackSelected = { choice ->
-                subtitlesDisabled = choice == null
-                player.trackSelectionParameters = if (choice == null) {
-                    disableTextTracks(player.trackSelectionParameters)
-                } else {
-                    applyTrackChoice(
-                        tracks = player.trackSelectionParameters,
-                        trackType = C.TRACK_TYPE_TEXT,
-                        choice = choice,
-                    )
-                }
-            },
+            onSubtitleTrackSelected = ::selectSubtitle,
             danmakuEnabled = danmakuPreferences.enabled,
             danmakuAutoMatch = danmakuPreferences.autoMatch,
             danmakuLoading = state.danmakuLoading,

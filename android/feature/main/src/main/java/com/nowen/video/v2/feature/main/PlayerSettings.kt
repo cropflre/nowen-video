@@ -2,10 +2,13 @@ package com.nowen.video.v2.feature.main
 
 import android.content.res.Configuration
 import android.net.Uri
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,29 +17,44 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -50,24 +68,10 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.AspectRatioFrameLayout
 import com.nowen.video.v2.core.designsystem.HillsChoiceRail
-import com.nowen.video.v2.core.designsystem.HillsDiscreteDragRail
 import com.nowen.video.v2.core.designsystem.HillsToggle
 import com.nowen.video.v2.core.model.SubtitleTrack
 import com.nowen.video.v2.core.data.supportedLongPressBoostSpeeds
-
-private val PlayerSpeedOptions = listOf(
-    0.5f,
-    0.75f,
-    1f,
-    1.25f,
-    1.5f,
-    1.75f,
-    2f,
-    3f,
-    4f,
-    6f,
-    8f,
-)
+import com.nowen.video.v2.core.data.supportedPlaybackSpeeds
 
 internal data class PlayerTrackChoice(
     val group: TrackGroup,
@@ -106,7 +110,11 @@ internal fun playerTrackLabel(format: Format, trackType: Int, ordinal: Int): Str
             format.channelCount.takeIf { it > 0 }?.let { "${it}ch" },
             format.sampleMimeType?.substringAfterLast('/')?.uppercase(),
         ).joinToString(" · ")
-        C.TRACK_TYPE_TEXT -> format.sampleMimeType?.substringAfterLast('/')?.uppercase().orEmpty()
+        C.TRACK_TYPE_TEXT -> format.sampleMimeType
+            ?.takeUnless { it == MimeTypes.APPLICATION_MEDIA3_CUES }
+            ?.substringAfterLast('/')
+            ?.uppercase()
+            .orEmpty()
         else -> ""
     }
     return if (detail.isBlank()) base else "$base · $detail"
@@ -172,6 +180,41 @@ internal fun externalSubtitleConfigurations(
 }
 
 @Composable
+internal fun SubtitlePickerDialog(
+    tracks: List<PlayerTrackChoice>,
+    onDismiss: () -> Unit,
+    onSelect: (PlayerTrackChoice?) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("字幕") },
+        text = {
+            if (tracks.isEmpty()) {
+                Text("当前媒体没有可选字幕")
+            } else {
+                Column(
+                    Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState()).selectableGroup(),
+                ) {
+                    (listOf(null) + tracks).forEach { track ->
+                        val selected = track?.selected ?: tracks.none { it.selected }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                .selectable(selected = selected, role = Role.RadioButton, onClick = { onSelect(track) }),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            RadioButton(selected = selected, onClick = null)
+                            Text(track?.label ?: "关闭字幕", style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+    )
+}
+
+@Composable
 internal fun PlayerSettingsSheet(
     onDismiss: () -> Unit,
     playbackDiagnostics: PlaybackDiagnostics,
@@ -203,38 +246,6 @@ internal fun PlayerSettingsSheet(
 ) {
     val configuration = LocalConfiguration.current
     val landscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val maxPortraitHeight = (configuration.screenHeightDp * 0.72f).dp
-
-    val content: @Composable () -> Unit = {
-        PlayerSettingsContent(
-            playbackDiagnostics = playbackDiagnostics,
-            playbackSpeed = playbackSpeed,
-            onPlaybackSpeedChange = onPlaybackSpeedChange,
-            longPressBoostSpeed = longPressBoostSpeed,
-            onLongPressBoostSpeedChange = onLongPressBoostSpeedChange,
-            resizeMode = resizeMode,
-            onResizeModeChange = onResizeModeChange,
-            autoPlayNext = autoPlayNext,
-            onAutoPlayNextChange = onAutoPlayNextChange,
-            audioTracks = audioTracks,
-            audioAutomatic = audioAutomatic,
-            onAudioTrackSelected = onAudioTrackSelected,
-            subtitleTracks = subtitleTracks,
-            subtitlesDisabled = subtitlesDisabled,
-            onSubtitleTrackSelected = onSubtitleTrackSelected,
-            danmakuAvailable = danmakuAvailable,
-            danmakuOffline = danmakuOffline,
-            danmakuEnabled = danmakuEnabled,
-            danmakuAutoMatch = danmakuAutoMatch,
-            danmakuLoading = danmakuLoading,
-            danmakuCueCount = danmakuCueCount,
-            danmakuError = danmakuError,
-            onDanmakuEnabledChange = onDanmakuEnabledChange,
-            onDanmakuAutoMatchChange = onDanmakuAutoMatchChange,
-            onDanmakuSearch = onDanmakuSearch,
-            onDanmakuRematch = onDanmakuRematch,
-        )
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -243,33 +254,93 @@ internal fun PlayerSettingsSheet(
             decorFitsSystemWindows = false,
         ),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(onClick = onDismiss),
-            contentAlignment = if (landscape) Alignment.CenterEnd else Alignment.BottomCenter,
-        ) {
-            Surface(
-                modifier = if (landscape) {
-                    Modifier
-                        .fillMaxHeight()
-                        .widthIn(min = 320.dp, max = 400.dp)
-                        .fillMaxWidth(0.42f)
-                        .windowInsetsPadding(WindowInsets.safeDrawing)
-                } else {
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = maxPortraitHeight)
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                }
-                    .clickable(onClick = {}),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-                shape = if (landscape) androidx.compose.foundation.shape.RoundedCornerShape(0.dp) else androidx.compose.foundation.shape.RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                tonalElevation = 8.dp,
-                shadowElevation = 16.dp,
+        Box(Modifier.fillMaxSize()) {
+            Box(
+                Modifier.matchParentSize()
+                    .clearAndSetSemantics {}
+                    .clickable(onClick = onDismiss),
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .padding(12.dp),
+                contentAlignment = if (landscape) Alignment.CenterEnd else Alignment.BottomCenter,
             ) {
-                content()
+                Surface(
+                    modifier = if (landscape) {
+                        Modifier.widthIn(max = 360.dp).fillMaxWidth().fillMaxHeight()
+                    } else {
+                        Modifier.widthIn(max = 480.dp).fillMaxWidth()
+                            .heightIn(max = (configuration.screenHeightDp * 0.8f).dp)
+                    },
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 12.dp,
+                ) {
+                    Column {
+                        PlayerSettingsHeader(playbackDiagnostics, onDismiss)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        PlayerSettingsContent(
+                            playbackDiagnostics = playbackDiagnostics,
+                            playbackSpeed = playbackSpeed,
+                            onPlaybackSpeedChange = onPlaybackSpeedChange,
+                            longPressBoostSpeed = longPressBoostSpeed,
+                            onLongPressBoostSpeedChange = onLongPressBoostSpeedChange,
+                            resizeMode = resizeMode,
+                            onResizeModeChange = onResizeModeChange,
+                            autoPlayNext = autoPlayNext,
+                            onAutoPlayNextChange = onAutoPlayNextChange,
+                            audioTracks = audioTracks,
+                            audioAutomatic = audioAutomatic,
+                            onAudioTrackSelected = onAudioTrackSelected,
+                            subtitleTracks = subtitleTracks,
+                            subtitlesDisabled = subtitlesDisabled,
+                            onSubtitleTrackSelected = onSubtitleTrackSelected,
+                            danmakuAvailable = danmakuAvailable,
+                            danmakuOffline = danmakuOffline,
+                            danmakuEnabled = danmakuEnabled,
+                            danmakuAutoMatch = danmakuAutoMatch,
+                            danmakuLoading = danmakuLoading,
+                            danmakuCueCount = danmakuCueCount,
+                            danmakuError = danmakuError,
+                            onDanmakuEnabledChange = onDanmakuEnabledChange,
+                            onDanmakuAutoMatchChange = onDanmakuAutoMatchChange,
+                            onDanmakuSearch = onDanmakuSearch,
+                            onDanmakuRematch = onDanmakuRematch,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                    }
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlayerSettingsHeader(playbackDiagnostics: PlaybackDiagnostics, onDismiss: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "播放设置",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.semantics { heading() },
+            )
+            Text(
+                text = if (playbackDiagnostics.usingFallback) {
+                    "${playbackDiagnostics.methodLabel} · 已自动兼容"
+                } else playbackDiagnostics.methodLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onDismiss) {
+            Icon(Icons.Default.Close, contentDescription = "关闭播放设置")
         }
     }
 }
@@ -302,54 +373,36 @@ private fun PlayerSettingsContent(
     onDanmakuAutoMatchChange: (Boolean) -> Unit,
     onDanmakuSearch: () -> Unit,
     onDanmakuRematch: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showPlaybackDetails by rememberSaveable { mutableStateOf(false) }
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
-            .padding(bottom = 28.dp),
+            .padding(top = 12.dp, bottom = 16.dp),
     ) {
-        Text(
-            text = "播放设置",
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+        PlayerSettingsChoices(
+            title = "播放倍速",
+            options = supportedPlaybackSpeeds.map { it to speedLabel(it) },
+            selected = playbackSpeed,
+            onSelect = onPlaybackSpeedChange,
+            compact = true,
         )
 
-        PlayerSettingsRow(
-            title = "当前播放",
-            subtitle = buildString {
-                append(playbackDiagnostics.methodLabel)
-                if (playbackDiagnostics.usingFallback) append(" · 已自动兼容")
-            },
-        )
-
-        PlayerPreferenceAxis(
-            title = "播放速度",
-            subtitle = "最高支持 8×，长按画面可临时快速播放",
-            value = speedLabel(playbackSpeed),
-            options = PlayerSpeedOptions.map { speed -> speed.toString() to speedLabel(speed) },
-            selected = playbackSpeed.toString(),
-            onCommit = { onPlaybackSpeedChange(it.toFloat()) },
-        )
-
-        PlayerPreferenceAxis(
+        PlayerSettingsChoices(
             title = "长按倍速",
-            subtitle = "按住画面时临时使用此速度，松开后恢复",
-            value = speedLabel(longPressBoostSpeed),
-            options = supportedLongPressBoostSpeeds.map { speed -> speed.toString() to speedLabel(speed) },
-            selected = longPressBoostSpeed.toString(),
-            onCommit = { onLongPressBoostSpeedChange(it.toFloat()) },
+            options = supportedLongPressBoostSpeeds.map { it to speedLabel(it) },
+            selected = longPressBoostSpeed,
+            onSelect = onLongPressBoostSpeedChange,
         )
 
-        SettingsSectionTitle("画面比例")
-        HillsDiscreteDragRail(
-            options = listOf("0" to "适应", "1" to "裁切", "2" to "拉伸"),
-            selected = resizeMode.toString(),
-            onPreview = {},
-            onCommit = { value -> onResizeModeChange(value.toInt()) },
-            modifier = Modifier.padding(horizontal = 20.dp),
+        PlayerSettingsChoices(
+            title = "画面比例",
+            options = listOf(0 to "适应", 1 to "裁切", 2 to "拉伸"),
+            selected = resizeMode,
+            onSelect = onResizeModeChange,
         )
 
         PlayerSettingsRow(
@@ -502,27 +555,61 @@ private fun PlayerSettingsRow(
 }
 
 @Composable
-private fun PlayerPreferenceAxis(
+private fun <T> PlayerSettingsChoices(
     title: String,
-    subtitle: String,
-    value: String,
-    options: List<Pair<String, String>>,
-    selected: String,
-    onCommit: (String) -> Unit,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    compact: Boolean = false,
 ) {
-    var draftSelected by remember(selected) { mutableStateOf(selected) }
-    PlayerSettingsRow(
-        title = title,
-        subtitle = subtitle,
-        value = options.firstOrNull { it.first == draftSelected }?.second ?: value,
-    )
-    HillsDiscreteDragRail(
-        options = options,
-        selected = selected,
-        onPreview = { draftSelected = it },
-        onCommit = onCommit,
-        modifier = Modifier.padding(horizontal = 20.dp),
-    )
+    Column(
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.semantics { heading() },
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth().selectableGroup(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            maxItemsInEachRow = if (compact) 6 else 4,
+        ) {
+            options.forEach { (value, label) ->
+                val active = value == selected
+                val shape = RoundedCornerShape(10.dp)
+                Box(
+                    modifier = Modifier
+                        .widthIn(min = if (compact) 48.dp else 72.dp)
+                        .heightIn(min = 48.dp)
+                        .clip(shape)
+                        .background(
+                            if (active) MaterialTheme.colorScheme.primaryContainer
+                            else MaterialTheme.colorScheme.surfaceVariant,
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = if (active) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            shape = shape,
+                        )
+                        .selectable(selected = active, role = Role.RadioButton, onClick = { onSelect(value) })
+                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = if (active) MaterialTheme.colorScheme.onPrimaryContainer
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun trackKey(track: PlayerTrackChoice): String = "${track.trackIndex}:${track.label}"

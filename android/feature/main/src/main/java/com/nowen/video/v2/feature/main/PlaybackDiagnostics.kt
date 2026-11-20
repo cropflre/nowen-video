@@ -13,6 +13,9 @@ data class PlaybackDiagnostics(
 ) {
     val fallbackAvailable: Boolean
         get() = fallbackUrl.isNotBlank() && !usingFallback
+
+    val isRemux: Boolean
+        get() = method.equals("remux", ignoreCase = true) || method.equals("smart_remux", ignoreCase = true)
 }
 
 internal fun playbackMethodLabel(method: String): String = when (method.lowercase()) {

@@ -9,20 +9,18 @@ class PlaybackSessionTimelineTest {
         assertEquals(
             3_615_000L,
             absolutePlaybackPositionMs(
-                sessionManaged = true,
-                generationOffsetMs = 3_600_000L,
+                sourceOffsetMs = 3_600_000L,
                 relativePositionMs = 15_000L,
             ),
         )
     }
 
     @Test
-    fun legacyPlaybackKeepsOriginalPosition() {
+    fun directPlaybackKeepsOriginalPosition() {
         assertEquals(
             15_000L,
             absolutePlaybackPositionMs(
-                sessionManaged = false,
-                generationOffsetMs = 3_600_000L,
+                sourceOffsetMs = 0L,
                 relativePositionMs = 15_000L,
             ),
         )
@@ -33,8 +31,7 @@ class PlaybackSessionTimelineTest {
         assertEquals(
             25_000L,
             relativePlaybackPositionMs(
-                sessionManaged = true,
-                generationOffsetMs = 3_600_000L,
+                sourceOffsetMs = 3_600_000L,
                 absolutePositionMs = 3_625_000L,
             ),
         )

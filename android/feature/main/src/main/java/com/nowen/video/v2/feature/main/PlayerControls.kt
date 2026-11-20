@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
@@ -50,12 +51,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -138,6 +139,8 @@ internal fun PlayerGestureLayer(
     val viewConfiguration = LocalViewConfiguration.current
     val hapticFeedback = LocalHapticFeedback.current
     val inPictureInPictureMode = rememberPictureInPictureMode()
+    val seekBy by rememberUpdatedState(onSeekBy)
+    val seekByDrag by rememberUpdatedState(onSeekDelta)
 
     Box(
         modifier = modifier.pointerInput(currentSpeed, longPressBoostSpeed, enabled, inPictureInPictureMode) {
@@ -193,12 +196,12 @@ internal fun PlayerGestureLayer(
                     last = change.position
                     change.consume()
                 }
-                if (mode == GestureMode.SEEK && seekDeltaMs != 0L) onSeekDelta(seekDeltaMs)
+                if (mode == GestureMode.SEEK && seekDeltaMs != 0L) seekByDrag(seekDeltaMs)
                 if (boostStarted) onBoostEnd(currentSpeed)
                 if (!moved && mode == null) {
                     val now = SystemClock.elapsedRealtime()
                     if (now - lastTapTimeMs <= DOUBLE_TAP_TIMEOUT_MS) {
-                        onSeekBy(playerDoubleTapSeekDeltaMs(start.x, size.width.toFloat()))
+                        seekBy(playerDoubleTapSeekDeltaMs(start.x, size.width.toFloat()))
                         lastTapTimeMs = 0L
                     } else {
                         onTap()
@@ -241,7 +244,7 @@ internal fun NowenPlayerControls(
     onPreviousEpisode: () -> Unit = {},
     hasAudioTracks: Boolean = true,
     onAudioClick: () -> Unit = onSettings,
-    hasSubtitleTracks: Boolean = true,
+    hasSubtitleTracks: Boolean = false,
     onSubtitleClick: () -> Unit = onSettings,
     hasEpisodeList: Boolean = false,
     onEpisodeListClick: () -> Unit = {},
@@ -531,11 +534,15 @@ private fun PlayerBottomControls(
                 FixedPlayerSlot(enabled = hasAudioTracks, onClick = onAudioClick) {
                     Icon(Icons.Default.QueueMusic, contentDescription = "音频", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
                 }
-                FixedPlayerSlot(enabled = hasSubtitleTracks, onClick = onSubtitleClick) {
-                    Icon(Icons.Default.Subtitles, contentDescription = "字幕", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+                if (hasSubtitleTracks) {
+                    PlayerIconButton(onClick = onSubtitleClick) {
+                        Icon(Icons.Default.Subtitles, contentDescription = "字幕", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+                    }
                 }
-                FixedPlayerSlot(enabled = hasEpisodeList, onClick = onEpisodeListClick) {
-                    Icon(Icons.Default.QueueMusic, contentDescription = "选集", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+                if (hasEpisodeList) {
+                    PlayerIconButton(onClick = onEpisodeListClick) {
+                        Icon(Icons.Default.FormatListNumbered, contentDescription = "选集", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
+                    }
                 }
             }
             Column(
@@ -548,11 +555,15 @@ private fun PlayerBottomControls(
                 PlayerIconButton(onClick = onSpeedIncrease) {
                     Icon(Icons.Default.Add, contentDescription = "提高倍速", tint = Color.White, modifier = Modifier.size(PLAYER_ICON_SIZE))
                 }
-                TextButton(onClick = onSpeedClick) {
+                PlayerIconButton(onClick = onSpeedClick) {
                     Text(
-                        text = speedDisplayLabel(playbackSpeed),
+                        text = speedDisplayLabel(playbackSpeed).removeSuffix("×"),
                         color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
                 PlayerIconButton(onClick = onSpeedDecrease) {

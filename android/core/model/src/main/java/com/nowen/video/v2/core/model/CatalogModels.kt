@@ -63,6 +63,7 @@ data class StreamInfo(
     @SerialName("hls_url") val hlsUrl: String = "",
     @SerialName("preprocessed_url") val preprocessedUrl: String = "",
     @SerialName("playback_plan") val playbackPlan: PlaybackPlan? = null,
+    @SerialName("file_ext") val fileExt: String = "",
 ) {
     val preferredUrl: String
         get() = playbackPlan?.url?.takeIf(String::isNotBlank) ?: when {

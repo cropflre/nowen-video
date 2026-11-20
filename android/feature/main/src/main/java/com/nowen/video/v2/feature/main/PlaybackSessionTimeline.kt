@@ -1,24 +1,22 @@
 package com.nowen.video.v2.feature.main
 
 internal fun absolutePlaybackPositionMs(
-    sessionManaged: Boolean,
-    generationOffsetMs: Long,
+    sourceOffsetMs: Long,
     relativePositionMs: Long,
-): Long {
-    val relative = relativePositionMs.coerceAtLeast(0L)
-    return if (sessionManaged) generationOffsetMs.coerceAtLeast(0L) + relative else relative
-}
+): Long = sourceOffsetMs.coerceAtLeast(0L) + relativePositionMs.coerceAtLeast(0L)
 
 internal fun relativePlaybackPositionMs(
-    sessionManaged: Boolean,
-    generationOffsetMs: Long,
+    sourceOffsetMs: Long,
     absolutePositionMs: Long,
-): Long {
-    val absolute = absolutePositionMs.coerceAtLeast(0L)
-    return if (sessionManaged) (absolute - generationOffsetMs.coerceAtLeast(0L)).coerceAtLeast(0L) else absolute
-}
+): Long = (absolutePositionMs - sourceOffsetMs.coerceAtLeast(0L)).coerceAtLeast(0L)
 
 internal fun clampPlaybackTargetMs(targetMs: Long, durationMs: Long): Long {
     val target = targetMs.coerceAtLeast(0L)
     return if (durationMs > 0L) target.coerceAtMost(durationMs) else target
+}
+
+internal fun clampRemuxStartMs(targetMs: Long, durationMs: Long): Long {
+    if (durationMs <= 0L) return targetMs.coerceAtLeast(0L)
+    // FFmpeg needs frames after the start position to produce a playable stream.
+    return targetMs.coerceIn(0L, (durationMs - 1_000L).coerceAtLeast(0L))
 }
