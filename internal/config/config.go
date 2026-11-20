@@ -300,6 +300,16 @@ type AIConfig struct {
 	SubCleanMaxLinesPerCue int `mapstructure:"sub_clean_max_lines_per_cue"`
 }
 
+// MCPConfig MCP 服务配置（第一阶段：仅 stdio 传输，无远程 HTTP）。
+type MCPConfig struct {
+	// AllowDirectRating 是否允许 MCP 客户端直接写家长确认分级。
+	// 默认 false：此时 set_family_rating / clear_family_rating 拒绝执行，
+	// AI 只能通过 suggest_family_rating 给建议，由家长在管理端确认。
+	// 开启方式：config.yaml 写 mcp.allow_direct_rating: true，
+	// 或环境变量 NOWEN_MCP_ALLOW_DIRECT_RATING=true。
+	AllowDirectRating bool `mapstructure:"allow_direct_rating"`
+}
+
 // RegistrationConfig 注册控制配置
 type RegistrationConfig struct {
 	// 是否允许公开注册，默认 false（仅管理员可创建用户）
@@ -586,6 +596,7 @@ type Config struct {
 	Logging      LoggingConfig      `mapstructure:"logging"`
 	Cache        CacheConfig        `mapstructure:"cache"`
 	AI           AIConfig           `mapstructure:"ai"`
+	MCP          MCPConfig          `mapstructure:"mcp"`
 	Registration RegistrationConfig `mapstructure:"registration"`
 	Storage      StorageConfig      `mapstructure:"storage"`
 	Emby         EmbyConfig         `mapstructure:"emby"`
@@ -801,6 +812,10 @@ func setDefaults() {
 	viper.SetDefault("logging.max_size_mb", 100)
 	viper.SetDefault("logging.max_age_days", 30)
 	viper.SetDefault("logging.max_backups", 10)
+
+	// ---- MCP ----
+	// 默认不允许 MCP 直接写家长确认分级：AI 只能给建议，家长确认后才生效。
+	viper.SetDefault("mcp.allow_direct_rating", false)
 
 	// ---- AI ----
 	viper.SetDefault("ai.enabled", false)

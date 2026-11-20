@@ -26,6 +26,11 @@ import (
 )
 
 func main() {
+	// `server-lite mcp`：以 stdio 启动 MCP server，不走 HTTP 启动路径。
+	if len(os.Args) > 1 && os.Args[1] == "mcp" {
+		runMCPCommand()
+		return
+	}
 	appVer := version.Current()
 	cfg, err := config.Load()
 	if err != nil {

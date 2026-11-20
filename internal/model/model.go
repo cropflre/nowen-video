@@ -3,6 +3,7 @@ package model
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -1010,9 +1011,11 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			if !columnExists(db, table, col.Column) {
 				if err := db.Exec(col.DDL).Error; err != nil {
 					// 列可能已存在（并发或其他原因），忽略 "duplicate column" 错误
-					fmt.Printf("[数据库迁移] 补全列 %s.%s 失败（可忽略）: %v\n", table, col.Column, err)
+					// 写 stderr 而不是 stdout：`server-lite mcp` 的 stdout 是
+					// JSON-RPC 帧，任何非 JSON 行都会破坏 MCP 会话。
+					fmt.Fprintf(os.Stderr, "[数据库迁移] 补全列 %s.%s 失败（可忽略）: %v\n", table, col.Column, err)
 				} else {
-					fmt.Printf("[数据库迁移] 已补全缺失列: %s.%s\n", table, col.Column)
+					fmt.Fprintf(os.Stderr, "[数据库迁移] 已补全缺失列: %s.%s\n", table, col.Column)
 				}
 			}
 		}
