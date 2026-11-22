@@ -212,30 +212,32 @@ func (s *BangumiService) ApplyBangumiData(media *model.Media, searchTitle string
 
 // applyBangumiResult 将 Bangumi 结果应用到媒体（仅补充缺失字段）
 func (s *BangumiService) applyBangumiResult(media *model.Media, subject *BangumiSubject) {
+	// 仅补充缺失字段；锁定字段即使为空也不填。
+	guard := newScrapeGuard(ScrapeModeFillMissing, media.LockedFields)
 	// 补充原始标题
-	if media.OrigTitle == "" && subject.Name != "" {
+	if media.OrigTitle == "" && subject.Name != "" && !guard.locked("orig_title") {
 		media.OrigTitle = subject.Name
 	}
 
 	// 补充简介
-	if media.Overview == "" && subject.Summary != "" {
+	if media.Overview == "" && subject.Summary != "" && !guard.locked("overview") {
 		media.Overview = subject.Summary
 	}
 
 	// 补充评分（Bangumi 满分 10 分，直接使用）
-	if media.Rating == 0 && subject.Rating != nil && subject.Rating.Score > 0 {
+	if media.Rating == 0 && subject.Rating != nil && subject.Rating.Score > 0 && !guard.locked("rating") {
 		media.Rating = subject.Rating.Score
 	}
 
 	// 补充年份
-	if media.Year == 0 && subject.AirDate != "" {
+	if media.Year == 0 && subject.AirDate != "" && !guard.locked("year") {
 		if len(subject.AirDate) >= 4 {
 			media.Year, _ = strconv.Atoi(subject.AirDate[:4])
 		}
 	}
 
 	// 补充类型标签
-	if media.Genres == "" && len(subject.Tags) > 0 {
+	if media.Genres == "" && len(subject.Tags) > 0 && !guard.locked("genres") {
 		var tags []string
 		for i, tag := range subject.Tags {
 			if i >= 5 {
@@ -552,29 +554,32 @@ func (s *BangumiService) MatchMediaWithBangumi(media *model.Media, subjectID int
 		return fmt.Errorf("获取 Bangumi 条目详情失败: %w", err)
 	}
 
-	// 应用标题
-	if subject.NameCN != "" {
+	// 应用标题：手动匹配固定走全部替换，但仍受字段锁定约束。
+	matchGuard := newScrapeGuard(ScrapeModeReplace, media.LockedFields)
+	if subject.NameCN != "" && !matchGuard.locked("title") {
 		media.Title = subject.NameCN
 	}
-	media.OrigTitle = subject.Name
+	if !matchGuard.locked("orig_title") {
+		media.OrigTitle = subject.Name
+	}
 
 	// 应用简介
-	if subject.Summary != "" {
+	if subject.Summary != "" && !matchGuard.locked("overview") {
 		media.Overview = subject.Summary
 	}
 
 	// 应用评分
-	if subject.Rating != nil && subject.Rating.Score > 0 {
+	if subject.Rating != nil && subject.Rating.Score > 0 && !matchGuard.locked("rating") {
 		media.Rating = subject.Rating.Score
 	}
 
 	// 应用年份
-	if subject.AirDate != "" && len(subject.AirDate) >= 4 {
+	if subject.AirDate != "" && len(subject.AirDate) >= 4 && !matchGuard.locked("year") {
 		media.Year, _ = strconv.Atoi(subject.AirDate[:4])
 	}
 
 	// 应用类型标签
-	if len(subject.Tags) > 0 {
+	if len(subject.Tags) > 0 && !matchGuard.locked("genres") {
 		var tags []string
 		for i, tag := range subject.Tags {
 			if i >= 5 {
@@ -589,7 +594,7 @@ func (s *BangumiService) MatchMediaWithBangumi(media *model.Media, subjectID int
 	s.applyInfobox(media, subject.Infobox)
 
 	// 下载海报
-	if subject.Images != nil && subject.Images.Large != "" {
+	if subject.Images != nil && subject.Images.Large != "" && !matchGuard.locked("poster") {
 		localPath, err := s.downloadBangumiCover(media, subject.Images.Large)
 		if err == nil {
 			media.PosterPath = localPath
@@ -607,29 +612,32 @@ func (s *BangumiService) MatchSeriesWithBangumi(series *model.Series, subjectID 
 		return fmt.Errorf("获取 Bangumi 条目详情失败: %w", err)
 	}
 
-	// 应用标题
-	if subject.NameCN != "" {
+	// 应用标题：手动匹配固定走全部替换，但仍受字段锁定约束。
+	matchGuard := newScrapeGuard(ScrapeModeReplace, series.LockedFields)
+	if subject.NameCN != "" && !matchGuard.locked("title") {
 		series.Title = subject.NameCN
 	}
-	series.OrigTitle = subject.Name
+	if !matchGuard.locked("orig_title") {
+		series.OrigTitle = subject.Name
+	}
 
 	// 应用简介
-	if subject.Summary != "" {
+	if subject.Summary != "" && !matchGuard.locked("overview") {
 		series.Overview = subject.Summary
 	}
 
 	// 应用评分
-	if subject.Rating != nil && subject.Rating.Score > 0 {
+	if subject.Rating != nil && subject.Rating.Score > 0 && !matchGuard.locked("rating") {
 		series.Rating = subject.Rating.Score
 	}
 
 	// 应用年份
-	if subject.AirDate != "" && len(subject.AirDate) >= 4 {
+	if subject.AirDate != "" && len(subject.AirDate) >= 4 && !matchGuard.locked("year") {
 		series.Year, _ = strconv.Atoi(subject.AirDate[:4])
 	}
 
 	// 应用类型标签
-	if len(subject.Tags) > 0 {
+	if len(subject.Tags) > 0 && !matchGuard.locked("genres") {
 		var tags []string
 		for i, tag := range subject.Tags {
 			if i >= 5 {
@@ -659,7 +667,7 @@ func (s *BangumiService) MatchSeriesWithBangumi(series *model.Series, subjectID 
 	}
 
 	// 下载海报
-	if subject.Images != nil && subject.Images.Large != "" {
+	if subject.Images != nil && subject.Images.Large != "" && !matchGuard.locked("poster") {
 		localPath, err := s.DownloadBangumiCoverForSeries(series, subject.Images.Large)
 		if err == nil {
 			series.PosterPath = localPath

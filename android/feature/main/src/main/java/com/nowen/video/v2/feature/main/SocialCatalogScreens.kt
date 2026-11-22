@@ -10,10 +10,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
@@ -21,8 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -40,12 +34,10 @@ import com.nowen.video.v2.core.designsystem.HillsScreen
 import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.model.CollectionWithMedia
-import com.nowen.video.v2.core.model.FavoriteRecord
 import com.nowen.video.v2.core.model.MediaCard
 import com.nowen.video.v2.core.model.MovieCollection
 import com.nowen.video.v2.core.model.Person
 import com.nowen.video.v2.core.model.PersonMediaResponse
-import com.nowen.video.v2.core.model.WatchHistoryRecord
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.async
@@ -63,207 +55,6 @@ data class ListUiState<T>(
 )
 
 @HiltViewModel
-class FavoritesViewModel @Inject constructor(
-    private val repository: SocialCatalogRepository,
-    val sessionStore: ServerSessionStore,
-) : ViewModel() {
-    private val _state = MutableStateFlow(ListUiState<FavoriteRecord>())
-    val state: StateFlow<ListUiState<FavoriteRecord>> = _state
-
-    init { load() }
-
-    fun load() {
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            repository.favorites()
-                .onSuccess { page -> _state.value = ListUiState(loading = false, items = page.data) }
-                .onFailure { error ->
-                    _state.update { it.copy(loading = false, error = error.message ?: "收藏加载失败") }
-                }
-        }
-    }
-
-    fun remove(mediaId: String) {
-        viewModelScope.launch {
-            _state.update { it.copy(actionId = mediaId, error = null) }
-            repository.setFavorite(mediaId, false)
-                .onSuccess {
-                    _state.update { current ->
-                        current.copy(
-                            actionId = null,
-                            items = current.items.filterNot { it.mediaId == mediaId || it.media.resolvedId == mediaId },
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _state.update { it.copy(actionId = null, error = error.message ?: "取消收藏失败") }
-                }
-        }
-    }
-}
-
-@Composable
-fun FavoritesScreen(
-    onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
-    viewModel: FavoritesViewModel = hiltViewModel(),
-) {
-    val state by viewModel.state.collectAsState()
-    val session by viewModel.sessionStore.snapshot.collectAsState()
-    CatalogListScaffold(
-        title = "我的收藏",
-        icon = { Icon(Icons.Default.Favorite, contentDescription = null) },
-        onBack = onBack,
-    ) {
-        when {
-            state.loading -> item { LoadingPanel("正在同步收藏") }
-            state.error != null -> item { HillsState("收藏加载失败", state.error!!, "重试", viewModel::load) }
-            state.items.isEmpty() -> item { HillsState("还没有收藏", "在媒体详情页点击收藏，喜欢的内容会出现在这里。") }
-            else -> items(state.items, key = { it.id.ifBlank { it.mediaId } }) { favorite ->
-                val media = favorite.media
-                MediaActionRow(
-                    media = media,
-                    imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                    subtitle = listOfNotNull(media.year?.toString(), "已收藏").joinToString(" · "),
-                    onClick = { onMediaClick(media.resolvedId.ifBlank { favorite.mediaId }) },
-                    action = {
-                        IconButton(
-                            onClick = { viewModel.remove(favorite.mediaId.ifBlank { media.resolvedId }) },
-                            enabled = state.actionId != favorite.mediaId,
-                        ) {
-                            if (state.actionId == favorite.mediaId) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.Delete, contentDescription = "取消收藏")
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    }
-}
-
-@HiltViewModel
-class HistoryViewModel @Inject constructor(
-    private val repository: SocialCatalogRepository,
-    val sessionStore: ServerSessionStore,
-) : ViewModel() {
-    private val _state = MutableStateFlow(ListUiState<WatchHistoryRecord>())
-    val state: StateFlow<ListUiState<WatchHistoryRecord>> = _state
-
-    init { load() }
-
-    fun load() {
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
-            repository.history()
-                .onSuccess { page -> _state.value = ListUiState(loading = false, items = page.data) }
-                .onFailure { error ->
-                    _state.update { it.copy(loading = false, error = error.message ?: "历史加载失败") }
-                }
-        }
-    }
-
-    fun delete(mediaId: String) {
-        viewModelScope.launch {
-            _state.update { it.copy(actionId = mediaId, error = null) }
-            repository.deleteHistory(mediaId)
-                .onSuccess {
-                    _state.update { current ->
-                        current.copy(
-                            actionId = null,
-                            items = current.items.filterNot { it.mediaId == mediaId },
-                        )
-                    }
-                }
-                .onFailure { error ->
-                    _state.update { it.copy(actionId = null, error = error.message ?: "删除观看记录失败") }
-                }
-        }
-    }
-
-    fun clear() {
-        viewModelScope.launch {
-            _state.update { it.copy(actionId = CLEAR_ALL_ACTION, error = null) }
-            repository.clearHistory()
-                .onSuccess { _state.value = ListUiState(loading = false) }
-                .onFailure { error ->
-                    _state.update { it.copy(actionId = null, error = error.message ?: "清空观看历史失败") }
-                }
-        }
-    }
-
-    private companion object { const val CLEAR_ALL_ACTION = "__clear_all__" }
-}
-
-@Composable
-fun HistoryScreen(
-    onBack: () -> Unit,
-    onMediaClick: (String) -> Unit,
-    viewModel: HistoryViewModel = hiltViewModel(),
-) {
-    val state by viewModel.state.collectAsState()
-    val session by viewModel.sessionStore.snapshot.collectAsState()
-    var confirmClear by remember { mutableStateOf(false) }
-
-    CatalogListScaffold(
-        title = "观看历史",
-        icon = { Icon(Icons.Default.History, contentDescription = null) },
-        onBack = onBack,
-        topAction = if (state.items.isEmpty()) null else {
-            {
-                IconButton(onClick = { confirmClear = true }, enabled = state.actionId == null) {
-                    Icon(Icons.Default.DeleteSweep, contentDescription = "清空历史")
-                }
-            }
-        },
-    ) {
-        when {
-            state.loading -> item { LoadingPanel("正在同步观看历史") }
-            state.error != null -> item { HillsState("历史加载失败", state.error!!, "重试", viewModel::load) }
-            state.items.isEmpty() -> item { HillsState("暂无观看历史", "开始播放后，观看进度会自动记录在这里。") }
-            else -> items(state.items, key = { it.id.ifBlank { it.mediaId } }) { history ->
-                val media = history.media
-                MediaActionRow(
-                    media = media,
-                    imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
-                    subtitle = history.progressLabel,
-                    progress = history.normalizedProgress,
-                    onClick = { onMediaClick(media.resolvedId.ifBlank { history.mediaId }) },
-                    action = {
-                        IconButton(
-                            onClick = { viewModel.delete(history.mediaId) },
-                            enabled = state.actionId != history.mediaId,
-                        ) {
-                            if (state.actionId == history.mediaId) {
-                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
-                            } else {
-                                Icon(Icons.Default.Delete, contentDescription = "删除观看记录")
-                            }
-                        }
-                    },
-                )
-            }
-        }
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text("清空观看历史？") },
-            text = { Text("这会删除当前服务器账号的全部观看记录，已下载文件不会受影响。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    confirmClear = false
-                    viewModel.clear()
-                }) { Text("确认清空") }
-            },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("取消") } },
-        )
-    }
-}
-
 @HiltViewModel
 class CollectionsViewModel @Inject constructor(
     private val repository: SocialCatalogRepository,

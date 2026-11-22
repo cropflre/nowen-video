@@ -14,15 +14,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Collections
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Logout
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,12 +40,9 @@ import coil.compose.AsyncImage
 import com.nowen.video.v2.core.data.NowenRepository
 import com.nowen.video.v2.core.data.ServerSessionStore
 import com.nowen.video.v2.core.data.SocialCatalogRepository
-import com.nowen.video.v2.core.designsystem.HillsPoster
 import com.nowen.video.v2.core.designsystem.HillsScreen
-import com.nowen.video.v2.core.designsystem.HillsSecondaryAction
 import com.nowen.video.v2.core.designsystem.HillsState
 import com.nowen.video.v2.core.designsystem.HillsTextField
-import com.nowen.video.v2.core.designsystem.HillsTopBar
 import com.nowen.video.v2.core.designsystem.NowenMobileMetrics
 import com.nowen.video.v2.core.designsystem.NowenMotion
 import com.nowen.video.v2.core.model.MediaCard
@@ -475,110 +463,5 @@ private fun SearchPersonCard(
         Spacer(Modifier.height(8.dp))
         Text(person.name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(person.originalName.ifBlank { "演职人员" }, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-fun ProfileScreen(
-    modifier: Modifier = Modifier,
-    sessionStore: ServerSessionStore,
-    onFavorites: () -> Unit,
-    onHistory: () -> Unit,
-    onDownloads: () -> Unit,
-    onCollections: () -> Unit,
-    onSettings: () -> Unit,
-    onLogout: () -> Unit,
-) {
-    val session by sessionStore.snapshot.collectAsState()
-
-    HillsScreen(modifier, top = { HillsTopBar(title = "我的") }) { topPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(topPadding)
-                .padding(horizontal = 20.dp),
-        ) {
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.Person, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(42.dp))
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text(
-                    session.user?.nickname?.ifBlank { session.user?.username } ?: "用户",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    session.activeServer?.name ?: "未连接服务器",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Spacer(Modifier.height(28.dp))
-        Text("媒体", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        ProfileDestinationRow(
-            icon = Icons.Default.Favorite,
-            title = "我的收藏",
-            subtitle = "喜欢的电影和剧集",
-            onClick = onFavorites,
-        )
-        ProfileDestinationRow(
-            icon = Icons.Default.History,
-            title = "观看历史",
-            subtitle = "继续播放或管理记录",
-            onClick = onHistory,
-        )
-        ProfileDestinationRow(
-            icon = Icons.Default.CloudDownload,
-            title = "下载",
-            subtitle = "管理离线媒体与空间",
-            onClick = onDownloads,
-        )
-        ProfileDestinationRow(
-            icon = Icons.Default.Collections,
-            title = "系列合集",
-            subtitle = "按电影系列浏览内容",
-            onClick = onCollections,
-        )
-        Spacer(Modifier.height(24.dp))
-        Text("客户端", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
-        ProfileDestinationRow(
-            icon = Icons.Default.Settings,
-            title = "设置",
-            subtitle = "服务器、播放、下载与通知",
-            onClick = onSettings,
-        )
-        Spacer(Modifier.height(18.dp))
-        HillsSecondaryAction(
-            label = "退出当前服务器账号",
-            icon = Icons.Default.Logout,
-            onClick = onLogout,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        }
-    }
-}
-
-@Composable
-private fun ProfileDestinationRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.width(18.dp))
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
-        }
-        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

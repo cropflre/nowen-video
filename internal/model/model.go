@@ -230,6 +230,8 @@ type Series struct {
 	// V2 扩展字段
 	TMDbID         int    `json:"tmdb_id" gorm:"index"`
 	TMDbRatingData string `json:"tmdb_rating_data" gorm:"type:text"` // 剧集官方分级参考
+	// 字段锁定：JSON 数组，存 LockableScrapeFields 中的字段名；刮削时跳过这些字段。
+	LockedFields string `json:"locked_fields" gorm:"type:text"`
 	TVDbID         int    `json:"tvdb_id" gorm:"index"`
 	IMDbID         string `json:"imdb_id" gorm:"index;type:text"` // IMDB ID (tt开头)
 	DoubanID       string `json:"douban_id" gorm:"type:text"`
@@ -330,6 +332,8 @@ type Media struct {
 	OriginalPlot   string `json:"original_plot" gorm:"type:text"`    // 原始剧情（日文/原文），取自 NFO <originalplot>
 	MPAA           string `json:"mpaa" gorm:"type:text"`             // 分级（如 JP-18+），取自 NFO <mpaa>/<customrating>
 	TMDbRatingData string `json:"tmdb_rating_data" gorm:"type:text"` // 原始官方分级，仅供家长参考
+	// 字段锁定：JSON 数组，存 LockableScrapeFields 中的字段名；刮削时跳过这些字段。
+	LockedFields string `json:"locked_fields" gorm:"type:text"`
 	CountryCode    string `json:"country_code" gorm:"type:text"`     // 国家代码（JP/CN/US），取自 NFO <countrycode>
 	Maker          string `json:"maker" gorm:"index;type:text"`      // 制作商，取自 NFO <maker>
 	Publisher      string `json:"publisher" gorm:"index;type:text"`  // 发行商，取自 NFO <publisher>
@@ -970,6 +974,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "website", DDL: "ALTER TABLE `media` ADD COLUMN `website` text DEFAULT ''"},
 			{Column: "release_date", DDL: "ALTER TABLE `media` ADD COLUMN `release_date` text DEFAULT ''"},
 			{Column: "logo_path", DDL: "ALTER TABLE `media` ADD COLUMN `logo_path` text DEFAULT ''"},
+			{Column: "locked_fields", DDL: "ALTER TABLE `media` ADD COLUMN `locked_fields` text DEFAULT ''"},
 		},
 		"users": {
 			{Column: "child_mode", DDL: "ALTER TABLE `users` ADD COLUMN `child_mode` numeric DEFAULT 0"},
@@ -994,6 +999,7 @@ func ensureSQLiteColumns(db *gorm.DB) {
 			{Column: "studio", DDL: "ALTER TABLE `series` ADD COLUMN `studio` text DEFAULT ''"},
 			{Column: "tagline", DDL: "ALTER TABLE `series` ADD COLUMN `tagline` text DEFAULT ''"},
 			{Column: "logo_path", DDL: "ALTER TABLE `series` ADD COLUMN `logo_path` text DEFAULT ''"},
+			{Column: "locked_fields", DDL: "ALTER TABLE `series` ADD COLUMN `locked_fields` text DEFAULT ''"},
 		},
 		"watch_histories": {
 			{Column: "profile_id", DDL: "ALTER TABLE `watch_histories` ADD COLUMN `profile_id` text DEFAULT ''"},

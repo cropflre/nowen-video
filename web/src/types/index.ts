@@ -217,6 +217,8 @@ export interface Media {
   outline: string
   original_plot: string
   tmdb_rating_data?: string
+  // 字段锁定：JSON 数组字符串，存可锁定字段名；刮削时跳过这些字段。
+  locked_fields?: string
   mpaa: string
   country_code: string
   maker: string
@@ -252,6 +254,8 @@ export interface Series {
   episode_count: number
   // V2 扩展字段
   tmdb_rating_data?: string
+  // 字段锁定：JSON 数组字符串，存可锁定字段名；刮削时跳过这些字段。
+  locked_fields?: string
   tmdb_id: number
   douban_id: string
   bangumi_id: number
@@ -748,6 +752,8 @@ export interface TMDbSearchResult {
   first_air_date: string
   vote_average: number
   genre_ids: number[]
+  // 候选匹配度：后端用与自动选择同一套信号算出，仅展示用。
+  match_score?: number
 }
 
 // ==================== TMDb图片信息 ====================

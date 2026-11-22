@@ -19,17 +19,17 @@ func TestMovieRatingMetadataStaysBoundToMatchedTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	media := &model.Media{TMDbID: 42, TMDbRatingData: "old", MPAA: "R"}
-	(&MetadataService{}).applyMovieDetail(media, &detail)
+	(&MetadataService{}).applyMovieDetail(media, &detail, newScrapeGuard(ScrapeModeReplace, ""))
 	if media.TMDbID != 42 || !strings.Contains(media.TMDbRatingData, "PG-13") || media.MPAA != "R" {
 		t.Fatalf("unexpected rating data: %+v", media)
 	}
 	// A temporarily absent appended field does not erase data for the same film.
-	(&MetadataService{}).applyMovieDetail(media, &TMDbMovieDetail{ID: 42})
+	(&MetadataService{}).applyMovieDetail(media, &TMDbMovieDetail{ID: 42}, newScrapeGuard(ScrapeModeReplace, ""))
 	if !strings.Contains(media.TMDbRatingData, "PG-13") {
 		t.Fatal("same-title refresh removed the previous classification")
 	}
 	// A different identity must never inherit the old film's suggestion.
-	(&MetadataService{}).applyMovieDetail(media, &TMDbMovieDetail{ID: 43})
+	(&MetadataService{}).applyMovieDetail(media, &TMDbMovieDetail{ID: 43}, newScrapeGuard(ScrapeModeReplace, ""))
 	if media.TMDbRatingData != "" || media.TMDbID != 43 {
 		t.Fatal("old classification survived a change of film")
 	}

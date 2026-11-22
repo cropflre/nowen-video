@@ -151,31 +151,32 @@ func (s *DoubanService) ApplyDoubanData(media *model.Media, searchTitle string, 
 	s.applyDoubanResult(media, &results[0])
 }
 
-// applyDoubanResult 将豆瓣结果应用到媒体（仅补充缺失字段）
+// applyDoubanResult 将豆瓣结果应用到媒体（仅补充缺失字段；锁定字段即使为空也不填）
 func (s *DoubanService) applyDoubanResult(media *model.Media, result *DoubanSearchResult) {
+	guard := newScrapeGuard(ScrapeModeFillMissing, media.LockedFields)
 	// 仅补充缺失的评分（豆瓣评分作为参考）
-	if media.Rating == 0 && result.Rating > 0 {
+	if media.Rating == 0 && result.Rating > 0 && !guard.locked("rating") {
 		// 豆瓣满分10分，直接使用
 		media.Rating = result.Rating
 	}
 
 	// 补充缺失的简介
-	if media.Overview == "" && result.Overview != "" {
+	if media.Overview == "" && result.Overview != "" && !guard.locked("overview") {
 		media.Overview = result.Overview
 	}
 
 	// 补充缺失的年份
-	if media.Year == 0 && result.Year > 0 {
+	if media.Year == 0 && result.Year > 0 && !guard.locked("year") {
 		media.Year = result.Year
 	}
 
 	// 补充缺失的类型
-	if media.Genres == "" && result.Genres != "" {
+	if media.Genres == "" && result.Genres != "" && !guard.locked("genres") {
 		media.Genres = result.Genres
 	}
 
 	// 补充缺失的海报
-	if media.PosterPath == "" && result.Cover != "" {
+	if media.PosterPath == "" && result.Cover != "" && !guard.locked("poster") {
 		localPath, err := s.downloadDoubanCover(media, result.Cover)
 		if err == nil {
 			media.PosterPath = localPath

@@ -29,7 +29,9 @@ func (r *PersonRepo) FindByID(id string) (*model.Person, error) {
 
 func (r *PersonRepo) FindByTMDbID(tmdbID int) (*model.Person, error) {
 	var person model.Person
-	err := r.db.Where("tmdb_id = ?", tmdbID).First(&person).Error
+	// Person.TMDbID 没有显式 column 标签，GORM 派生列名是 tm_db_id
+	//（实证见 TestFindByTMDbIDColumn）；tmdb_id 列不存在。
+	err := r.db.Where("tm_db_id = ?", tmdbID).First(&person).Error
 	return &person, err
 }
 
@@ -95,6 +97,25 @@ func (r *MediaPersonRepo) ListBySeriesID(seriesID string) ([]model.MediaPerson, 
 	err := r.db.Preload("Person").Where("series_id = ?", seriesID).
 		Order("role ASC, sort_order ASC").Find(&mps).Error
 	return mps, err
+}
+
+// HasByMediaID 该媒体是否已有演职人员记录（只补缺失档下跳过演职保存用）。
+// 查询失败时返回 false（fail-open：宁可重新保存，不丢数据）。
+func (r *MediaPersonRepo) HasByMediaID(mediaID string) bool {
+	var count int64
+	if err := r.db.Model(&model.MediaPerson{}).Where("media_id = ?", mediaID).Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
+}
+
+// HasBySeriesID 该剧集合集是否已有演职人员记录（只补缺失档下跳过演职保存用）。
+func (r *MediaPersonRepo) HasBySeriesID(seriesID string) bool {
+	var count int64
+	if err := r.db.Model(&model.MediaPerson{}).Where("series_id = ?", seriesID).Count(&count).Error; err != nil {
+		return false
+	}
+	return count > 0
 }
 
 func (r *MediaPersonRepo) DeleteByMediaID(mediaID string) error {

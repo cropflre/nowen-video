@@ -173,9 +173,11 @@ func (s *FanartService) EnhanceMovieImages(media *model.Media) error {
 	}
 
 	updated := false
+	// Fanart 只补空图；被锁定的海报/背景图不补。
+	locked := ParseLockedFields(media.LockedFields)
 
 	// 补充高质量海报（如果当前没有或需要更好的）
-	if media.PosterPath == "" && len(images.MoviePoster) > 0 {
+	if media.PosterPath == "" && len(images.MoviePoster) > 0 && !locked["poster"] {
 		bestPoster := s.selectBestImage(images.MoviePoster, "zh", "en")
 		if bestPoster != nil {
 			localPath, err := s.downloadFanartImage(media.ID, bestPoster.URL, "poster")
@@ -187,7 +189,7 @@ func (s *FanartService) EnhanceMovieImages(media *model.Media) error {
 	}
 
 	// 补充高质量背景图
-	if media.BackdropPath == "" && len(images.MovieBackground) > 0 {
+	if media.BackdropPath == "" && len(images.MovieBackground) > 0 && !locked["backdrop"] {
 		randomDelay(1000, 2000) // 图片下载之间添加延迟
 		bestBg := s.selectBestImage(images.MovieBackground, "", "")
 		if bestBg != nil {
@@ -233,9 +235,11 @@ func (s *FanartService) EnhanceTVImages(series *model.Series, tvdbID int) error 
 	}
 
 	updated := false
+	// Fanart 只补空图；被锁定的海报/背景图不补。
+	locked := ParseLockedFields(series.LockedFields)
 
 	// 补充海报
-	if series.PosterPath == "" && len(images.TVPoster) > 0 {
+	if series.PosterPath == "" && len(images.TVPoster) > 0 && !locked["poster"] {
 		bestPoster := s.selectBestImage(images.TVPoster, "zh", "en")
 		if bestPoster != nil {
 			localPath, err := s.downloadFanartImageForSeries(series.ID, bestPoster.URL, "poster")
@@ -247,7 +251,7 @@ func (s *FanartService) EnhanceTVImages(series *model.Series, tvdbID int) error 
 	}
 
 	// 补充背景图
-	if series.BackdropPath == "" && len(images.TVBackground) > 0 {
+	if series.BackdropPath == "" && len(images.TVBackground) > 0 && !locked["backdrop"] {
 		randomDelay(1000, 2000) // 图片下载之间添加延迟
 		bestBg := s.selectBestImage(images.TVBackground, "", "")
 		if bestBg != nil {

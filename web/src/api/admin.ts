@@ -115,8 +115,8 @@ export const adminApi = {
   batchScan: (libraryIds: string[]) =>
     api.post('/admin/batch/scan', { library_ids: libraryIds }),
 
-  batchScrape: (mediaIds: string[]) =>
-    api.post('/admin/batch/scrape', { media_ids: mediaIds }),
+  batchScrape: (mediaIds: string[], mode?: 'fill-missing' | 'replace') =>
+    api.post('/admin/batch/scrape', { media_ids: mediaIds, ...(mode ? { mode } : {}) }),
 
   // 权限管理
   getUserPermission: (userId: string) =>
@@ -158,6 +158,7 @@ export const adminApi = {
     language?: string
     tagline?: string
     studio?: string
+    locked_fields?: string
   }) =>
     api.put<{ message: string; data: import('@/types').Media }>(`/admin/media/${mediaId}/metadata`, data),
 
@@ -168,8 +169,8 @@ export const adminApi = {
   unmatchSeriesMetadata: (seriesId: string) =>
     api.post(`/admin/series/${seriesId}/unmatch`),
 
-  scrapeSeriesMetadata: (seriesId: string) =>
-    api.post(`/admin/series/${seriesId}/scrape`),
+  scrapeSeriesMetadata: (seriesId: string, mode?: 'fill-missing' | 'replace') =>
+    api.post(`/admin/series/${seriesId}/scrape`, mode ? { mode } : undefined),
 
   deleteSeries: (seriesId: string) =>
     api.delete(`/admin/series/${seriesId}`),
@@ -184,6 +185,7 @@ export const adminApi = {
     country?: string
     language?: string
     studio?: string
+    locked_fields?: string
   }) =>
     api.put<{ message: string; data: import('@/types').Series }>(`/admin/series/${seriesId}/metadata`, data),
 

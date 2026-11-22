@@ -194,6 +194,7 @@ function MatchResultCard({
   let overview = ''
   let posterUrl: string | null = null
   let rating = 0
+  let matchScore: number | null = null
 
   if (source === 'tmdb') {
     title = result.title || result.name
@@ -202,6 +203,10 @@ function MatchResultCard({
     rating = result.vote_average || 0
     overview = result.overview || ''
     posterUrl = result.poster_path ? `https://image.tmdb.org/t/p/w92${result.poster_path}` : null
+    // 匹配度由后端用与自动选择同一套信号算出，仅展示；其他数据源不返回该字段时不显示。
+    if (typeof result.match_score === 'number' && Number.isFinite(result.match_score)) {
+      matchScore = Math.round(result.match_score)
+    }
   } else if (source === 'douban') {
     title = result.title
     year = result.year > 0 ? String(result.year) : ''
@@ -248,6 +253,7 @@ function MatchResultCard({
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--nv-text-tertiary)]">
           {year && <span>{year}</span>}
           {rating > 0 && <Tag tone="rating">★ {rating.toFixed(1)}</Tag>}
+          {matchScore !== null && <Tag tone="brand">{t('mediaDetail.matchScore', { score: String(matchScore) })}</Tag>}
           {source === 'bangumi' && result.eps > 0 && <span>{result.eps}{t('mediaDetail.episodes')}</span>}
         </div>
         {overview && <p className="mt-1 line-clamp-2 text-xs leading-5 text-[var(--nv-text-tertiary)]">{overview}</p>}

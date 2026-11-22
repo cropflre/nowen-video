@@ -350,6 +350,9 @@ type TMDbMovie struct {
 	VoteAverage   float64 `json:"vote_average"`
 	GenreIDs      []int   `json:"genre_ids"`
 	Runtime       int     `json:"runtime"`
+	// MatchScore 候选匹配度：与 bestMatchResult 同一套打分信号，
+	// 仅供手动匹配弹窗展示，不参与自动选择。
+	MatchScore float64 `json:"match_score,omitempty"`
 }
 
 // TMDbMovieDetail TMDb电影详情
@@ -504,7 +507,15 @@ type TMDbCrewMember struct {
 // ==================== 核心方法 ====================
 
 // ScrapeMedia 为单个媒体项刮削元数据
+// ScrapeMedia 刮削单个媒体的元数据（默认全部替换档，保留既有调用方行为）。
 func (s *MetadataService) ScrapeMedia(mediaID string) error {
+	return s.ScrapeMediaWithMode(mediaID, ScrapeModeReplace)
+}
+
+// ScrapeMediaWithMode 按指定档位刮削单个媒体的元数据。
+// 只补缺失档下，已有值的字段与已锁定的字段不被覆盖；
+// 演职人员已有记录时不再重新保存。
+func (s *MetadataService) ScrapeMediaWithMode(mediaID string, mode ScrapeMode) error {
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return ErrMediaNotFound
@@ -537,9 +548,9 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 		s.logger.Infof("检测到 TMDbID=%d（来自文件名），直接使用 ID 刮削: %s", media.TMDbID, media.Title)
 		var idErr error
 		if media.MediaType == "movie" {
-			idErr = s.scrapeMovieByTMDbID(media, media.TMDbID)
+			idErr = s.scrapeMovieByTMDbID(media, media.TMDbID, mode)
 		} else {
-			idErr = s.scrapeTVByTMDbID(media, media.TMDbID)
+			idErr = s.scrapeTVByTMDbID(media, media.TMDbID, mode)
 		}
 		if idErr == nil {
 			// P3+: 仅当海报也成功下载时才标记 scraped；否则标记 partial 以便下次重试
@@ -569,7 +580,7 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 
 	// 如果已配置 ProviderChain，使用新的多数据源调度链
 	if s.providerChain != nil {
-		err := s.providerChain.ScrapeMedia(media, searchTitle, year)
+		err := s.providerChain.ScrapeMedia(media, searchTitle, year, mode)
 		if err != nil {
 			s.logger.Debugf("多数据源调度链刮削失败: %s - %v", media.Title, err)
 			return err
@@ -598,9 +609,9 @@ func (s *MetadataService) ScrapeMedia(mediaID string) error {
 	var tmdbErr error
 	if s.cfg.Secrets.TMDbAPIKey != "" {
 		if media.MediaType == "movie" {
-			tmdbErr = s.scrapeMovie(media, searchTitle, year)
+			tmdbErr = s.scrapeMovie(media, searchTitle, year, mode)
 		} else {
-			tmdbErr = s.scrapeTV(media, searchTitle, year)
+			tmdbErr = s.scrapeTV(media, searchTitle, year, mode)
 		}
 		if tmdbErr != nil {
 			s.logger.Debugf("TMDb 刮削失败: %s - %v", media.Title, tmdbErr)
@@ -878,7 +889,8 @@ func hasNFOReadyMetadata(media *model.Media) bool {
 }
 
 // scrapeMovie 刮削电影元数据
-func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, year int) error {
+func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, year int, mode ScrapeMode) error {
+	guard := newScrapeGuard(mode, media.LockedFields)
 	// 为了兼容 TMDb 未收录中文名但收录了英文名的情况，
 	// 这里再解析一次拿到英文别名（alt），并按"中文→无年份→英文"的三段式搜索。
 	_, alt, _ := s.parseTitleWithAlt(media.Title)
@@ -901,45 +913,39 @@ func (s *MetadataService) scrapeMovie(media *model.Media, searchTitle string, ye
 	detail, err := s.getMovieDetail(best.ID)
 	if err != nil {
 		// 用搜索结果的信息也可以
-		s.applySearchResult(media, &best)
+		s.applySearchResult(media, &best, guard)
 	} else {
-		s.applyMovieDetail(media, detail)
+		s.applyMovieDetail(media, detail, guard)
 	}
 
-	// 下载海报
-	if media.PosterPath != "" || best.PosterPath != "" {
-		posterURL := best.PosterPath
-		if media.PosterPath == "" {
-			posterURL = best.PosterPath
-		}
-		if posterURL != "" {
-			localPath, err := s.downloadPoster(media, posterURL)
-			if err == nil {
-				media.PosterPath = localPath
-			}
+	// 下载海报：只补缺失档下已有海报时不重复下载；锁定字段不下载。
+	if best.PosterPath != "" && !guard.skip("poster", media.PosterPath == "") {
+		localPath, err := s.downloadPoster(media, best.PosterPath)
+		if err == nil {
+			media.PosterPath = localPath
 		}
 	}
 
 	// 下载背景图
-	if best.BackdropPath != "" {
+	if best.BackdropPath != "" && !guard.skip("backdrop", media.BackdropPath == "") {
 		localPath, err := s.downloadBackdrop(media, best.BackdropPath)
 		if err == nil {
 			media.BackdropPath = localPath
 		}
 	}
 
-	// 获取并保存演职人员
-	if s.cfg.Secrets.TMDbAPIKey != "" && best.ID > 0 {
-		if credits, err := s.getTMDbMovieCredits(best.ID); err == nil {
-			s.saveCreditsForMedia(media.ID, credits)
-		}
+	// 获取并保存演职人员（失败只记日志，不动已有数据；
+	// 只补缺失档下已有演职记录时不再重新保存）
+	if s.cfg.Secrets.TMDbAPIKey != "" && best.ID > 0 && !(mode == ScrapeModeFillMissing && s.hasMediaCast(media.ID)) {
+		s.loadAndSaveTMDbCredits(s.getTMDbMovieCredits, func(c *TMDbCredits) { s.saveCreditsForMedia(media.ID, c) }, media.ID, media.Title, best.ID)
 	}
 
 	return s.mediaRepo.Update(media)
 }
 
 // scrapeTV 刮削剧集元数据
-func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year int) error {
+func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year int, mode ScrapeMode) error {
+	guard := newScrapeGuard(mode, media.LockedFields)
 	_, alt, _ := s.parseTitleWithAlt(media.Title)
 	results, err := s.searchTMDbWithAlt("tv", searchTitle, alt, year)
 	if err != nil {
@@ -963,20 +969,24 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 		origTitle = best.OriginalTitle
 	}
 
-	if title != "" {
+	if title != "" && !guard.skip("title", media.Title == "") {
 		media.Title = title
 	}
-	media.OrigTitle = origTitle
-	if best.Overview != "" {
+	if !guard.skip("orig_title", media.OrigTitle == "") {
+		media.OrigTitle = origTitle
+	}
+	if best.Overview != "" && !guard.skip("overview", media.Overview == "") {
 		media.Overview = best.Overview
 	}
-	media.Rating = best.VoteAverage
+	if !guard.skip("rating", media.Rating == 0) {
+		media.Rating = best.VoteAverage
+	}
 
 	dateStr := best.FirstAirDate
 	if dateStr == "" {
 		dateStr = best.ReleaseDate
 	}
-	if len(dateStr) >= 4 {
+	if len(dateStr) >= 4 && !guard.skip("year", media.Year == 0) {
 		media.Year, _ = strconv.Atoi(dateStr[:4])
 	}
 	if best.ReleaseDate != "" {
@@ -986,18 +996,24 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 	}
 
 	// 下载海报
-	if best.PosterPath != "" {
+	if best.PosterPath != "" && !guard.skip("poster", media.PosterPath == "") {
 		localPath, err := s.downloadPoster(media, best.PosterPath)
 		if err == nil {
 			media.PosterPath = localPath
 		}
 	}
 
-	if best.BackdropPath != "" {
+	if best.BackdropPath != "" && !guard.skip("backdrop", media.BackdropPath == "") {
 		localPath, err := s.downloadBackdrop(media, best.BackdropPath)
 		if err == nil {
 			media.BackdropPath = localPath
 		}
+	}
+
+	// 获取并保存演职人员（与电影路径一致；剧集用 TV credits 接口；
+	// 只补缺失档下已有演职记录时不再重新保存）
+	if s.cfg.Secrets.TMDbAPIKey != "" && best.ID > 0 && !(mode == ScrapeModeFillMissing && s.hasMediaCast(media.ID)) {
+		s.loadAndSaveTMDbCredits(s.getTMDbTVCredits, func(c *TMDbCredits) { s.saveCreditsForMedia(media.ID, c) }, media.ID, media.Title, best.ID)
 	}
 
 	return s.mediaRepo.Update(media)
@@ -1005,38 +1021,41 @@ func (s *MetadataService) scrapeTV(media *model.Media, searchTitle string, year 
 
 // scrapeMovieByTMDbID 通过 TMDb ID 直接获取电影详情（跳过搜索步骤）
 // P1: 当文件名中包含 [tmdbid=xxx] 标签时调用，100% 精确匹配
-func (s *MetadataService) scrapeMovieByTMDbID(media *model.Media, tmdbID int) error {
+func (s *MetadataService) scrapeMovieByTMDbID(media *model.Media, tmdbID int, mode ScrapeMode) error {
+	guard := newScrapeGuard(mode, media.LockedFields)
 	detail, err := s.getMovieDetail(tmdbID)
 	if err != nil {
 		return fmt.Errorf("TMDb ID=%d 获取电影详情失败: %w", tmdbID, err)
 	}
-	s.applyMovieDetail(media, detail)
+	s.applyMovieDetail(media, detail, guard)
 	media.TMDbID = tmdbID
 
 	// 下载海报
-	if detail.PosterPath != "" {
+	if detail.PosterPath != "" && !guard.skip("poster", media.PosterPath == "") {
 		localPath, dlErr := s.downloadPoster(media, detail.PosterPath)
 		if dlErr == nil {
 			media.PosterPath = localPath
 		}
 	}
 	// 下载背景图
-	if detail.BackdropPath != "" {
+	if detail.BackdropPath != "" && !guard.skip("backdrop", media.BackdropPath == "") {
 		localPath, dlErr := s.downloadBackdrop(media, detail.BackdropPath)
 		if dlErr == nil {
 			media.BackdropPath = localPath
 		}
 	}
-	// 获取演职人员
-	if credits, credErr := s.getTMDbMovieCredits(tmdbID); credErr == nil {
-		s.saveCreditsForMedia(media.ID, credits)
+	// 获取演职人员（失败只记日志，不动已有数据；
+	// 只补缺失档下已有演职记录时不再重新保存）
+	if !(mode == ScrapeModeFillMissing && s.hasMediaCast(media.ID)) {
+		s.loadAndSaveTMDbCredits(s.getTMDbMovieCredits, func(c *TMDbCredits) { s.saveCreditsForMedia(media.ID, c) }, media.ID, media.Title, tmdbID)
 	}
 
 	return s.mediaRepo.Update(media)
 }
 
 // scrapeTVByTMDbID 通过 TMDb ID 直接获取剧集详情（跳过搜索步骤）
-func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error {
+func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int, mode ScrapeMode) error {
+	guard := newScrapeGuard(mode, media.LockedFields)
 	// 使用 TMDb TV Detail API
 	apiURL := fmt.Sprintf("%s/3/tv/%d?api_key=%s&language=zh-CN",
 		s.getTMDbAPIBase(), tmdbID, s.cfg.Secrets.TMDbAPIKey)
@@ -1060,17 +1079,21 @@ func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error
 		return fmt.Errorf("解析 TMDb TV 详情失败: %w", err)
 	}
 
-	if tvDetail.Name != "" {
+	if tvDetail.Name != "" && !guard.skip("title", media.Title == "") {
 		media.Title = tvDetail.Name
 	}
-	media.OrigTitle = tvDetail.OriginalName
-	if tvDetail.Overview != "" {
+	if !guard.skip("orig_title", media.OrigTitle == "") {
+		media.OrigTitle = tvDetail.OriginalName
+	}
+	if tvDetail.Overview != "" && !guard.skip("overview", media.Overview == "") {
 		media.Overview = tvDetail.Overview
 	}
-	media.Rating = tvDetail.VoteAverage
+	if !guard.skip("rating", media.Rating == 0) {
+		media.Rating = tvDetail.VoteAverage
+	}
 	media.TMDbID = tmdbID
 
-	if len(tvDetail.FirstAirDate) >= 4 {
+	if len(tvDetail.FirstAirDate) >= 4 && !guard.skip("year", media.Year == 0) {
 		media.Year, _ = strconv.Atoi(tvDetail.FirstAirDate[:4])
 	}
 	if tvDetail.FirstAirDate != "" {
@@ -1078,17 +1101,23 @@ func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error
 	}
 
 	// 下载海报
-	if tvDetail.PosterPath != "" {
+	if tvDetail.PosterPath != "" && !guard.skip("poster", media.PosterPath == "") {
 		localPath, dlErr := s.downloadPoster(media, tvDetail.PosterPath)
 		if dlErr == nil {
 			media.PosterPath = localPath
 		}
 	}
-	if tvDetail.BackdropPath != "" {
+	if tvDetail.BackdropPath != "" && !guard.skip("backdrop", media.BackdropPath == "") {
 		localPath, dlErr := s.downloadBackdrop(media, tvDetail.BackdropPath)
 		if dlErr == nil {
 			media.BackdropPath = localPath
 		}
+	}
+
+	// 获取并保存演职人员（失败只记日志，不动已有数据；
+	// 只补缺失档下已有演职记录时不再重新保存）
+	if !(mode == ScrapeModeFillMissing && s.hasMediaCast(media.ID)) {
+		s.loadAndSaveTMDbCredits(s.getTMDbTVCredits, func(c *TMDbCredits) { s.saveCreditsForMedia(media.ID, c) }, media.ID, media.Title, tmdbID)
 	}
 
 	return s.mediaRepo.Update(media)
@@ -1096,6 +1125,77 @@ func (s *MetadataService) scrapeTVByTMDbID(media *model.Media, tmdbID int) error
 
 // bestMatchResult 从搜索结果中选择最佳匹配（P1: 置信度排序替代简单取 results[0]）
 // 综合考虑标题匹配度、年份匹配、数据完整性等因素
+// matchScoreForResult 单个候选的匹配度打分：与 bestMatchResult 同一套信号。
+// 抽成独立函数，供搜索响应展示复用；权重与 bestMatchResult 完全一致，
+// 改动这里会同时影响自动选择与展示分数，二者永不分叉。
+func matchScoreForResult(r TMDbMovie, searchTitle string, year int, index int) float64 {
+	score := 0.0
+
+	// 获取标题
+	title := r.Title
+	if title == "" {
+		title = r.Name
+	}
+	origTitle := r.OriginalTitle
+	if origTitle == "" {
+		origTitle = r.OriginalName
+	}
+
+	searchLower := strings.ToLower(strings.TrimSpace(searchTitle))
+	titleLower := strings.ToLower(strings.TrimSpace(title))
+	origTitleLower := strings.ToLower(strings.TrimSpace(origTitle))
+
+	// 标题完全匹配 → +50 分
+	if titleLower == searchLower || origTitleLower == searchLower {
+		score += 50
+	} else if strings.Contains(titleLower, searchLower) || strings.Contains(origTitleLower, searchLower) {
+		// 标题包含搜索词 → +30 分
+		score += 30
+	} else if strings.Contains(searchLower, titleLower) && len(titleLower) > 2 {
+		// 搜索词包含标题 → +20 分
+		score += 20
+	}
+
+	// 年份匹配 → +30 分（精确）或 +15 分（相差 1 年）
+	// 年份冲突 → -100 分（差距 ≥ 2 年时硬性降权，避免热门同名条目串到所有年份）
+	if year > 0 {
+		dateStr := r.ReleaseDate
+		if dateStr == "" {
+			dateStr = r.FirstAirDate
+		}
+		if len(dateStr) >= 4 {
+			resultYear, _ := strconv.Atoi(dateStr[:4])
+			if resultYear == year {
+				score += 30
+			} else if resultYear > 0 && absInt(resultYear-year) == 1 {
+				score += 15
+			} else if resultYear > 0 && absInt(resultYear-year) >= 2 {
+				// 年份明显不符：例如用户指定 1995，但候选条目是 2025
+				// 必须重罚，避免"蜡笔小新"同名系列里全部命中最热门的 2025 新片
+				score -= 100
+			}
+		}
+	}
+
+	// 数据完整性加分
+	if r.PosterPath != "" {
+		score += 5
+	}
+	if r.Overview != "" {
+		score += 5
+	}
+	if r.VoteAverage > 0 {
+		score += 5
+	}
+
+	// 排名权重（搜索结果本身有排序，前面的结果轻微加分）
+	if index < 3 {
+		score += float64(3-index) * 2
+	}
+
+	return score
+}
+
 func (s *MetadataService) bestMatchResult(results []TMDbMovie, searchTitle string, year int) TMDbMovie {
 	if len(results) == 1 {
 		return results[0]
@@ -1106,74 +1206,10 @@ func (s *MetadataService) bestMatchResult(results []TMDbMovie, searchTitle strin
 		score float64
 	}
 
-	searchLower := strings.ToLower(strings.TrimSpace(searchTitle))
 	var candidates []scored
 
 	for i, r := range results {
-		score := 0.0
-
-		// 获取标题
-		title := r.Title
-		if title == "" {
-			title = r.Name
-		}
-		origTitle := r.OriginalTitle
-		if origTitle == "" {
-			origTitle = r.OriginalName
-		}
-
-		titleLower := strings.ToLower(strings.TrimSpace(title))
-		origTitleLower := strings.ToLower(strings.TrimSpace(origTitle))
-
-		// 标题完全匹配 → +50 分
-		if titleLower == searchLower || origTitleLower == searchLower {
-			score += 50
-		} else if strings.Contains(titleLower, searchLower) || strings.Contains(origTitleLower, searchLower) {
-			// 标题包含搜索词 → +30 分
-			score += 30
-		} else if strings.Contains(searchLower, titleLower) && len(titleLower) > 2 {
-			// 搜索词包含标题 → +20 分
-			score += 20
-		}
-
-		// 年份匹配 → +30 分（精确）或 +15 分（相差 1 年）
-		// 年份冲突 → -100 分（差距 ≥ 2 年时硬性降权，避免热门同名条目串到所有年份）
-		if year > 0 {
-			dateStr := r.ReleaseDate
-			if dateStr == "" {
-				dateStr = r.FirstAirDate
-			}
-			if len(dateStr) >= 4 {
-				resultYear, _ := strconv.Atoi(dateStr[:4])
-				if resultYear == year {
-					score += 30
-				} else if resultYear > 0 && absInt(resultYear-year) == 1 {
-					score += 15
-				} else if resultYear > 0 && absInt(resultYear-year) >= 2 {
-					// 年份明显不符：例如用户指定 1995，但候选条目是 2025
-					// 必须重罚，避免"蜡笔小新"同名系列里全部命中最热门的 2025 新片
-					score -= 100
-				}
-			}
-		}
-
-		// 数据完整性加分
-		if r.PosterPath != "" {
-			score += 5
-		}
-		if r.Overview != "" {
-			score += 5
-		}
-		if r.VoteAverage > 0 {
-			score += 5
-		}
-
-		// 排名权重（搜索结果本身有排序，前面的结果轻微加分）
-		if i < 3 {
-			score += float64(3-i) * 2
-		}
-
-		candidates = append(candidates, scored{i, score})
+		candidates = append(candidates, scored{i, matchScoreForResult(r, searchTitle, year, i)})
 	}
 
 	// 选择得分最高的
@@ -1319,9 +1355,11 @@ func (s *MetadataService) scrapeSeriesEpisodes(seriesID string, tmdbID int) {
 			}
 
 			updated := false
+			// 逐集刮削只填空字段；单集自身的字段锁定同样受尊重。
+			epGuard := newScrapeGuard(ScrapeModeFillMissing, localEp.LockedFields)
 
 			// 更新单集简介（核心功能：确保每集有独立简介）
-			if tmdbEp.Overview != "" && localEp.Overview == "" {
+			if tmdbEp.Overview != "" && localEp.Overview == "" && !epGuard.locked("overview") {
 				localEp.Overview = tmdbEp.Overview
 				updated = true
 			}
@@ -1333,7 +1371,7 @@ func (s *MetadataService) scrapeSeriesEpisodes(seriesID string, tmdbID int) {
 			}
 
 			// 更新单集评分（如果有独立评分且本地未设置）
-			if tmdbEp.VoteAverage > 0 && localEp.Rating == 0 {
+			if tmdbEp.VoteAverage > 0 && localEp.Rating == 0 && !epGuard.locked("rating") {
 				localEp.Rating = tmdbEp.VoteAverage
 				updated = true
 			}
@@ -1345,7 +1383,7 @@ func (s *MetadataService) scrapeSeriesEpisodes(seriesID string, tmdbID int) {
 			}
 
 			// 下载每集独立截图（still）作为该集的封面
-			if tmdbEp.StillPath != "" && localEp.PosterPath == "" {
+			if tmdbEp.StillPath != "" && localEp.PosterPath == "" && !epGuard.locked("poster") {
 				stillURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), tmdbEp.StillPath)
 				ext := filepath.Ext(tmdbEp.StillPath)
 				if ext == "" {
@@ -1420,9 +1458,26 @@ func (s *MetadataService) getTMDbTVCredits(tmdbID int) (*TMDbCredits, error) {
 	return &credits, nil
 }
 
+// loadAndSaveTMDbCredits 拉取 TMDb 演职并保存。拉取失败只记 warning，不动已有演职数据；
+// 空结果由保存函数直接丢弃，同样不动已有数据。
+func (s *MetadataService) loadAndSaveTMDbCredits(fetch func(int) (*TMDbCredits, error), save func(*TMDbCredits), ownerID, ownerTitle string, tmdbID int) {
+	credits, err := fetch(tmdbID)
+	if err != nil {
+		s.logger.Warnf("获取 TMDb 演职人员失败，保留已有演职数据: id=%s title=%q tmdb_id=%d: %v", ownerID, ownerTitle, tmdbID, err)
+		return
+	}
+	save(credits)
+}
+
 // saveCreditsForMedia 将 TMDb Credits 保存为 Media 的演职人员记录
 func (s *MetadataService) saveCreditsForMedia(mediaID string, credits *TMDbCredits) {
 	if s.personRepo == nil || s.mediaPersonRepo == nil || credits == nil {
+		return
+	}
+
+	// 空结果不清空已有数据：TMDb 上该条目可能暂无演职信息。
+	if len(credits.Cast) == 0 && len(credits.Crew) == 0 {
+		s.logger.Debugf("TMDb 演职人员为空，保留已有数据: media_id=%s", mediaID)
 		return
 	}
 
@@ -1508,6 +1563,12 @@ func (s *MetadataService) saveCreditsForSeries(seriesID string, credits *TMDbCre
 		return
 	}
 
+	// 空结果不清空已有数据：TMDb 上该条目可能暂无演职信息。
+	if len(credits.Cast) == 0 && len(credits.Crew) == 0 {
+		s.logger.Debugf("TMDb 演职人员为空，保留已有数据: series_id=%s", seriesID)
+		return
+	}
+
 	// 先清除旧的关联数据，避免重复
 	s.mediaPersonRepo.DeleteBySeriesID(seriesID)
 
@@ -1569,7 +1630,7 @@ func (s *MetadataService) saveCreditsForSeries(seriesID string, credits *TMDbCre
 // ==================== 数据应用 ====================
 
 // applySearchResult 将搜索结果应用到媒体
-func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovie) {
+func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovie, guard scrapeGuard) {
 	title := result.Title
 	if title == "" {
 		title = result.Name
@@ -1579,20 +1640,24 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 		origTitle = result.OriginalName
 	}
 
-	if title != "" {
+	if title != "" && !guard.skip("title", media.Title == "") {
 		media.Title = title
 	}
-	media.OrigTitle = origTitle
-	if result.Overview != "" {
+	if !guard.skip("orig_title", media.OrigTitle == "") {
+		media.OrigTitle = origTitle
+	}
+	if result.Overview != "" && !guard.skip("overview", media.Overview == "") {
 		media.Overview = result.Overview
 	}
-	media.Rating = result.VoteAverage
+	if !guard.skip("rating", media.Rating == 0) {
+		media.Rating = result.VoteAverage
+	}
 
 	dateStr := result.ReleaseDate
 	if dateStr == "" {
 		dateStr = result.FirstAirDate
 	}
-	if len(dateStr) >= 4 {
+	if len(dateStr) >= 4 && !guard.skip("year", media.Year == 0) {
 		media.Year, _ = strconv.Atoi(dateStr[:4])
 	}
 	if result.ReleaseDate != "" {
@@ -1600,11 +1665,13 @@ func (s *MetadataService) applySearchResult(media *model.Media, result *TMDbMovi
 	}
 
 	// 类型映射
-	media.Genres = s.mapGenreIDs(result.GenreIDs)
+	if newGenres := s.mapGenreIDs(result.GenreIDs); !guard.skip("genres", media.Genres == "") {
+		media.Genres = newGenres
+	}
 }
 
 // applyMovieDetail 将电影详情应用到媒体
-func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovieDetail) {
+func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovieDetail, guard scrapeGuard) {
 	// Replace the proposal only when the source actually supplied classifications.
 	// Ratings are kept separately from parent approval and never grant access.
 	if media.TMDbID != detail.ID {
@@ -1616,19 +1683,23 @@ func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovie
 		media.TMDbRatingData = string(raw)
 	}
 
-	if detail.Title != "" {
+	if detail.Title != "" && !guard.skip("title", media.Title == "") {
 		media.Title = detail.Title
 	}
-	media.OrigTitle = detail.OriginalTitle
-	if detail.Overview != "" {
+	if !guard.skip("orig_title", media.OrigTitle == "") {
+		media.OrigTitle = detail.OriginalTitle
+	}
+	if detail.Overview != "" && !guard.skip("overview", media.Overview == "") {
 		media.Overview = detail.Overview
 	}
-	media.Rating = detail.VoteAverage
+	if !guard.skip("rating", media.Rating == 0) {
+		media.Rating = detail.VoteAverage
+	}
 	if detail.Runtime > 0 {
 		media.Runtime = detail.Runtime
 	}
 
-	if len(detail.ReleaseDate) >= 4 {
+	if len(detail.ReleaseDate) >= 4 && !guard.skip("year", media.Year == 0) {
 		media.Year, _ = strconv.Atoi(detail.ReleaseDate[:4])
 	}
 	if detail.ReleaseDate != "" {
@@ -1640,7 +1711,7 @@ func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovie
 	for _, g := range detail.Genres {
 		genres = append(genres, g.Name)
 	}
-	if len(genres) > 0 {
+	if len(genres) > 0 && !guard.skip("genres", media.Genres == "") {
 		media.Genres = strings.Join(genres, ",")
 	}
 
@@ -1653,6 +1724,22 @@ func (s *MetadataService) applyMovieDetail(media *model.Media, detail *TMDbMovie
 			}
 		}
 	}
+}
+
+// hasMediaCast 该媒体是否已有演职人员记录（仓储未初始化时按“没有”处理）。
+func (s *MetadataService) hasMediaCast(mediaID string) bool {
+	if s.mediaPersonRepo == nil {
+		return false
+	}
+	return s.mediaPersonRepo.HasByMediaID(mediaID)
+}
+
+// hasSeriesCast 该剧集合集是否已有演职人员记录。
+func (s *MetadataService) hasSeriesCast(seriesID string) bool {
+	if s.mediaPersonRepo == nil {
+		return false
+	}
+	return s.mediaPersonRepo.HasBySeriesID(seriesID)
 }
 
 // ==================== 图片下载 ====================
@@ -1783,7 +1870,16 @@ func (s *MetadataService) SearchTMDb(mediaType, query string, year int) ([]TMDbM
 	if s.cfg.Secrets.TMDbAPIKey == "" {
 		return nil, fmt.Errorf("TMDb API Key未配置")
 	}
-	return s.searchTMDb(mediaType, query, year)
+	results, err := s.searchTMDb(mediaType, query, year)
+	if err != nil {
+		return nil, err
+	}
+	// 给每个候选项带上与 bestMatchResult 同一套信号算出的匹配度，
+	// 仅供手动匹配弹窗展示；自动选择仍走 bestMatchResult，不受影响。
+	for i := range results {
+		results[i].MatchScore = matchScoreForResult(results[i], query, year, i)
+	}
+	return results, nil
 }
 
 // searchTMDbWithAlt 带英文别名与无年份兜底的三段式搜索：
@@ -2111,7 +2207,13 @@ func (s *MetadataService) refreshSeriesRating(series *model.Series, previousID i
 }
 
 // ScrapeSeries 为剧集合集刮削元数据（以合集名称搜索，并将元数据同步到合集和各集）
+// ScrapeSeries 刮削剧集合集元数据（默认全部替换档，保留既有调用方行为）。
 func (s *MetadataService) ScrapeSeries(seriesID string) error {
+	return s.ScrapeSeriesWithMode(seriesID, ScrapeModeReplace)
+}
+
+// ScrapeSeriesWithMode 按指定档位刮削剧集合集元数据。
+func (s *MetadataService) ScrapeSeriesWithMode(seriesID string, mode ScrapeMode) error {
 	if s.seriesRepo == nil {
 		return fmt.Errorf("剧集仓储未初始化")
 	}
@@ -2140,7 +2242,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 	// 如果已配置 ProviderChain，使用新的多数据源调度链
 	if s.providerChain != nil {
-		err := s.providerChain.ScrapeSeries(series, searchTitle, year)
+		err := s.providerChain.ScrapeSeries(series, searchTitle, year, mode)
 		if err != nil {
 			s.logger.Debugf("多数据源调度链剧集刮削失败: %s - %v", series.Title, err)
 			// 不直接返回错误，继续尝试保存已有数据
@@ -2158,11 +2260,10 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			return fmt.Errorf("更新剧集合集失败: %w", saveErr)
 		}
 
-		// 获取并保存演职人员
-		if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" {
-			if credits, credErr := s.getTMDbTVCredits(series.TMDbID); credErr == nil {
-				s.saveCreditsForSeries(seriesID, credits)
-			}
+		// 获取并保存演职人员（失败只记日志，不动已有数据；
+		// 只补缺失档下已有演职记录时不再重新保存）
+		if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" && !(mode == ScrapeModeFillMissing && s.hasSeriesCast(seriesID)) {
+			s.loadAndSaveTMDbCredits(s.getTMDbTVCredits, func(c *TMDbCredits) { s.saveCreditsForSeries(seriesID, c) }, seriesID, series.Title, series.TMDbID)
 		}
 
 		// 将合集元数据同步到各集
@@ -2190,34 +2291,37 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 
 	// 应用TMDb结果到合集
 	if tmdbResult != nil {
+		seriesGuard := newScrapeGuard(mode, series.LockedFields)
 		series.TMDbID = tmdbResult.ID // 保存 TMDb ID，用于后续逐集刮削
-		title := tmdbResult.Name
-		if title == "" {
-			title = tmdbResult.Title
-		}
 		origTitle := tmdbResult.OriginalName
 		if origTitle == "" {
 			origTitle = tmdbResult.OriginalTitle
 		}
 
-		series.OrigTitle = origTitle
-		if tmdbResult.Overview != "" {
+		if !seriesGuard.skip("orig_title", series.OrigTitle == "") {
+			series.OrigTitle = origTitle
+		}
+		if tmdbResult.Overview != "" && !seriesGuard.skip("overview", series.Overview == "") {
 			series.Overview = tmdbResult.Overview
 		}
-		series.Rating = tmdbResult.VoteAverage
+		if !seriesGuard.skip("rating", series.Rating == 0) {
+			series.Rating = tmdbResult.VoteAverage
+		}
 
 		dateStr := tmdbResult.FirstAirDate
 		if dateStr == "" {
 			dateStr = tmdbResult.ReleaseDate
 		}
-		if len(dateStr) >= 4 {
+		if len(dateStr) >= 4 && !seriesGuard.skip("year", series.Year == 0) {
 			series.Year, _ = strconv.Atoi(dateStr[:4])
 		}
 
-		series.Genres = s.mapGenreIDs(tmdbResult.GenreIDs)
+		if newGenres := s.mapGenreIDs(tmdbResult.GenreIDs); !seriesGuard.skip("genres", series.Genres == "") {
+			series.Genres = newGenres
+		}
 
 		// 下载海报
-		if tmdbResult.PosterPath != "" {
+		if tmdbResult.PosterPath != "" && !seriesGuard.skip("poster", series.PosterPath == "") {
 			imageURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), tmdbResult.PosterPath)
 			ext := filepath.Ext(tmdbResult.PosterPath)
 			if ext == "" {
@@ -2232,7 +2336,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		}
 
 		// 下载背景图
-		if tmdbResult.BackdropPath != "" {
+		if tmdbResult.BackdropPath != "" && !seriesGuard.skip("backdrop", series.BackdropPath == "") {
 			imageURL := fmt.Sprintf("%s/t/p/w1280%s", s.getTMDbImageBase(), tmdbResult.BackdropPath)
 			ext := filepath.Ext(tmdbResult.BackdropPath)
 			if ext == "" {
@@ -2250,6 +2354,8 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 	// 第二步：豆瓣补充（如果TMDb信息不完整）
 	// 注意：不能调用 douban.ScrapeMedia()，因为它最后会调用 mediaRepo.Update()
 	// 把 tempMedia 写入 Media 表，导致 Series 数据被重复创建为独立的 movie 记录
+	// 补充源只填空字段；被锁定的字段即使为空也不填。
+	supplementGuard := newScrapeGuard(ScrapeModeFillMissing, series.LockedFields)
 	if series.Overview == "" || series.PosterPath == "" || series.Rating == 0 {
 		s.logger.Debugf("尝试豆瓣补充剧集元数据: %s", series.Title)
 		// 直接调用豆瓣搜索，只在内存中应用结果，不写入 Media 表
@@ -2258,19 +2364,19 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			FilePath: series.FolderPath + "/placeholder",
 		}
 		s.douban.ApplyDoubanData(tempMedia, searchTitle, year)
-		if series.Overview == "" && tempMedia.Overview != "" {
+		if series.Overview == "" && tempMedia.Overview != "" && !supplementGuard.locked("overview") {
 			series.Overview = tempMedia.Overview
 		}
-		if series.Rating == 0 && tempMedia.Rating > 0 {
+		if series.Rating == 0 && tempMedia.Rating > 0 && !supplementGuard.locked("rating") {
 			series.Rating = tempMedia.Rating
 		}
-		if series.Year == 0 && tempMedia.Year > 0 {
+		if series.Year == 0 && tempMedia.Year > 0 && !supplementGuard.locked("year") {
 			series.Year = tempMedia.Year
 		}
-		if series.Genres == "" && tempMedia.Genres != "" {
+		if series.Genres == "" && tempMedia.Genres != "" && !supplementGuard.locked("genres") {
 			series.Genres = tempMedia.Genres
 		}
-		if series.PosterPath == "" && tempMedia.PosterPath != "" {
+		if series.PosterPath == "" && tempMedia.PosterPath != "" && !supplementGuard.locked("poster") {
 			series.PosterPath = tempMedia.PosterPath
 		}
 	}
@@ -2283,19 +2389,19 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 			FilePath: series.FolderPath + "/placeholder",
 		}
 		s.bangumi.ApplyBangumiData(tempMedia, searchTitle, year)
-		if series.Overview == "" && tempMedia.Overview != "" {
+		if series.Overview == "" && tempMedia.Overview != "" && !supplementGuard.locked("overview") {
 			series.Overview = tempMedia.Overview
 		}
-		if series.Rating == 0 && tempMedia.Rating > 0 {
+		if series.Rating == 0 && tempMedia.Rating > 0 && !supplementGuard.locked("rating") {
 			series.Rating = tempMedia.Rating
 		}
-		if series.Year == 0 && tempMedia.Year > 0 {
+		if series.Year == 0 && tempMedia.Year > 0 && !supplementGuard.locked("year") {
 			series.Year = tempMedia.Year
 		}
-		if series.Genres == "" && tempMedia.Genres != "" {
+		if series.Genres == "" && tempMedia.Genres != "" && !supplementGuard.locked("genres") {
 			series.Genres = tempMedia.Genres
 		}
-		if series.OrigTitle == "" && tempMedia.OrigTitle != "" {
+		if series.OrigTitle == "" && tempMedia.OrigTitle != "" && !supplementGuard.locked("orig_title") {
 			series.OrigTitle = tempMedia.OrigTitle
 		}
 		if series.Country == "" && tempMedia.Country != "" {
@@ -2307,7 +2413,7 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		if series.Studio == "" && tempMedia.Studio != "" {
 			series.Studio = tempMedia.Studio
 		}
-		if series.PosterPath == "" && tempMedia.PosterPath != "" {
+		if series.PosterPath == "" && tempMedia.PosterPath != "" && !supplementGuard.locked("poster") {
 			series.PosterPath = tempMedia.PosterPath
 		}
 	}
@@ -2324,11 +2430,10 @@ func (s *MetadataService) ScrapeSeries(seriesID string) error {
 		return fmt.Errorf("更新剧集合集失败: %w", err)
 	}
 
-	// 获取并保存演职人员
-	if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" {
-		if credits, err := s.getTMDbTVCredits(series.TMDbID); err == nil {
-			s.saveCreditsForSeries(seriesID, credits)
-		}
+	// 获取并保存演职人员（失败只记日志，不动已有数据；
+	// 只补缺失档下已有演职记录时不再重新保存）
+	if series.TMDbID > 0 && s.cfg.Secrets.TMDbAPIKey != "" && !(mode == ScrapeModeFillMissing && s.hasSeriesCast(seriesID)) {
+		s.loadAndSaveTMDbCredits(s.getTMDbTVCredits, func(c *TMDbCredits) { s.saveCreditsForSeries(seriesID, c) }, seriesID, series.Title, series.TMDbID)
 	}
 
 	// 第三步：将合集元数据同步到各集（海报、评分、类型等）
@@ -2436,24 +2541,26 @@ func (s *MetadataService) syncSeriesToEpisodes(seriesID string, series *model.Se
 	episodes, _ := s.mediaRepo.ListBySeriesID(seriesID)
 	for _, ep := range episodes {
 		updated := false
+		// 各集自身的字段锁定同样受尊重：锁定的字段不被合集数据覆盖。
+		epGuard := newScrapeGuard(ScrapeModeFillMissing, ep.LockedFields)
 		// 仅当逐集刮削未获取到简介时，才用合集简介补充
-		if ep.Overview == "" && series.Overview != "" {
+		if ep.Overview == "" && series.Overview != "" && !epGuard.locked("overview") {
 			ep.Overview = series.Overview
 			updated = true
 		}
-		if ep.Rating == 0 && series.Rating > 0 {
+		if ep.Rating == 0 && series.Rating > 0 && !epGuard.locked("rating") {
 			ep.Rating = series.Rating
 			updated = true
 		}
-		if ep.Genres == "" && series.Genres != "" {
+		if ep.Genres == "" && series.Genres != "" && !epGuard.locked("genres") {
 			ep.Genres = series.Genres
 			updated = true
 		}
-		if ep.Year == 0 && series.Year > 0 {
+		if ep.Year == 0 && series.Year > 0 && !epGuard.locked("year") {
 			ep.Year = series.Year
 			updated = true
 		}
-		if ep.OrigTitle == "" && series.OrigTitle != "" {
+		if ep.OrigTitle == "" && series.OrigTitle != "" && !epGuard.locked("orig_title") {
 			ep.OrigTitle = series.OrigTitle
 			updated = true
 		}
@@ -2693,17 +2800,24 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	}
 
 	previousTMDbID := series.TMDbID
-	// 应用数据
+	// 应用数据：手动匹配固定走全部替换，但仍受字段锁定约束。
+	matchGuard := newScrapeGuard(ScrapeModeReplace, series.LockedFields)
 	series.TMDbID = detail.ID
 	if detail.Name != "" {
-		series.Title = detail.Name
-		series.OrigTitle = detail.OriginalName
+		if !matchGuard.locked("title") {
+			series.Title = detail.Name
+		}
+		if !matchGuard.locked("orig_title") {
+			series.OrigTitle = detail.OriginalName
+		}
 	}
-	if detail.Overview != "" {
+	if detail.Overview != "" && !matchGuard.locked("overview") {
 		series.Overview = detail.Overview
 	}
-	series.Rating = detail.VoteAverage
-	if len(detail.FirstAirDate) >= 4 {
+	if !matchGuard.locked("rating") {
+		series.Rating = detail.VoteAverage
+	}
+	if len(detail.FirstAirDate) >= 4 && !matchGuard.locked("year") {
 		series.Year, _ = strconv.Atoi(detail.FirstAirDate[:4])
 	}
 
@@ -2712,7 +2826,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	for _, g := range detail.Genres {
 		genres = append(genres, g.Name)
 	}
-	if len(genres) > 0 {
+	if len(genres) > 0 && !matchGuard.locked("genres") {
 		series.Genres = strings.Join(genres, ",")
 	}
 
@@ -2732,7 +2846,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	}
 
 	// 下载海报
-	if detail.PosterPath != "" {
+	if detail.PosterPath != "" && !matchGuard.locked("poster") {
 		imageURL := fmt.Sprintf("%s/t/p/w500%s", s.getTMDbImageBase(), detail.PosterPath)
 		ext := filepath.Ext(detail.PosterPath)
 		if ext == "" {
@@ -2747,7 +2861,7 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 	}
 
 	// 下载背景图
-	if detail.BackdropPath != "" {
+	if detail.BackdropPath != "" && !matchGuard.locked("backdrop") {
 		imageURL := fmt.Sprintf("%s/t/p/w1280%s", s.getTMDbImageBase(), detail.BackdropPath)
 		ext := filepath.Ext(detail.BackdropPath)
 		if ext == "" {
@@ -2767,10 +2881,8 @@ func (s *MetadataService) MatchSeriesWithTMDb(seriesID string, tmdbID int) error
 		return err
 	}
 
-	// 获取并保存演职人员
-	if credits, err := s.getTMDbTVCredits(tmdbID); err == nil {
-		s.saveCreditsForSeries(seriesID, credits)
-	}
+	// 获取并保存演职人员（失败只记日志，不动已有数据）
+	s.loadAndSaveTMDbCredits(s.getTMDbTVCredits, func(c *TMDbCredits) { s.saveCreditsForSeries(seriesID, c) }, seriesID, series.Title, tmdbID)
 
 	// 手动匹配后也执行逐集刮削，获取每集独立简介和标题
 	s.scrapeSeriesEpisodes(seriesID, tmdbID)
@@ -2798,13 +2910,14 @@ func (s *MetadataService) MatchMediaWithTMDb(mediaID string, tmdbID int) error {
 		return fmt.Errorf("获取TMDb详情失败: %w", err)
 	}
 
-	// 应用详情
+	// 应用详情：手动匹配固定走全部替换，但仍受字段锁定约束。
+	matchGuard := newScrapeGuard(ScrapeModeReplace, media.LockedFields)
 	media.TMDbRatingData = ""
-	s.applyMovieDetail(media, detail)
+	s.applyMovieDetail(media, detail, matchGuard)
 	media.TMDbID = tmdbID
 
 	// 下载海报
-	if detail.PosterPath != "" {
+	if detail.PosterPath != "" && !matchGuard.locked("poster") {
 		localPath, err := s.downloadPoster(media, detail.PosterPath)
 		if err == nil {
 			media.PosterPath = localPath
@@ -2812,17 +2925,15 @@ func (s *MetadataService) MatchMediaWithTMDb(mediaID string, tmdbID int) error {
 	}
 
 	// 下载背景图
-	if detail.BackdropPath != "" {
+	if detail.BackdropPath != "" && !matchGuard.locked("backdrop") {
 		localPath, err := s.downloadBackdrop(media, detail.BackdropPath)
 		if err == nil {
 			media.BackdropPath = localPath
 		}
 	}
 
-	// 获取并保存演职人员
-	if credits, err := s.getTMDbMovieCredits(tmdbID); err == nil {
-		s.saveCreditsForMedia(media.ID, credits)
-	}
+	// 获取并保存演职人员（失败只记日志，不动已有数据）
+	s.loadAndSaveTMDbCredits(s.getTMDbMovieCredits, func(c *TMDbCredits) { s.saveCreditsForMedia(media.ID, c) }, media.ID, media.Title, tmdbID)
 
 	return s.mediaRepo.Update(media)
 }
@@ -2872,20 +2983,21 @@ func (s *MetadataService) MatchMediaWithDouban(mediaID string, doubanID string) 
 		return fmt.Errorf("获取豆瓣详情失败: %w", err)
 	}
 
-	// 应用豆瓣数据（覆盖写入）
-	if detail.Title != "" {
+	// 应用豆瓣数据（覆盖写入；手动匹配固定走全部替换，但仍受字段锁定约束）
+	matchGuard := newScrapeGuard(ScrapeModeReplace, media.LockedFields)
+	if detail.Title != "" && !matchGuard.locked("title") {
 		media.Title = detail.Title
 	}
-	if detail.Rating.Average > 0 {
+	if detail.Rating.Average > 0 && !matchGuard.locked("rating") {
 		media.Rating = detail.Rating.Average
 	}
-	if detail.Overview != "" {
+	if detail.Overview != "" && !matchGuard.locked("overview") {
 		media.Overview = detail.Overview
 	}
-	if len(detail.Genres) > 0 {
+	if len(detail.Genres) > 0 && !matchGuard.locked("genres") {
 		media.Genres = strings.Join(detail.Genres, ",")
 	}
-	if detail.Year != "" {
+	if detail.Year != "" && !matchGuard.locked("year") {
 		if y, err := strconv.Atoi(detail.Year); err == nil {
 			media.Year = y
 		}
@@ -2893,7 +3005,7 @@ func (s *MetadataService) MatchMediaWithDouban(mediaID string, doubanID string) 
 	media.DoubanID = doubanID
 
 	// 下载豆瓣封面
-	if detail.Cover != "" && media.PosterPath == "" {
+	if detail.Cover != "" && media.PosterPath == "" && !matchGuard.locked("poster") {
 		localPath, err := s.douban.downloadDoubanCover(media, detail.Cover)
 		if err == nil {
 			media.PosterPath = localPath
@@ -2915,19 +3027,21 @@ func (s *MetadataService) MatchSeriesWithDouban(seriesID string, doubanID string
 		return fmt.Errorf("获取豆瓣详情失败: %w", err)
 	}
 
-	if detail.Title != "" {
+	// 手动匹配固定走全部替换，但仍受字段锁定约束。
+	matchGuard := newScrapeGuard(ScrapeModeReplace, series.LockedFields)
+	if detail.Title != "" && !matchGuard.locked("title") {
 		series.Title = detail.Title
 	}
-	if detail.Rating.Average > 0 {
+	if detail.Rating.Average > 0 && !matchGuard.locked("rating") {
 		series.Rating = detail.Rating.Average
 	}
-	if detail.Overview != "" {
+	if detail.Overview != "" && !matchGuard.locked("overview") {
 		series.Overview = detail.Overview
 	}
-	if len(detail.Genres) > 0 {
+	if len(detail.Genres) > 0 && !matchGuard.locked("genres") {
 		series.Genres = strings.Join(detail.Genres, ",")
 	}
-	if detail.Year != "" {
+	if detail.Year != "" && !matchGuard.locked("year") {
 		if y, err := strconv.Atoi(detail.Year); err == nil {
 			series.Year = y
 		}
@@ -2964,8 +3078,8 @@ func (s *MetadataService) MatchSeriesWithTheTVDB(seriesID string, tvdbID int) er
 		return fmt.Errorf("获取 TheTVDB 详情失败: %w", err)
 	}
 
-	// 应用 TheTVDB 数据
-	s.thetvdb.applySeriesResult(series, detail)
+	// 应用 TheTVDB 数据（手动匹配固定走全部替换，仍受字段锁定约束）
+	s.thetvdb.applySeriesResult(series, detail, true)
 
 	return s.seriesRepo.Update(series)
 }

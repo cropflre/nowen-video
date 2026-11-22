@@ -185,7 +185,11 @@ func (c *ProviderChain) Register(provider MetadataProvider) {
 //  3. 如果是动画内容，Bangumi 补充动画专项信息
 //  4. Fanart.tv 补充高质量图片
 //  5. 如果所有数据源都失败，AI 兜底
-func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year int) error {
+//
+// 档位：只补缺失时所有数据源都以 supplement（仅填空字段）运行；
+// 全部替换时首个成功的数据源以 primary（覆盖写入）运行，其余 supplement。
+// 字段锁定在两种档位下都由各数据源的写入守卫执行。
+func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year int, mode ScrapeMode) error {
 	isAnime := IsAnimeContent(media)
 	isTVShow := media.MediaType == "episode" || media.SeriesID != ""
 
@@ -209,14 +213,14 @@ func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year
 		}
 		providerCallCount++
 
-		mode := "supplement"
-		if !primaryDone {
-			mode = "primary"
+		providerMode := "supplement"
+		if mode != ScrapeModeFillMissing && !primaryDone {
+			providerMode = "primary"
 		}
 
-		c.logger.Debugf("调用数据源 [%s] (mode=%s) 刮削: %s", provider.Name(), mode, searchTitle)
+		c.logger.Debugf("调用数据源 [%s] (mode=%s) 刮削: %s", provider.Name(), providerMode, searchTitle)
 
-		if err := provider.ScrapeMedia(media, searchTitle, year, mode); err != nil {
+		if err := provider.ScrapeMedia(media, searchTitle, year, providerMode); err != nil {
 			c.logger.Debugf("数据源 [%s] 刮削失败: %v", provider.Name(), err)
 			if !primaryDone {
 				primaryErr = err
@@ -245,7 +249,7 @@ func (c *ProviderChain) ScrapeMedia(media *model.Media, searchTitle string, year
 }
 
 // ScrapeSeries 按优先级链式刮削剧集合集元数据
-func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, year int) error {
+func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, year int, mode ScrapeMode) error {
 	isAnime := IsAnimeContentFromSeries(series)
 
 	var primaryErr error
@@ -268,14 +272,14 @@ func (c *ProviderChain) ScrapeSeries(series *model.Series, searchTitle string, y
 		}
 		providerCallCount++
 
-		mode := "supplement"
-		if !primaryDone {
-			mode = "primary"
+		providerMode := "supplement"
+		if mode != ScrapeModeFillMissing && !primaryDone {
+			providerMode = "primary"
 		}
 
-		c.logger.Debugf("调用数据源 [%s] (mode=%s) 刮削剧集: %s", provider.Name(), mode, searchTitle)
+		c.logger.Debugf("调用数据源 [%s] (mode=%s) 刮削剧集: %s", provider.Name(), providerMode, searchTitle)
 
-		if err := provider.ScrapeSeries(series, searchTitle, year, mode); err != nil {
+		if err := provider.ScrapeSeries(series, searchTitle, year, providerMode); err != nil {
 			c.logger.Debugf("数据源 [%s] 剧集刮削失败: %v", provider.Name(), err)
 			if !primaryDone {
 				primaryErr = err
@@ -439,13 +443,15 @@ func (p *TMDbProvider) Priority() int            { return 10 }
 func (p *TMDbProvider) SupportedTypes() []string { return []string{"all"} }
 
 func (p *TMDbProvider) ScrapeMedia(media *model.Media, searchTitle string, year int, mode string) error {
+	scrapeMode := providerModeToScrapeMode(mode)
 	if media.MediaType == "movie" {
-		return p.metadata.scrapeMovie(media, searchTitle, year)
+		return p.metadata.scrapeMovie(media, searchTitle, year, scrapeMode)
 	}
-	return p.metadata.scrapeTV(media, searchTitle, year)
+	return p.metadata.scrapeTV(media, searchTitle, year, scrapeMode)
 }
 
 func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, year int, mode string) error {
+	guard := newScrapeGuard(providerModeToScrapeMode(mode), series.LockedFields)
 	// 复用 MetadataService 中的 TMDb 搜索逻辑
 	results, err := p.metadata.searchTMDb("tv", searchTitle, year)
 	if err != nil || len(results) == 0 {
@@ -469,30 +475,36 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 	}
 
 	if mode == "primary" {
-		if title != "" {
+		if title != "" && !guard.locked("title") {
 			series.Title = title
 		}
-		series.OrigTitle = origTitle
-		if best.Overview != "" {
-			series.Overview = best.Overview
-		}
-		series.Rating = best.VoteAverage
-		series.Genres = p.metadata.mapGenreIDs(best.GenreIDs)
-	} else {
-		// 补充模式：仅填充缺失字段
-		if series.Title == "" && title != "" {
-			series.Title = title
-		}
-		if series.OrigTitle == "" {
+		if !guard.locked("orig_title") {
 			series.OrigTitle = origTitle
 		}
-		if series.Overview == "" && best.Overview != "" {
+		if best.Overview != "" && !guard.locked("overview") {
 			series.Overview = best.Overview
 		}
-		if series.Rating == 0 {
+		if !guard.locked("rating") {
 			series.Rating = best.VoteAverage
 		}
-		if series.Genres == "" {
+		if !guard.locked("genres") {
+			series.Genres = p.metadata.mapGenreIDs(best.GenreIDs)
+		}
+	} else {
+		// 补充模式：仅填充缺失字段（锁定字段即使为空也不填）
+		if series.Title == "" && title != "" && !guard.locked("title") {
+			series.Title = title
+		}
+		if series.OrigTitle == "" && !guard.locked("orig_title") {
+			series.OrigTitle = origTitle
+		}
+		if series.Overview == "" && best.Overview != "" && !guard.locked("overview") {
+			series.Overview = best.Overview
+		}
+		if series.Rating == 0 && !guard.locked("rating") {
+			series.Rating = best.VoteAverage
+		}
+		if series.Genres == "" && !guard.locked("genres") {
 			series.Genres = p.metadata.mapGenreIDs(best.GenreIDs)
 		}
 	}
@@ -501,13 +513,13 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 	if dateStr == "" {
 		dateStr = best.ReleaseDate
 	}
-	if len(dateStr) >= 4 && (mode == "primary" || series.Year == 0) {
+	if len(dateStr) >= 4 && !guard.skip("year", series.Year == 0) {
 		series.Year, _ = fmt.Sscan(dateStr[:4])
 		fmt.Sscanf(dateStr[:4], "%d", &series.Year)
 	}
 
 	// 下载海报
-	if best.PosterPath != "" && (mode == "primary" || series.PosterPath == "") {
+	if best.PosterPath != "" && !guard.skip("poster", series.PosterPath == "") {
 		imageURL := fmt.Sprintf("%s/t/p/w500%s", p.metadata.getTMDbImageBase(), best.PosterPath)
 		ext := ".jpg"
 		cacheDir := fmt.Sprintf("%s/images/series/%s", p.metadata.cfg.Cache.CacheDir, series.ID)
@@ -518,7 +530,7 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 	}
 
 	// 下载背景图
-	if best.BackdropPath != "" && (mode == "primary" || series.BackdropPath == "") {
+	if best.BackdropPath != "" && !guard.skip("backdrop", series.BackdropPath == "") {
 		imageURL := fmt.Sprintf("%s/t/p/w1280%s", p.metadata.getTMDbImageBase(), best.BackdropPath)
 		ext := ".jpg"
 		cacheDir := fmt.Sprintf("%s/images/series/%s", p.metadata.cfg.Cache.CacheDir, series.ID)
@@ -526,6 +538,13 @@ func (p *TMDbProvider) ScrapeSeries(series *model.Series, searchTitle string, ye
 		if err := mkdirAndDownload(p.metadata, imageURL, cacheDir, localPath); err == nil {
 			series.BackdropPath = localPath
 		}
+	}
+
+	// 获取并保存演职人员（失败只记日志，不动已有数据；经 ScrapeSeries 调用时
+	// 后置拉取会再保存一次，结果是幂等的删后重建；
+	// 补充模式下已有演职记录时不再重新保存）
+	if series.TMDbID > 0 && p.metadata.cfg.Secrets.TMDbAPIKey != "" && !(mode != "primary" && p.metadata.hasSeriesCast(series.ID)) {
+		p.metadata.loadAndSaveTMDbCredits(p.metadata.getTMDbTVCredits, func(c *TMDbCredits) { p.metadata.saveCreditsForSeries(series.ID, c) }, series.ID, series.Title, series.TMDbID)
 	}
 
 	return nil
@@ -567,20 +586,21 @@ func (p *DoubanProvider) ScrapeSeries(series *model.Series, searchTitle string, 
 	}
 	p.douban.ApplyDoubanData(tempMedia, searchTitle, year)
 
-	// 将结果应用到 Series（仅补充缺失字段）
-	if series.Overview == "" && tempMedia.Overview != "" {
+	// 将结果应用到 Series（仅补充缺失字段；锁定字段即使为空也不填）
+	locked := ParseLockedFields(series.LockedFields)
+	if series.Overview == "" && tempMedia.Overview != "" && !locked["overview"] {
 		series.Overview = tempMedia.Overview
 	}
-	if series.Rating == 0 && tempMedia.Rating > 0 {
+	if series.Rating == 0 && tempMedia.Rating > 0 && !locked["rating"] {
 		series.Rating = tempMedia.Rating
 	}
-	if series.Year == 0 && tempMedia.Year > 0 {
+	if series.Year == 0 && tempMedia.Year > 0 && !locked["year"] {
 		series.Year = tempMedia.Year
 	}
-	if series.Genres == "" && tempMedia.Genres != "" {
+	if series.Genres == "" && tempMedia.Genres != "" && !locked["genres"] {
 		series.Genres = tempMedia.Genres
 	}
-	if series.PosterPath == "" && tempMedia.PosterPath != "" {
+	if series.PosterPath == "" && tempMedia.PosterPath != "" && !locked["poster"] {
 		series.PosterPath = tempMedia.PosterPath
 	}
 
@@ -617,20 +637,21 @@ func (p *BangumiProvider) ScrapeSeries(series *model.Series, searchTitle string,
 	}
 	p.bangumi.ApplyBangumiData(tempMedia, searchTitle, year)
 
-	// 将结果应用到 Series
-	if series.Overview == "" && tempMedia.Overview != "" {
+	// 将结果应用到 Series（仅补充缺失字段；锁定字段即使为空也不填）
+	locked := ParseLockedFields(series.LockedFields)
+	if series.Overview == "" && tempMedia.Overview != "" && !locked["overview"] {
 		series.Overview = tempMedia.Overview
 	}
-	if series.Rating == 0 && tempMedia.Rating > 0 {
+	if series.Rating == 0 && tempMedia.Rating > 0 && !locked["rating"] {
 		series.Rating = tempMedia.Rating
 	}
-	if series.Year == 0 && tempMedia.Year > 0 {
+	if series.Year == 0 && tempMedia.Year > 0 && !locked["year"] {
 		series.Year = tempMedia.Year
 	}
-	if series.Genres == "" && tempMedia.Genres != "" {
+	if series.Genres == "" && tempMedia.Genres != "" && !locked["genres"] {
 		series.Genres = tempMedia.Genres
 	}
-	if series.OrigTitle == "" && tempMedia.OrigTitle != "" {
+	if series.OrigTitle == "" && tempMedia.OrigTitle != "" && !locked["orig_title"] {
 		series.OrigTitle = tempMedia.OrigTitle
 	}
 	if series.Country == "" && tempMedia.Country != "" {
@@ -642,7 +663,7 @@ func (p *BangumiProvider) ScrapeSeries(series *model.Series, searchTitle string,
 	if series.Studio == "" && tempMedia.Studio != "" {
 		series.Studio = tempMedia.Studio
 	}
-	if series.PosterPath == "" && tempMedia.PosterPath != "" {
+	if series.PosterPath == "" && tempMedia.PosterPath != "" && !locked["poster"] {
 		series.PosterPath = tempMedia.PosterPath
 	}
 

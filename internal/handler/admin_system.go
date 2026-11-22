@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/nowen-video/nowen-video/internal/model"
+	"github.com/nowen-video/nowen-video/internal/service"
 )
 
 // ==================== 批量操作 ====================
@@ -47,6 +48,8 @@ func (h *AdminHandler) BatchScan(c *gin.Context) {
 // BatchScrapeRequest 批量刮削请求
 type BatchScrapeRequest struct {
 	MediaIDs []string `json:"media_ids" binding:"required"`
+	// Mode 刷新档位：fill-missing（默认，只补缺失）或 replace（全部替换）。
+	Mode string `json:"mode"`
 }
 
 // BatchScrape 批量刮削元数据
@@ -56,13 +59,14 @@ func (h *AdminHandler) BatchScrape(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "请求参数无效"})
 		return
 	}
+	mode := service.ParseScrapeMode(req.Mode)
 
 	// 异步执行批量刮削
 	go func() {
 		success := 0
 		failed := 0
 		for _, id := range req.MediaIDs {
-			if err := h.metadataService.ScrapeMedia(id); err != nil {
+			if err := h.metadataService.ScrapeMediaWithMode(id, mode); err != nil {
 				failed++
 			} else {
 				success++

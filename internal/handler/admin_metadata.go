@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/service"
 )
 
 // ==================== TMDb 配置管理 ====================
@@ -244,7 +245,12 @@ func (h *AdminHandler) UnmatchSeriesMetadata(c *gin.Context) {
 func (h *AdminHandler) ScrapeSeriesMetadata(c *gin.Context) {
 	seriesID := c.Param("seriesId")
 
-	if err := h.metadataService.ScrapeSeries(seriesID); err != nil {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	_ = c.ShouldBindJSON(&req) // 空 body 时保持零值，走默认档位
+
+	if err := h.metadataService.ScrapeSeriesWithMode(seriesID, service.ParseScrapeMode(req.Mode)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "刷新元数据失败: " + err.Error()})
 		return
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/nowen-video/nowen-video/internal/service"
 )
 
 // ==================== 媒体管理 ====================
@@ -37,6 +38,8 @@ type UpdateMediaMetadataRequest struct {
 	Language  *string  `json:"language"`
 	Tagline   *string  `json:"tagline"`
 	Studio    *string  `json:"studio"`
+	// LockedFields 字段锁定：JSON 数组字符串，只保留可锁定字段。
+	LockedFields *string `json:"locked_fields"`
 }
 
 // ==================== STRM 单条覆写 ====================
@@ -194,6 +197,9 @@ func (h *AdminHandler) UpdateMediaMetadata(c *gin.Context) {
 	if req.Studio != nil {
 		media.Studio = *req.Studio
 	}
+	if req.LockedFields != nil {
+		media.LockedFields = service.NormalizeLockedFields(*req.LockedFields)
+	}
 
 	if err := h.libraryService.UpdateMedia(media); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "更新元数据失败"})
@@ -216,6 +222,8 @@ type UpdateSeriesMetadataRequest struct {
 	Country   *string  `json:"country"`
 	Language  *string  `json:"language"`
 	Studio    *string  `json:"studio"`
+	// LockedFields 字段锁定：JSON 数组字符串，只保留可锁定字段。
+	LockedFields *string `json:"locked_fields"`
 }
 
 // UpdateSeriesMetadata 编辑剧集合集元数据
@@ -260,6 +268,9 @@ func (h *AdminHandler) UpdateSeriesMetadata(c *gin.Context) {
 	}
 	if req.Studio != nil {
 		series.Studio = *req.Studio
+	}
+	if req.LockedFields != nil {
+		series.LockedFields = service.NormalizeLockedFields(*req.LockedFields)
 	}
 
 	if err := h.libraryService.UpdateSeries(series); err != nil {

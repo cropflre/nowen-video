@@ -81,8 +81,8 @@ export const mediaApi = {
       size: number
     }>('/search/mixed', { params: { q, page, size } }),
 
-  scrape: (id: string) =>
-    api.post(`/media/${id}/scrape`),
+  scrape: (id: string, mode?: 'fill-missing' | 'replace') =>
+    api.post(`/media/${id}/scrape`, mode ? { mode } : undefined),
 
   danmaku: (id: string, limit = 200) =>
     api.get<{ data: DanmakuComment[]; total: number }>(`/media/${id}/danmaku`, { params: { limit } }),

@@ -30,6 +30,7 @@ import {
 } from '@/components/media'
 import MediaHighlightsPanel from '@/components/media/MediaHighlightsPanel'
 import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
+import ScrapeModeDialog, { type ScrapeMode } from '@/components/media/ScrapeModeDialog'
 import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
@@ -75,6 +76,7 @@ export default function MediaDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
+  const [showScrapeModeDialog, setShowScrapeModeDialog] = useState(false)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
   const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
   const [matchQuery, setMatchQuery] = useState('')
@@ -94,6 +96,7 @@ export default function MediaDetailPage() {
     language: string
     tagline: string
     studio: string
+    locked_fields: string
   }>({
     title: '',
     orig_title: '',
@@ -105,6 +108,7 @@ export default function MediaDetailPage() {
     language: '',
     tagline: '',
     studio: '',
+    locked_fields: '',
   })
 
   useEffect(() => {
@@ -350,15 +354,21 @@ export default function MediaDetailPage() {
     }
   }
 
-  const handleRefreshMetadata = async () => {
+  const handleRefreshMetadata = () => {
+    if (!id) return
+    setShowScrapeModeDialog(true)
+  }
+
+  const handleScrapeWithMode = async (mode: ScrapeMode) => {
     if (!id) return
     setScraping(true)
     try {
-      await mediaApi.scrape(id)
+      await mediaApi.scrape(id, mode)
       const response = await mediaApi.detail(id)
       setMedia(response.data.data)
       setPosterVersion(Date.now())
       invalidateMediaListCaches()
+      setShowScrapeModeDialog(false)
       toast.success(t('mediaDetail.refreshSuccess'))
     } catch (error) {
       toast.error(formatErrMsg(error, t('mediaDetail.refreshFailed')))
@@ -380,6 +390,7 @@ export default function MediaDetailPage() {
       language: media.language || '',
       tagline: media.tagline || '',
       studio: media.studio || '',
+      locked_fields: media.locked_fields || '',
     })
     setShowEditModal(true)
   }
@@ -591,6 +602,14 @@ export default function MediaDetailPage() {
           tone="warning"
           onConfirm={handleUnmatch}
           onClose={() => setShowUnmatchConfirm(false)}
+        />
+      )}
+
+      {showScrapeModeDialog && (
+        <ScrapeModeDialog
+          onConfirm={(mode) => void handleScrapeWithMode(mode)}
+          onClose={() => setShowScrapeModeDialog(false)}
+          confirming={scraping}
         />
       )}
 

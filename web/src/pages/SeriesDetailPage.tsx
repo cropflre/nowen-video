@@ -11,6 +11,7 @@ import SeriesHero from '@/components/media/SeriesHero'
 import SeriesEpisodeBrowser from '@/components/media/SeriesEpisodeBrowser'
 import SeriesDetailSidebar from '@/components/media/SeriesDetailSidebar'
 import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
+import ScrapeModeDialog, { type ScrapeMode } from '@/components/media/ScrapeModeDialog'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
 import { Button, EmptyState, Tag } from '@/components/design-system'
 import { DetailTabs } from '@/ui'
@@ -156,6 +157,7 @@ export default function SeriesDetailPage() {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showUnmatchConfirm, setShowUnmatchConfirm] = useState(false)
+  const [showScrapeModeDialog, setShowScrapeModeDialog] = useState(false)
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
@@ -171,6 +173,7 @@ export default function SeriesDetailPage() {
     country: string
     language: string
     studio: string
+    locked_fields: string
   }>({
     title: '',
     orig_title: '',
@@ -181,6 +184,7 @@ export default function SeriesDetailPage() {
     country: '',
     language: '',
     studio: '',
+    locked_fields: '',
   })
 
   const isAdmin = user?.role === 'admin'
@@ -323,7 +327,7 @@ export default function SeriesDetailPage() {
     setMatchSearching(true)
     try {
       if (matchSource === 'tmdb') {
-        const res = await adminApi.searchMetadata(matchQuery, 'tv')
+        const res = await adminApi.searchMetadata(matchQuery, 'tv', series?.year || undefined)
         setMatchResults(res.data.data || [])
         if ((res.data.data || []).length === 0) toast.info('TMDb 未找到匹配结果，请尝试其他关键词或切换数据源')
       } else if (matchSource === 'douban') {
@@ -396,12 +400,18 @@ export default function SeriesDetailPage() {
     }
   }
 
-  const handleRefreshMetadata = async () => {
+  const handleRefreshMetadata = () => {
+    if (!id) return
+    setShowScrapeModeDialog(true)
+  }
+
+  const handleScrapeWithMode = async (mode: ScrapeMode) => {
     if (!id) return
     setScraping(true)
     try {
-      await adminApi.scrapeSeriesMetadata(id)
+      await adminApi.scrapeSeriesMetadata(id, mode)
       await refreshSeriesDetail(id, true)
+      setShowScrapeModeDialog(false)
       toast.success('元数据刷新成功')
     } catch (err) {
       toast.error(formatErrMsg(err, '元数据刷新失败'))
@@ -422,6 +432,7 @@ export default function SeriesDetailPage() {
       country: series.country || '',
       language: series.language || '',
       studio: series.studio || '',
+      locked_fields: series.locked_fields || '',
     })
     setShowEditModal(true)
   }
@@ -634,6 +645,14 @@ export default function SeriesDetailPage() {
           onConfirm={handleUnmatch}
           onClose={() => setShowUnmatchConfirm(false)}
           tone="warning"
+        />
+      )}
+
+      {showScrapeModeDialog && (
+        <ScrapeModeDialog
+          onConfirm={(mode) => void handleScrapeWithMode(mode)}
+          onClose={() => setShowScrapeModeDialog(false)}
+          confirming={scraping}
         />
       )}
 

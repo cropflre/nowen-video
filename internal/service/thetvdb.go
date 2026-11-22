@@ -348,7 +348,7 @@ func (s *TheTVDBService) ScrapeSeriesMetadata(series *model.Series, searchTitle 
 	best := results[0]
 
 	// 应用基础信息（仅补充缺失字段）
-	s.applySeriesResult(series, &best)
+	s.applySeriesResult(series, &best, false)
 
 	return nil
 }
@@ -424,14 +424,20 @@ func (s *TheTVDBService) ScrapeEpisodeMetadata(media *model.Media, searchTitle s
 	return fmt.Errorf("TheTVDB 未找到匹配的集: S%02dE%02d", seasonNum, media.EpisodeNum)
 }
 
-// applySeriesResult 将 TheTVDB 搜索结果应用到剧集合集（仅补充缺失字段）
-func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDBSeries) {
+// applySeriesResult 将 TheTVDB 搜索结果应用到剧集合集。
+// replace=false 时仅补充缺失字段（刮削路径）；replace=true 时手动匹配
+// 固定走全部替换。两种模式都跳过被锁定的字段。
+func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDBSeries, replace bool) {
+	guard := newScrapeGuard(ScrapeModeFillMissing, series.LockedFields)
+	if replace {
+		guard = newScrapeGuard(ScrapeModeReplace, series.LockedFields)
+	}
 	// 同步标题
 	displayName := result.Name
 	if displayName == "" {
 		displayName = result.SeriesName
 	}
-	if displayName != "" {
+	if displayName != "" && !guard.skip("title", series.Title == "") {
 		series.Title = displayName
 	}
 
@@ -443,17 +449,17 @@ func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDB
 			origName = result.Name
 		}
 	}
-	if series.OrigTitle == "" && origName != "" {
+	if series.OrigTitle == "" && origName != "" && !guard.locked("orig_title") {
 		series.OrigTitle = origName
 	}
 
 	// 补充简介
-	if series.Overview == "" && result.Overview != "" {
+	if series.Overview == "" && result.Overview != "" && !guard.locked("overview") {
 		series.Overview = result.Overview
 	}
 
 	// 补充评分
-	if series.Rating == 0 && result.Rating != "" {
+	if series.Rating == 0 && result.Rating != "" && !guard.locked("rating") {
 		if rating, err := strconv.ParseFloat(result.Rating, 64); err == nil {
 			series.Rating = rating
 		}
@@ -464,12 +470,12 @@ func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDB
 	if yearStr == "" && result.FirstAired != "" && len(result.FirstAired) >= 4 {
 		yearStr = result.FirstAired[:4]
 	}
-	if series.Year == 0 && yearStr != "" {
+	if series.Year == 0 && yearStr != "" && !guard.locked("year") {
 		series.Year, _ = strconv.Atoi(yearStr)
 	}
 
 	// 补充类型
-	if series.Genres == "" && len(result.Genre) > 0 {
+	if series.Genres == "" && len(result.Genre) > 0 && !guard.locked("genres") {
 		series.Genres = strings.Join(result.Genre, ",")
 	}
 
@@ -513,7 +519,7 @@ func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDB
 	if imageURL == "" {
 		imageURL = result.Poster
 	}
-	if series.PosterPath == "" && imageURL != "" {
+	if series.PosterPath == "" && imageURL != "" && !guard.locked("poster") {
 		localPath, err := s.downloadTheTVDBImage(series.ID, imageURL, "poster")
 		if err == nil {
 			series.PosterPath = localPath
@@ -521,7 +527,7 @@ func (s *TheTVDBService) applySeriesResult(series *model.Series, result *TheTVDB
 	}
 
 	// 补充背景图
-	if series.BackdropPath == "" && result.Fanart != "" {
+	if series.BackdropPath == "" && result.Fanart != "" && !guard.locked("backdrop") {
 		localPath, err := s.downloadTheTVDBImage(series.ID, result.Fanart, "backdrop")
 		if err == nil {
 			series.BackdropPath = localPath

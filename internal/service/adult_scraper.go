@@ -750,6 +750,8 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 	if meta == nil {
 		return fmt.Errorf("元数据为空")
 	}
+	// 字段锁定在 primary 与 supplement 两种口径下都生效。
+	guard := newScrapeGuard(providerModeToScrapeMode(mode), media.LockedFields)
 
 	if strings.TrimSpace(meta.Code) != "" {
 		media.Num = strings.ToUpper(strings.TrimSpace(meta.Code))
@@ -763,10 +765,10 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 
 	if mode == "primary" {
 		// 主数据源模式：覆盖写入
-		if meta.Title != "" {
+		if meta.Title != "" && !guard.locked("title") {
 			media.Title = meta.Title
 		}
-		if meta.Cover != "" {
+		if meta.Cover != "" && !guard.locked("poster") {
 			// 下载封面图到本地
 			localPath, err := s.downloadCover(media, meta.Cover)
 			if err == nil {
@@ -775,7 +777,7 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 				s.logger.Debugf("下载封面失败: %v", err)
 			}
 		}
-		if len(meta.Genres) > 0 {
+		if len(meta.Genres) > 0 && !guard.locked("genres") {
 			media.Genres = strings.Join(meta.Genres, ",")
 		}
 		if meta.Studio != "" {
@@ -783,14 +785,14 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 		}
 		if meta.ReleaseDate != "" {
 			media.Premiered = meta.ReleaseDate
-			if len(meta.ReleaseDate) >= 4 {
+			if len(meta.ReleaseDate) >= 4 && !guard.locked("year") {
 				fmt.Sscanf(meta.ReleaseDate[:4], "%d", &media.Year)
 			}
 		}
 		if meta.Duration > 0 {
 			media.Runtime = meta.Duration
 		}
-		if meta.Rating > 0 {
+		if meta.Rating > 0 && !guard.locked("rating") {
 			// JavDB 评分是 5 分制，转换为 10 分制
 			if meta.Source == "javdb" && meta.Rating <= 5 {
 				media.Rating = meta.Rating * 2
@@ -802,23 +804,23 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 		if len(meta.Actresses) > 0 {
 			media.Tagline = "演员: " + strings.Join(meta.Actresses, ", ")
 		}
-		if meta.OriginalTitle != "" {
+		if meta.OriginalTitle != "" && !guard.locked("orig_title") {
 			media.OrigTitle = meta.OriginalTitle
-		} else if media.OrigTitle == "" {
+		} else if media.OrigTitle == "" && !guard.locked("orig_title") {
 			media.OrigTitle = meta.Code
 		}
 	} else {
 		// 补充模式：仅填充缺失字段
-		if media.Title == "" && meta.Title != "" {
+		if media.Title == "" && meta.Title != "" && !guard.locked("title") {
 			media.Title = meta.Title
 		}
-		if media.PosterPath == "" && meta.Cover != "" {
+		if media.PosterPath == "" && meta.Cover != "" && !guard.locked("poster") {
 			localPath, err := s.downloadCover(media, meta.Cover)
 			if err == nil {
 				media.PosterPath = localPath
 			}
 		}
-		if media.Genres == "" && len(meta.Genres) > 0 {
+		if media.Genres == "" && len(meta.Genres) > 0 && !guard.locked("genres") {
 			media.Genres = strings.Join(meta.Genres, ",")
 		}
 		if media.Studio == "" && meta.Studio != "" {
@@ -827,22 +829,22 @@ func (s *AdultScraperService) ApplyToMedia(media *model.Media, meta *AdultMetada
 		if media.Premiered == "" && meta.ReleaseDate != "" {
 			media.Premiered = meta.ReleaseDate
 		}
-		if media.Year == 0 && meta.ReleaseDate != "" && len(meta.ReleaseDate) >= 4 {
+		if media.Year == 0 && meta.ReleaseDate != "" && len(meta.ReleaseDate) >= 4 && !guard.locked("year") {
 			fmt.Sscanf(meta.ReleaseDate[:4], "%d", &media.Year)
 		}
 		if media.Runtime == 0 && meta.Duration > 0 {
 			media.Runtime = meta.Duration
 		}
-		if media.Rating == 0 && meta.Rating > 0 {
+		if media.Rating == 0 && meta.Rating > 0 && !guard.locked("rating") {
 			if meta.Source == "javdb" && meta.Rating <= 5 {
 				media.Rating = meta.Rating * 2
 			} else {
 				media.Rating = meta.Rating
 			}
 		}
-		if meta.OriginalTitle != "" && (media.OrigTitle == "" || media.OrigTitle == meta.Code) {
+		if meta.OriginalTitle != "" && (media.OrigTitle == "" || media.OrigTitle == meta.Code) && !guard.locked("orig_title") {
 			media.OrigTitle = meta.OriginalTitle
-		} else if media.OrigTitle == "" {
+		} else if media.OrigTitle == "" && !guard.locked("orig_title") {
 			media.OrigTitle = meta.Code
 		}
 	}

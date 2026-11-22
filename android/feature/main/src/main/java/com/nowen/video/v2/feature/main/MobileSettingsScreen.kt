@@ -36,21 +36,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Interests
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayCircle
-import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material3.HorizontalDivider
@@ -286,11 +281,6 @@ fun MobileSettingsScreen(
             versionName = packageVersionName(context),
             username = session.user?.username.orEmpty(),
         )
-
-        else -> SettingsUnavailablePanel(
-            destination = destination!!,
-            onBack = returnToDirectory,
-        )
     }
 
     when (picker) {
@@ -323,19 +313,13 @@ fun MobileSettingsScreen(
 private enum class SettingsDestination(
     val label: String,
     val icon: ImageVector,
-    val available: Boolean,
 ) {
-    Account("账号", Icons.Default.AccountCircle, true),
-    Language("语言", Icons.Default.Language, false),
-    Theme("主题", Icons.Default.Palette, false),
-    Library("媒体库", Icons.Default.FolderOpen, true),
-    Backup("备份与还原", Icons.Default.Backup, false),
-    Sync("同步", Icons.Default.CloudSync, false),
-    Interaction("交互", Icons.Default.Interests, true),
-    Player("播放器", Icons.Default.PlayCircle, true),
-    Danmaku("弹幕", Icons.Default.Subtitles, true),
-    Experimental("实验性", Icons.Default.Science, false),
-    About("关于", Icons.Default.Info, true),
+    Account("账号", Icons.Default.AccountCircle),
+    Library("媒体库", Icons.Default.FolderOpen),
+    Interaction("交互", Icons.Default.Interests),
+    Player("播放器", Icons.Default.PlayCircle),
+    Danmaku("弹幕", Icons.Default.Subtitles),
+    About("关于", Icons.Default.Info),
 }
 
 private enum class SettingsPicker {
@@ -356,11 +340,7 @@ private fun SettingsDirectory(
             SettingsSectionHeader("通用")
             Spacer(Modifier.height(8.dp))
             SettingsDestinationRow(SettingsDestination.Account, onClick = { onSelect(SettingsDestination.Account) })
-            SettingsDestinationRow(SettingsDestination.Language, onClick = { onSelect(SettingsDestination.Language) })
-            SettingsDestinationRow(SettingsDestination.Theme, onClick = { onSelect(SettingsDestination.Theme) })
             SettingsDestinationRow(SettingsDestination.Library, onClick = { onSelect(SettingsDestination.Library) })
-            SettingsDestinationRow(SettingsDestination.Backup, onClick = { onSelect(SettingsDestination.Backup) })
-            SettingsDestinationRow(SettingsDestination.Sync, onClick = { onSelect(SettingsDestination.Sync) })
             Spacer(Modifier.height(30.dp))
         }
         item {
@@ -369,7 +349,6 @@ private fun SettingsDirectory(
             SettingsDestinationRow(SettingsDestination.Interaction, onClick = { onSelect(SettingsDestination.Interaction) })
             SettingsDestinationRow(SettingsDestination.Player, onClick = { onSelect(SettingsDestination.Player) })
             SettingsDestinationRow(SettingsDestination.Danmaku, onClick = { onSelect(SettingsDestination.Danmaku) })
-            SettingsDestinationRow(SettingsDestination.Experimental, onClick = { onSelect(SettingsDestination.Experimental) })
             Spacer(Modifier.height(30.dp))
         }
         item {
@@ -587,24 +566,6 @@ private fun SettingsAboutPanel(
 }
 
 @Composable
-private fun SettingsUnavailablePanel(
-    destination: SettingsDestination,
-    onBack: () -> Unit,
-) {
-    SettingsScaffold(title = destination.label, onBack = onBack) {
-        item {
-            Column(Modifier.padding(top = 32.dp)) {
-                Icon(destination.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
-                Spacer(Modifier.height(16.dp))
-                Text("${destination.label}功能暂未开放", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(7.dp))
-                Text("该入口已预留，后续版本会在这里提供对应设置。", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge)
-            }
-        }
-    }
-}
-
-@Composable
 internal fun SettingsScaffold(
     title: String,
     onBack: (() -> Unit)? = null,
@@ -679,9 +640,8 @@ private fun SettingsDestinationRow(
     onClick: () -> Unit,
 ) {
     val subtitle = when (destination) {
-        SettingsDestination.Language -> "简体中文"
         SettingsDestination.Account -> "当前服务器账号"
-        else -> if (destination.available) null else "预留入口"
+        else -> null
     }
     SettingsListRow(
         icon = destination.icon,

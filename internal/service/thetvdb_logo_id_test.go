@@ -29,7 +29,7 @@ func TestApplySeriesResultPersistsTVDBID(t *testing.T) {
 			series := &model.Series{Title: "Example Series"}
 			service := &TheTVDBService{}
 
-			service.applySeriesResult(series, &tt.result)
+			service.applySeriesResult(series, &tt.result, false)
 
 			if series.TVDbID != tt.want {
 				t.Fatalf("TVDbID = %d, want %d", series.TVDbID, tt.want)

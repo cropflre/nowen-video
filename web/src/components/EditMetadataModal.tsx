@@ -1,8 +1,9 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { adminApi } from '@/api'
 import { useToast } from '@/components/Toast'
+import { useTranslation } from '@/i18n'
 import type { TMDbImageInfo } from '@/types'
-import { Check, Image as ImageIcon, Link2, Loader2, Search, Upload } from 'lucide-react'
+import { Check, Image as ImageIcon, Link2, Loader2, Lock, LockOpen, Search, Upload } from 'lucide-react'
 import clsx from 'clsx'
 import { Button, Input, Surface, Tag } from '@/components/design-system'
 import { Modal, ModalBody, ModalFooter, ModalHeader } from '@/components/design-system/Modal'
@@ -40,6 +41,7 @@ export default function EditMetadataModal({
   hasTagline = false,
 }: EditMetadataModalProps) {
   const toast = useToast()
+  const { t } = useTranslation()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [imageTab, setImageTab] = useState<ImageEditType>('poster')
   const [imageMode, setImageMode] = useState<ImageSourceMode | null>(null)
@@ -129,6 +131,36 @@ export default function EditMetadataModal({
     : []
 
   const setField = (key: string, value: unknown) => setEditForm({ ...editForm, [key]: value })
+
+  // 字段锁定：locked_fields 是 JSON 数组字符串；刮削时跳过锁定的字段，手动编辑不受影响。
+  const lockableFields = useMemo<Array<{ key: string; label: string }>>(() => [
+    { key: 'title', label: '标题' },
+    { key: 'orig_title', label: '原始标题' },
+    { key: 'year', label: '年份' },
+    { key: 'overview', label: '简介' },
+    { key: 'genres', label: '类型' },
+    { key: 'poster', label: '海报' },
+    { key: 'backdrop', label: '背景图' },
+    { key: 'rating', label: '评分' },
+  ], [])
+
+  const lockedFields = useMemo(() => {
+    try {
+      const parsed = JSON.parse(editForm.locked_fields || '[]')
+      if (!Array.isArray(parsed)) return new Set<string>()
+      return new Set(parsed.filter((f): f is string => typeof f === 'string' && lockableFields.some((lf) => lf.key === f)))
+    } catch {
+      return new Set<string>()
+    }
+  }, [editForm.locked_fields, lockableFields])
+
+  const toggleLockedField = (key: string) => {
+    const next = new Set(lockedFields)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    const ordered = lockableFields.map((f) => f.key).filter((k) => next.has(k))
+    setField('locked_fields', ordered.length > 0 ? JSON.stringify(ordered) : '')
+  }
 
   return (
     <Modal onClose={onClose} size="lg" ariaLabel="编辑元数据" closeOnBackdrop={!imageUploading}>
@@ -359,6 +391,43 @@ export default function EditMetadataModal({
           </div>
 
           <Field label="出品公司"><Input value={editForm.studio || ''} onChange={(event) => setField('studio', event.target.value)} /></Field>
+        </section>
+
+        <section aria-labelledby="metadata-lock-title" className="space-y-3">
+          <div className="flex items-center gap-2">
+            <h3 id="metadata-lock-title" className="text-sm font-semibold text-[var(--nv-text-primary)]">{t('metadataLock.sectionTitle')}</h3>
+            <Tag tone="neutral">{t('metadataLock.tag')}</Tag>
+          </div>
+          <p className="text-xs leading-5 text-[var(--nv-text-tertiary)]">{t('metadataLock.hint')}</p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {lockableFields.map((field) => {
+              const locked = lockedFields.has(field.key)
+              return (
+                <button
+                  key={field.key}
+                  type="button"
+                  role="switch"
+                  aria-checked={locked}
+                  aria-label={t('metadataLock.toggleLabel', { field: field.label })}
+                  onClick={() => toggleLockedField(field.key)}
+                  className={clsx(
+                    'flex min-h-[44px] w-full items-center justify-between gap-3 rounded-[var(--nv-radius-control)] border px-3 py-2 text-left transition-[border-color,background-color,box-shadow]',
+                    locked
+                      ? 'border-[var(--nv-action-primary)] bg-[var(--nv-bg-active)]'
+                      : 'border-[var(--nv-border-default)] bg-[var(--nv-bg-surface)] hover:border-[var(--nv-border-hover)] hover:bg-[var(--nv-bg-hover)]',
+                  )}
+                >
+                  <span className="flex items-center gap-2 text-sm text-[var(--nv-text-primary)]">
+                    {locked ? <Lock size={14} aria-hidden="true" /> : <LockOpen size={14} aria-hidden="true" />}
+                    {field.label}
+                  </span>
+                  <span className="text-xs text-[var(--nv-text-tertiary)]">
+                    {locked ? t('metadataLock.locked') : t('metadataLock.unlocked')}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </section>
       </ModalBody>
 

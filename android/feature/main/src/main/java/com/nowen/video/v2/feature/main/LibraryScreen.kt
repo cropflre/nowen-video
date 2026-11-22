@@ -1545,3 +1545,10 @@ internal fun sortLabel(sort: LibrarySort): String = when (sort) {
     LibrarySort.Year -> "年份"
     LibrarySort.Rating -> "评分"
 }
+
+internal fun resolveImage(baseUrl: String?, path: String?): String? {
+    if (path.isNullOrBlank()) return null
+    if (path.startsWith("http://") || path.startsWith("https://")) return path
+    val server = baseUrl?.trimEnd('/') ?: return null
+    return "$server/${path.trimStart('/')}"
+}

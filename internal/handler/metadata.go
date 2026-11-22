@@ -15,10 +15,16 @@ type MetadataHandler struct {
 }
 
 // ScrapeMedia 手动刮削单个媒体的元数据
+// Body 可选：{"mode": "fill-missing" | "replace"}，缺省为只补缺失。
 func (h *MetadataHandler) ScrapeMedia(c *gin.Context) {
 	id := c.Param("id")
 
-	if err := h.metadataService.ScrapeMedia(id); err != nil {
+	var req struct {
+		Mode string `json:"mode"`
+	}
+	_ = c.ShouldBindJSON(&req) // 空 body 时保持零值，走默认档位
+
+	if err := h.metadataService.ScrapeMediaWithMode(id, service.ParseScrapeMode(req.Mode)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "元数据刮削失败: " + err.Error()})
 		return
 	}

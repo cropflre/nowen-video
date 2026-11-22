@@ -36,9 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -223,35 +221,6 @@ internal fun MobileDetailHero(
                     content = secondaryActions,
                 )
             }
-    }
-}
-
-@Composable
-internal fun DetailTabStrip(
-    labels: List<String>,
-    selectedIndex: Int,
-    onSelected: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    ScrollableTabRow(
-        selectedTabIndex = selectedIndex.coerceIn(0, (labels.size - 1).coerceAtLeast(0)),
-        modifier = modifier.fillMaxWidth(),
-        edgePadding = 14.dp,
-        containerColor = MaterialTheme.colorScheme.background,
-        divider = { HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)) },
-    ) {
-        labels.forEachIndexed { index, label ->
-            Tab(
-                selected = selectedIndex == index,
-                onClick = { onSelected(index) },
-                text = {
-                    Text(
-                        label,
-                        fontWeight = if (selectedIndex == index) FontWeight.SemiBold else FontWeight.Normal,
-                    )
-                },
-            )
-        }
     }
 }
 
