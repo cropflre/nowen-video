@@ -98,39 +98,41 @@ export function usePageCache<T>(
     // 并发去重
     let inFlight = globalInFlight.get(k) as InFlightEntry<T> | undefined
     if (!inFlight) {
-      const promise = (async () => {
-        try {
-          const result = await fetcherRef.current()
-          if (epoch === cacheState.epoch) {
+      const fetchPage = fetcherRef.current
+      const request: InFlightEntry<T> = {
+        promise: Promise.resolve().then(fetchPage).then((result) => {
+          if (epoch === cacheState.epoch && !request.superseded) {
             globalCache.set(k, { data: result, loadedAt: Date.now() })
             notify(k)
           }
           return result
-        } finally {
-          if (globalInFlight.get(k)?.epoch === epoch) globalInFlight.delete(k)
-        }
-      })()
-      inFlight = { promise, epoch }
+        }).finally(() => {
+          if (globalInFlight.get(k) === request) globalInFlight.delete(k)
+        }),
+      }
+      inFlight = request
       globalInFlight.set(k, inFlight as InFlightEntry<unknown>)
     }
 
+    const isCurrentRequest = () => epoch === cacheState.epoch && !inFlight.superseded
+    const canUpdateState = () => isCurrentRequest() && aliveRef.current && currentKeyRef.current === k
     try {
       const result = await inFlight.promise
-      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
+      if (canUpdateState()) {
         setStateKey(k)
         setData(result)
         setError(null)
       }
-      return epoch === cacheState.epoch ? result : undefined
+      return isCurrentRequest() ? result : undefined
     } catch (err) {
-      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
+      if (canUpdateState()) {
         setStateKey(k)
         setError(err)
         if (!keepStaleOnError) setData(undefined)
       }
       return undefined
     } finally {
-      if (aliveRef.current && currentKeyRef.current === k && epoch === cacheState.epoch) {
+      if (canUpdateState()) {
         setLoading(false)
         setRefreshing(false)
       }
@@ -174,14 +176,18 @@ export function usePageCache<T>(
   // 订阅同 key 的缓存更新（其他组件 mutate/invalidate 后同步）
   useEffect(() => {
     if (!key) return
-    return subscribe(key, () => {
+    return subscribe(key, (event) => {
       const entry = globalCache.get(key) as CacheEntry<T> | undefined
       if (aliveRef.current && currentKeyRef.current === key) {
+        if (event === 'revalidate') {
+          if (enabled) void doFetch(key, Boolean(entry))
+          return
+        }
         setStateKey(key)
         setData(entry?.data)
       }
     })
-  }, [key])
+  }, [key, enabled, doFetch])
 
   const refetch = useCallback(
     async (silent = true): Promise<T | undefined> => {

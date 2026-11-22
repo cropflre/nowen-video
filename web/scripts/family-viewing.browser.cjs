@@ -103,7 +103,7 @@ let browser;
    if(p==='/api/capabilities') return json({data:{schema_version:1,profile:'lite',capabilities:{}}});
    if(p==='/api/health') return json({status:'ok',version:'test',server_name:'Family fixture'});
    if(p==='/api/media/recent/mixed') return json({data:state.empty?[]:items.slice(0,12)});
-   if(p==='/api/media/continue') return json({data:state.empty?[]:[{id:'history-1',media_id:movie.id,media:movie,position:30,duration:120,completed:false}]});
+   if(p==='/api/media/continue') return json({data:state.empty?[]:[{id:'history-1',media_id:movie.id,media:movie,position:state.savedPosition??30,duration:120,completed:false}]});
    if(p==='/api/recommend') return json({data:state.empty?[]:items.slice(0,3).map(i=>({media:i.media,reason:'最近添加',score:1}))});
    if(p==='/api/libraries') {
     if(request.method()==='POST') {state.libraryCreates++;state.libraryBody=request.postDataJSON();return json({data:{id:'created-library',...state.libraryBody,path:state.libraryBody.paths[0],created_at:new Date().toISOString()}},201);}
@@ -130,7 +130,10 @@ let browser;
     if(state.delayFavorites && state.favoriteRequests===1) await new Promise(resolve=>setTimeout(resolve,600));
     return json({data:[{id:'fav-1',media:{...movie,title},media_id:movie.id}],total:1});
    }
-   if(p.includes('/users/me/progress/')) return json({data:{position:30,duration:120,completed:false}});
+   if(p.includes('/users/me/progress/')) {
+    if(request.method()==='PUT' && state.progressGate){await state.progressGate;state.savedPosition=request.postDataJSON().position;}
+    return json({data:{position:state.savedPosition??30,duration:120,completed:false}});
+   }
    if(/\/stream\/[^/]+\/info$/.test(p)) return json({data:{duration:120,can_direct_play:true,video_codec:'h264',audio_codec:'',file_ext:'.mp4',playback_plan:{method:'direct',url:'/api/stream/movie-1/direct',session_required:false}}});
    if(p.endsWith('/direct')) {
     const range=request.headers()['range'];let start=0,end=video.length-1;
@@ -146,6 +149,36 @@ let browser;
  async function visible(page,text){await page.getByText(text,{exact:true}).first().waitFor({state:'visible',timeout:10000});}
  let env,page;
  if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_DEVICES_ONLY){
+ env=await setup({admin:true});page=env.page;
+ let finishProgress;
+ env.state.progressGate=new Promise(resolve=>{finishProgress=resolve});
+ await page.goto(base);
+ await visible(page,'继续观看');
+ const progressWrite=page.waitForRequest(request=>request.method()==='PUT'&&request.url().includes('/users/me/progress/movie-1'));
+ await page.getByRole('link',{name:'继续播放 家庭示例电影',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('video')?.currentTime>=35);
+ await progressWrite;
+ await page.goBack();
+ await visible(page,'继续观看');
+ await page.evaluate(()=>{
+  window.homeShowedEmpty=false;
+  const observer=new MutationObserver(()=>{
+   if(document.querySelector('.nv-home-page')?.textContent.includes('还没有可看的影片')) window.homeShowedEmpty=true;
+  });
+  observer.observe(document.body,{subtree:true,childList:true,characterData:true});
+ });
+ const progressSaved=page.waitForResponse(response=>response.request().method()==='PUT'&&response.url().includes('/users/me/progress/movie-1'));
+ finishProgress();
+ await progressSaved;
+ try {
+  await page.waitForFunction(()=>Number(document.querySelector('.nv-home-compact-shelf .nv-media-card-progress')?.getAttribute('aria-valuenow'))>=29, null, {timeout:10000});
+ } finally {
+  assert.equal(await page.evaluate(()=>window.homeShowedEmpty),false,'late playback progress reported an empty home');
+ }
+ assert.deepEqual(env.errors,[]);await env.ctx.close();
+ checks.push('home keeps its films visible and refreshes watch progress after the player closes');
+ }
+ if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_DEVICES_ONLY&&!process.env.FAMILY_HOME_RETURN_ONLY){
  env=await setup();page=env.page;
  await page.goto(base);await visible(page,'继续观看');
  assert.deepEqual(await page.locator('.nv-rail-section-links .nv-rail-label').allTextContents(),['首页','找片','想看','我的']);
@@ -323,7 +356,7 @@ let browser;
  env.state.favoriteTitle='重新登录后的影片';await page.evaluate(async(authURL)=>{const {useAuthStore}=await import(authURL);useAuthStore.getState().setAuth('fixture-token',{id:'viewer',username:'家人',role:'user'})},authURL);
  await visible(page,'重新登录后的影片');assert.equal(await page.getByText('当前账号的影片',{exact:true}).count(),0);assert.deepEqual(env.errors,[]);checks.push('switching accounts isolates cached favorites and rejects delayed responses from the previous account');await env.ctx.close();
  }
- if(!process.env.FAMILY_DEVICES_ONLY){
+ if(!process.env.FAMILY_DEVICES_ONLY&&!process.env.FAMILY_HOME_RETURN_ONLY){
  env=await setup({child:true,mobile:true});page=env.page;let childSockets=0;page.on('websocket',socket=>{if(new URL(socket.url()).pathname==='/api/ws')childSockets++});
  await page.goto(base+'/my');await page.locator('p').filter({hasText:/^儿童空间$/}).waitFor();assert.equal(await page.getByRole('switch',{name:'自动播放下一集',exact:true}).isDisabled(),true);await visible(page,'今天的观看时间');assert.equal(await page.getByRole('link',{name:/观影统计/}).count(),0);assert.equal(await page.getByRole('link',{name:/播放列表/}).count(),0);assert.equal(await page.getByRole('button',{name:'创建家庭邀请',exact:true}).count(),0);
  await page.goto(base+'/admin');await visible(page,'继续观看');assert.equal(new URL(page.url()).pathname,'/');assert.equal(childSockets,0);assert.deepEqual(env.errors,[]);checks.push('child account shows its own space, hides adult management and unsupported menus, and does not connect to global events');
@@ -368,7 +401,7 @@ let browser;
  env=await setup({child:true});page=env.page;env.state.familyLimit=60;env.state.denyStart=true;await page.goto(base+'/play/movie-1');await visible(page,'今天的观看时间已用完，休息一下吧');assert.equal(await page.locator('video').count(),0);checks.push('exhausted child budget prevents creating a player before any media loads');await env.ctx.close();
  env=await setup({child:true});page=env.page;env.state.familyLimit=60;env.state.failRenew=true;await page.clock.install();await page.goto(base+'/play/movie-1');await page.waitForFunction(()=>document.querySelector('video')?.currentTime>=30);await page.clock.fastForward(5100);await visible(page,'暂时无法确认观看时间，请稍后重试');assert.equal(await page.locator('video').count(),0);assert.equal(env.state.viewingRenews,1);checks.push('failed authorization renewal stops the limited child player without silently continuing');await env.ctx.close();
  }
- if(!process.env.FAMILY_CHILDREN_ONLY){
+ if(!process.env.FAMILY_CHILDREN_ONLY&&!process.env.FAMILY_HOME_RETURN_ONLY){
  const paired={};let requester=await setup({unauthenticated:true,pairingState:paired,mobile:true});page=requester.page;await page.goto(base+'/login');await page.getByRole('button',{name:'用已登录设备授权',exact:true}).click();await page.getByRole('textbox',{name:'设备名称',exact:true}).fill('客厅平板');await page.getByRole('button',{name:'生成配对码',exact:true}).click();await visible(page,'ABCD-2345');
  assert((await page.getByRole('img',{name:'用已登录手机扫描的设备配对二维码',exact:true}).getAttribute('src')).startsWith('data:image/svg+xml'));assert.equal(paired.approved,false);assert(!page.url().includes(paired.request.secret));await page.screenshot({path:path.join(outputDir,'device-pairing.png'),fullPage:true});
  const approver=await setup({admin:true,pairingState:paired});const approval=approver.page;await approval.goto(base+'/pair#code=ABCD-2345');await visible(approval,'ABCD-2345');await visible(approval,'客厅平板');assert.equal(paired.approved,false);await visible(approval,'这会让新设备拥有管理员权限。给家人使用时，请先登录对应家人的账号。');await approval.getByRole('button',{name:'确认授权此账号',exact:true}).click();await visible(approval,'已确认，请回到新设备。配对只可使用一次。');

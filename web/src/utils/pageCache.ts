@@ -4,17 +4,19 @@ export interface CacheEntry<T> {
 }
 
 export interface InFlightEntry<T> {
-  epoch: number
   promise: Promise<T>
+  superseded?: boolean
 }
 
 export const cacheState = { epoch: 0 }
 export const globalCache = new Map<string, CacheEntry<unknown>>()
 export const globalInFlight = new Map<string, InFlightEntry<unknown>>()
 // 订阅者：某个 key 的数据被更新时通知同 key 的所有实例
-const globalSubscribers = new Map<string, Set<() => void>>()
+type CacheEvent = 'changed' | 'revalidate'
+type CacheListener = (event: CacheEvent) => void
+const globalSubscribers = new Map<string, Set<CacheListener>>()
 
-export function subscribe(key: string, cb: () => void) {
+export function subscribe(key: string, cb: CacheListener) {
   let set = globalSubscribers.get(key)
   if (!set) {
     set = new Set()
@@ -27,8 +29,8 @@ export function subscribe(key: string, cb: () => void) {
   }
 }
 
-export function notify(key: string) {
-  globalSubscribers.get(key)?.forEach((cb) => cb())
+export function notify(key: string, event: CacheEvent = 'changed') {
+  globalSubscribers.get(key)?.forEach((cb) => cb(event))
 }
 
 // ========== 导出工具 ==========
@@ -53,11 +55,29 @@ export function invalidatePageCachePrefix(prefix: string) {
   }
 }
 
+/** 保留已显示的数据，立即刷新挂载的页面，或在下次挂载时刷新。 */
+export function revalidatePageCachePrefix(prefix: string) {
+  const keys = new Set([...globalCache.keys(), ...globalInFlight.keys(), ...globalSubscribers.keys()])
+  for (const key of keys) {
+    if (!key.startsWith(prefix)) continue
+    const entry = globalCache.get(key)
+    if (entry) entry.loadedAt = Number.NEGATIVE_INFINITY
+
+    // 正在运行的请求可能读到了写入之前的数据。
+    const inFlight = globalInFlight.get(key)
+    if (inFlight) {
+      inFlight.superseded = true
+      globalInFlight.delete(key)
+    }
+    notify(key, 'revalidate')
+  }
+}
+
 /** 清空全部缓存（如登出时调用） */
 export function clearPageCache() {
   const keys = Array.from(new Set([...globalCache.keys(), ...globalSubscribers.keys()]))
   cacheState.epoch += 1
   globalInFlight.clear()
   globalCache.clear()
-  keys.forEach(notify)
+  keys.forEach((key) => notify(key))
 }

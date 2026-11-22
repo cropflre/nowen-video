@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { streamApi } from '@/api'
 import api, { getResolvedApiBaseURL } from '@/api/client'
-import { invalidatePageCachePrefix } from '@/hooks/usePageCache'
+import { invalidatePageCachePrefix, revalidatePageCachePrefix } from '@/utils/pageCache'
 import { desktop } from '@/platform/desktop/bridge'
 import { useAuthStore } from '@/stores/auth'
 import { usePlayerStore } from '@/stores/player'
@@ -32,7 +32,7 @@ function normalizedProgress(position: number, duration: number) {
 
 function invalidatePlaybackCaches() {
   invalidatePageCachePrefix('history:')
-  invalidatePageCachePrefix('home:')
+  revalidatePageCachePrefix('home:')
 }
 
 async function reportAbsoluteProgress(mediaId: string, position: number, duration: number) {
