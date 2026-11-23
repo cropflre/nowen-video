@@ -509,9 +509,11 @@ export default function MediaDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pb-8 pt-2">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <section id="cast" className="nv-detail-content-section">
-              <CastGrid persons={persons} />
-            </section>
+            {persons.length > 0 && (
+              <section id="cast" className="nv-detail-content-section">
+                <CastGrid persons={persons} />
+              </section>
+            )}
 
             <section id="recommendations" className="nv-detail-content-section space-y-6">
               {media.media_type === 'movie' && id && (

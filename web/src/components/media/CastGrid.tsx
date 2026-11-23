@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { streamApi } from '@/api'
 import type { MediaPerson } from '@/types'
-import { EmptyState } from '@/components/design-system'
 import { PersonCard } from '@/ui'
 import { Users } from 'lucide-react'
 import { useTranslation } from '@/i18n'
@@ -54,14 +53,7 @@ export default function CastGrid({ persons }: CastGridProps) {
   }, [navigate])
 
   if (sortedPersons.length === 0) {
-    return (
-      <EmptyState
-        className="nv-detail-tab-empty-state"
-        icon={<Users size={23} aria-hidden="true" />}
-        title="暂无演职人员信息"
-        description="当前媒体还没有可展示的导演、演员或编剧信息。"
-      />
-    )
+    return null
   }
 
   return (
