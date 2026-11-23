@@ -101,6 +101,7 @@ internal fun extractTrackChoices(tracks: Tracks, trackType: Int): List<PlayerTra
                 }
         }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 internal fun playerTrackLabel(format: Format, trackType: Int, ordinal: Int): String {
     val language = format.language?.takeIf { it.isNotBlank() && it != "und" }
     val base = format.label?.takeIf { it.isNotBlank() }
