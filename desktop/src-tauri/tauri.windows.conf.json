@@ -1,0 +1,12 @@
+{
+  "bundle": {
+    "targets": [
+      "nsis"
+    ],
+    "resources": {
+      "resources/mpv/libmpv-2.dll": "./libmpv-2.dll",
+      "resources/yt-dlp.exe": "./yt-dlp.exe",
+      "resources/fonts/": "./resources/fonts/"
+    }
+  }
+}

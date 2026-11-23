@@ -105,9 +105,13 @@ fn main() {
                 log::info!("窗口 {} 关闭，释放 Desktop 运行时资源", window.label());
                 let state: tauri::State<AppState> = app.state();
 
-                if let Ok(mut player) = state.player.lock() {
-                    player.stop_all();
-                }
+                let app_handle = app.clone();
+                std::thread::spawn(move || {
+                    let state: tauri::State<AppState> = app_handle.state();
+                    if let Ok(mut player) = state.player.lock() {
+                        player.stop_all();
+                    };
+                });
 
                 if window.label() == "main" {
                     let _ = player::surface::destroy(app);
@@ -141,6 +145,8 @@ fn main() {
             commands::pick_folder,
             commands::window_minimize,
             commands::window_toggle_fullscreen,
+            commands::window_is_fullscreen,
+            commands::window_set_fullscreen,
             commands::window_hide_to_tray,
             commands::window_toggle_maximize,
             commands::window_is_maximized,

@@ -17,12 +17,25 @@ fn main() {
 
 #[cfg(feature = "embed-mpv")]
 fn generate_mpv_import_lib() {
+    println!("cargo:rerun-if-changed=build.rs");
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("apple-darwin") {
+        for dir in ["/opt/homebrew/lib", "/usr/local/lib"] {
+            if Path::new(dir).exists() {
+                println!("cargo:rustc-link-search=native={}", dir);
+            }
+        }
+        return;
+    }
+    if !target.contains("windows") || !target.contains("msvc") {
+        return;
+    }
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
 
     let dll_path = manifest_dir.join("resources").join("mpv").join("libmpv-2.dll");
     println!("cargo:rerun-if-changed={}", dll_path.display());
-    println!("cargo:rerun-if-changed=build.rs");
 
     if !dll_path.exists() {
         println!(
@@ -33,9 +46,6 @@ fn generate_mpv_import_lib() {
         println!("cargo:rustc-link-search=native={}", out_dir.display());
         return;
     }
-
-    // 只在 Windows MSVC 工具链下生成 .lib；其它平台假定系统已装 libmpv
-    let target = env::var("TARGET").unwrap_or_default();
     if !target.contains("windows") || !target.contains("msvc") {
         return;
     }

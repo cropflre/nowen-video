@@ -281,13 +281,19 @@ mod native {
             let mpv = map_err(Mpv::new(), "创建 libmpv 实例失败")?;
 
             #[cfg(not(target_os = "windows"))]
-            map_err(
-                mpv.set_property("wid", surface.native_window_id()),
-                "绑定 Player Surface 失败",
-            )?;
+            let _ = surface;
 
             mpv.set_property("keep-open", "yes").ok();
+            mpv.set_property("osd-bar", "no").ok();
+            mpv.set_property("osd-level", "0").ok();
+            #[cfg(target_os = "windows")]
             mpv.set_property("osc", "no").ok();
+            #[cfg(not(target_os = "windows"))]
+            {
+                mpv.set_property("osc", "no").ok();
+                mpv.set_property("border", "no").ok();
+                mpv.set_property("title", "Nowen Video Player").ok();
+            }
             mpv.set_property("idle", "yes").ok();
             mpv.set_property("msg-level", "all=warn").ok();
 
@@ -303,6 +309,10 @@ mod native {
                 mpv.set_property("vo", "gpu-next").ok();
                 mpv.set_property("hwdec", "auto-safe").ok();
                 mpv.set_property("force-window", "yes").ok();
+                mpv.set_property("auto-window-resize", "no").ok();
+                mpv.set_property("keepaspect-window", "no").ok();
+                mpv.set_property("background-color", "#000000").ok();
+                mpv.set_property("border-background", "color").ok();
                 mpv.set_property("input-default-bindings", "yes").ok();
                 mpv.set_property("input-vo-keyboard", "yes").ok();
             }
@@ -400,10 +410,14 @@ mod native {
         }
 
         pub fn set_property(&self, name: &str, value: &str) -> Result<()> {
-            map_err(
+            let res = map_err(
                 self.mpv.set_property(name, value.to_string()),
                 format!("设置播放器属性 {} 失败", name),
-            )
+            );
+            if name == "keepaspect" || name == "panscan" {
+                log::info!("player set_property {}={} -> {:?}", name, value, res.as_ref().map(|_| "ok"));
+            }
+            res
         }
 
         pub fn video_info(&self) -> VideoInfo {

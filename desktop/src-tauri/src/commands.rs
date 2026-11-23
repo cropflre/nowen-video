@@ -30,30 +30,36 @@ pub async fn sidecar_restart(app: AppHandle, state: State<'_, AppState>) -> Resu
 // ============ Desktop Player Core ============
 
 #[tauri::command]
-pub fn player_available(state: State<AppState>) -> Result<bool, String> {
-    let player = state.player.lock().map_err(|error| error.to_string())?;
-    Ok(player.is_available())
+pub fn player_available() -> Result<bool, String> {
+    Ok(cfg!(feature = "embed-mpv"))
 }
 
 #[tauri::command]
-pub fn player_start(
+pub async fn player_start(
     app: AppHandle,
-    state: State<AppState>,
     session_id: String,
     url: String,
     options: Option<PlayOptions>,
 ) -> Result<PlayerStartResult, String> {
-    let surface = player::surface::ensure(&app).map_err(|error| error.to_string())?;
-    let mut player = state.player.lock().map_err(|error| error.to_string())?;
-    player
-        .start(
-            &app,
-            &session_id,
-            &url,
-            surface,
-            options.unwrap_or_default(),
-        )
-        .map_err(|error| error.to_string())?;
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let app_for_surface = app.clone();
+    app.run_on_main_thread(move || {
+        let res = player::surface::ensure(&app_for_surface).map_err(|error| error.to_string());
+        let _ = tx.send(res);
+    })
+    .map_err(|error| error.to_string())?;
+    let surface = rx.await.map_err(|_| "创建 Player Surface 被取消".to_string())??;
+
+    let sid = session_id.clone();
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut player = state.player.lock().map_err(|error| error.to_string())?;
+        player
+            .start(&app, &sid, &url, surface, options.unwrap_or_default())
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
 
     Ok(PlayerStartResult { session_id })
 }
@@ -64,14 +70,19 @@ pub struct PlayerStartResult {
 }
 
 #[tauri::command]
-pub fn player_stop(state: State<AppState>, session_id: String) -> Result<(), String> {
-    let mut player = state.player.lock().map_err(|error| error.to_string())?;
-    player.stop(&session_id);
-    Ok(())
+pub async fn player_stop(app: AppHandle, session_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut player = state.player.lock().map_err(|error| error.to_string())?;
+        player.stop(&session_id);
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn player_sync_surface(
+pub async fn player_sync_surface(
     app: AppHandle,
     x: i32,
     y: i32,
@@ -79,39 +90,63 @@ pub fn player_sync_surface(
     height: u32,
     visible: bool,
 ) -> Result<(), String> {
-    player::surface::sync_bounds(&app, x, y, width, height, visible)
-        .map_err(|error| error.to_string())
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let app_for_main = app.clone();
+    app.run_on_main_thread(move || {
+        let res = player::surface::sync_bounds(&app_for_main, x, y, width, height, visible)
+            .map_err(|error| error.to_string());
+        let _ = tx.send(res);
+    })
+    .map_err(|error| error.to_string())?;
+    rx.await.map_err(|_| "同步 Player Surface 被取消".to_string())?
 }
 
 #[tauri::command]
-pub fn player_command(
-    state: State<AppState>,
+pub async fn player_command(
+    app: AppHandle,
     session_id: String,
     command: String,
     args: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let player = state.player.lock().map_err(|error| error.to_string())?;
-    player
-        .command(&session_id, &command, &args.unwrap_or_default())
-        .map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let player = state.player.lock().map_err(|error| error.to_string())?;
+        player
+            .command(&session_id, &command, &args.unwrap_or_default())
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn player_set_property(
-    state: State<AppState>,
+pub async fn player_set_property(
+    app: AppHandle,
     session_id: String,
     name: String,
     value: String,
 ) -> Result<(), String> {
-    let player = state.player.lock().map_err(|error| error.to_string())?;
-    player
-        .set_property(&session_id, &name, &value)
-        .map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let player = state.player.lock().map_err(|error| error.to_string())?;
+        player
+            .set_property(&session_id, &name, &value)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn player_destroy(app: AppHandle) -> Result<(), String> {
-    player::surface::destroy(&app).map_err(|error| error.to_string())
+pub async fn player_destroy(app: AppHandle) -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let app_for_main = app.clone();
+    app.run_on_main_thread(move || {
+        let res = player::surface::destroy(&app_for_main).map_err(|error| error.to_string());
+        let _ = tx.send(res);
+    })
+    .map_err(|error| error.to_string())?;
+    rx.await.map_err(|_| "销毁 Player Surface 被取消".to_string())?
 }
 
 /// 单次读取 Player Core 当前缓存快照。
@@ -119,14 +154,19 @@ pub fn player_destroy(app: AppHandle) -> Result<(), String> {
 /// 正常播放状态由 `player-state` 事件推送；该命令仅用于启动 bootstrap、诊断和事件丢失兜底，
 /// 不应再被前端定时轮询。
 #[tauri::command]
-pub fn player_video_info(
-    state: State<AppState>,
+pub async fn player_video_info(
+    app: AppHandle,
     session_id: String,
 ) -> Result<PlayerVideoInfo, String> {
-    let player = state.player.lock().map_err(|error| error.to_string())?;
-    player
-        .video_info(&session_id)
-        .map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let player = state.player.lock().map_err(|error| error.to_string())?;
+        player
+            .video_info(&session_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 // ============ 更新 ============
@@ -253,6 +293,28 @@ pub fn window_toggle_fullscreen(app: AppHandle) -> Result<bool, String> {
         .set_fullscreen(next)
         .map_err(|error| error.to_string())?;
     Ok(next)
+}
+
+#[tauri::command]
+pub fn window_is_fullscreen(app: AppHandle) -> Result<bool, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    window.is_fullscreen().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn window_set_fullscreen(app: AppHandle, fullscreen: bool) -> Result<bool, String> {
+    let window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "主窗口不存在".to_string())?;
+    let current = window.is_fullscreen().unwrap_or(false);
+    if current != fullscreen {
+        window
+            .set_fullscreen(fullscreen)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(window.is_fullscreen().unwrap_or(fullscreen))
 }
 
 #[tauri::command]

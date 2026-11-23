@@ -290,6 +290,14 @@ export const desktop = {
     return Boolean(await invoke<boolean>('window_toggle_fullscreen'))
   },
 
+  async windowIsFullscreen(): Promise<boolean> {
+    return Boolean(await invoke<boolean>('window_is_fullscreen'))
+  },
+
+  async windowSetFullscreen(fullscreen: boolean): Promise<boolean> {
+    return Boolean(await invoke<boolean>('window_set_fullscreen', { fullscreen }))
+  },
+
   async windowHideToTray(): Promise<void> {
     await invoke<void>('window_hide_to_tray')
   },

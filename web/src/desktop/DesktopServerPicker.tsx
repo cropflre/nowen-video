@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Server, Wifi } from 'lucide-react'
+import { Server, Wifi, X } from 'lucide-react'
 import { desktop } from './bridge'
 import { Button, Input, Surface } from '@/components/design-system'
 
@@ -26,6 +26,7 @@ async function probe(base: string, timeoutMs = 1500): Promise<boolean> {
  */
 export default function DesktopServerPicker() {
   const [need, setNeed] = useState(false)
+  const [dismissible, setDismissible] = useState(false)
   const [input, setInput] = useState('http://127.0.0.1:8080')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -64,6 +65,24 @@ export default function DesktopServerPicker() {
     }
   }, [])
 
+
+  useEffect(() => {
+    if (!desktop.isDesktop) return
+    const onOpen = () => {
+      try {
+        const cur = localStorage.getItem(LS_KEY)
+        if (cur) setInput(cur)
+      } catch {
+        // ignore
+      }
+      setError(null)
+      setDismissible(true)
+      setNeed(true)
+    }
+    window.addEventListener('nowen:open-server-picker', onOpen)
+    return () => window.removeEventListener('nowen:open-server-picker', onOpen)
+  }, [])
+
   const handleSubmit = useCallback(async (event: React.FormEvent) => {
     event.preventDefault()
     setError(null)
@@ -100,12 +119,22 @@ export default function DesktopServerPicker() {
             <div className="grid h-9 w-9 shrink-0 place-items-center rounded-[var(--nv-radius-control)] bg-[var(--nv-fill-hover)] text-[var(--nv-text-tertiary)]">
               <Server size={18} aria-hidden="true" />
             </div>
-            <div>
+            <div className="min-w-0 flex-1">
               <h2 className="text-lg font-semibold tracking-[-0.015em] text-[var(--nv-text-primary)]">连接到 Nowen Video 服务器</h2>
               <p className="mt-1 text-sm leading-6 text-[var(--nv-text-tertiary)]">
-                内嵌 Media Core 当前不可用。你可以连接局域网、NAS 或远程运行的 Nowen Video Server。
+                {dismissible ? '输入局域网、NAS 或本地运行的 Nowen Video 服务器地址。' : '内嵌 Media Core 当前不可用。你可以连接局域网、NAS 或远程运行的 Nowen Video Server。'}
               </p>
             </div>
+            {dismissible && (
+              <button
+                type="button"
+                onClick={() => setNeed(false)}
+                className="rounded-lg p-1 text-[var(--nv-text-tertiary)] hover:bg-[var(--nv-bg-hover)] hover:text-[var(--nv-text-primary)]"
+                aria-label="关闭"
+              >
+                <X size={16} />
+              </button>
+            )}
           </div>
 
           <label htmlFor="desktop-server-url" className="mb-1.5 block text-xs font-medium text-[var(--nv-text-secondary)]">服务器地址</label>

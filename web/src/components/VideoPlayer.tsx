@@ -962,13 +962,6 @@ export default function VideoPlayer({
     disabled && 'cursor-not-allowed opacity-40 hover:bg-transparent hover:text-[var(--nv-player-text-secondary)]',
   )
 
-  const playbackLabel = isStrm
-    ? 'STRM远程流'
-    : mode === 'direct'
-      ? '直接播放'
-      : (mode === 'remux' || mode === 'smart_remux')
-        ? 'Remux播放'
-        : 'HLS转码'
 
   const menuOpen = showQuality || showSubtitleMenu || showCastPanel || showSpeedMenu || showContentSearch || showAudioMenu
   const controlsVisible = showControls || menuOpen || !isPlaying
@@ -1129,10 +1122,11 @@ export default function VideoPlayer({
               </button>
             )}
             <h2 className="min-w-0 truncate font-display text-base font-medium tracking-tight text-[var(--nv-player-text-primary)] drop-shadow-lg">{title}</h2>
-            <div className="nv-player-mode flex shrink-0 items-center gap-1">
-              <Tag tone="brand" className="text-[10px]">{playbackLabel}</Tag>
-              {playbackRate !== 1 && <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>}
-            </div>
+            {playbackRate !== 1 && (
+              <div className="nv-player-mode flex shrink-0 items-center gap-1">
+                <Tag tone="quality" className="text-[10px]">{playbackRate}x</Tag>
+              </div>
+            )}
           </div>
         )}
 

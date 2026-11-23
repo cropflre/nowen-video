@@ -36,6 +36,8 @@ func buildRouter(
 		"tauri://localhost",
 		"http://tauri.localhost",
 		"https://tauri.localhost",
+		"http://localhost:28889",
+		"http://127.0.0.1:28889",
 	}, cfg.App.CORSOrigins...)
 	r.Use(middleware.CORS(corsOrigins...))
 	r.Use(middleware.Security())

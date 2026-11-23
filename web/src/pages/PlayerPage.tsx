@@ -365,7 +365,7 @@ export default function PlayerPage() {
       : 'var(--nv-player-accent)'
 
   return (
-    <div className={`nv-player-page group/player relative h-full min-w-0 w-full overflow-hidden ${useDesktopPlayer ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'}`}>
+    <div className="nv-player-page group/player relative h-full min-w-0 w-full overflow-hidden bg-[var(--nv-player-canvas)]">
       {(isAdmin || highlightMode) && <div className="nv-player-runtime-status absolute z-50 flex flex-col items-end gap-2">
         {isAdmin && !highlightMode && (
           <details className="rounded-lg bg-[var(--nv-player-surface-soft)] p-2 text-sm text-[var(--nv-player-text-secondary)]">
@@ -393,13 +393,6 @@ export default function PlayerPage() {
 
       {/* 全员可见的播放状态：一句话，不含诊断信息。不放在 nv-player-runtime-status
           容器里，那个容器会随播放器控制栏一起淡出；这里常驻可见。 */}
-      {!highlightMode && statusContent && (
-        <div data-testid="player-status-pill" role="status" className="absolute left-3 top-16 z-40 flex min-h-11 items-center gap-2 rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 py-1.5 text-xs text-[var(--nv-player-text-secondary)] shadow-[var(--nv-shadow-card)] backdrop-blur-md">
-          <span style={{ color: statusColor }}>{statusContent.icon}</span>
-          <span>{statusContent.publicLabel}</span>
-        </div>
-      )}
-
       {/* 儿童剩余时间：常驻右上角，少于 5 分钟变琥珀色；到期前的预警见上方的 toast effect。 */}
       {childMode && childViewing.metered && childViewing.remainingSeconds !== null && (
         <div

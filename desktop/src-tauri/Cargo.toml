@@ -12,7 +12,7 @@ tauri-build = { version = "2.0", features = [] }
 cc = "1.0"
 
 [dependencies]
-tauri = { version = "2.0", features = ["tray-icon", "image-png"] }
+tauri = { version = "2.0", features = ["tray-icon", "image-png", "macos-private-api"] }
 # 以下插件只由 Rust Runtime 内部使用，不向 WebView 暴露通用插件权限。
 tauri-plugin-dialog = "2.0"
 tauri-plugin-updater = "2.0"
@@ -40,6 +40,7 @@ libmpv2 = { version = "4.1", optional = true }
 # 事件泵与 Windows Render API 使用底层 libmpv ABI；所有 unsafe 都封装在 Player Core 内。
 libmpv2-sys = { version = "4.0", optional = true }
 window-vibrancy = "0.5"
+
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # 与 Tauri 2.11 当前 Windows ABI 版本对齐，避免 HWND 跨 windows-core 0.56/0.61 类型边界。

@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clapperboard, Eye, EyeOff, Film, Loader2, Lock, Popcorn, QrCode, Sparkles, Ticket, UserPlus } from 'lucide-react'
+import { Clapperboard, Eye, EyeOff, Film, Loader2, Lock, Popcorn, QrCode, Server, Sparkles, Ticket, UserPlus } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { useTranslation } from '@/i18n'
 import DevicePairingRequest from '@/components/auth/DevicePairingRequest'
+import { desktop } from '@/desktop'
 import { Button, Input } from '@/components/design-system'
 
 /** 根据当前时间返回俏皮的问候语 */
@@ -324,6 +325,18 @@ export default function LoginPage() {
                 >
                   <QrCode size={15} aria-hidden="true" />
                   用已登录设备授权
+                </Button>
+              )}
+              {desktop.isDesktop && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9 w-full rounded-xl text-xs text-[var(--nv-text-secondary)]"
+                  disabled={loading}
+                  onClick={() => window.dispatchEvent(new CustomEvent('nowen:open-server-picker'))}
+                >
+                  <Server size={14} aria-hidden="true" />
+                  切换服务器
                 </Button>
               )}
             </div>

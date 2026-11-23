@@ -38,7 +38,6 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -46,17 +45,24 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": {
-      "resources/mpv/libmpv-2.dll": "./libmpv-2.dll",
-      "resources/yt-dlp.exe": "./yt-dlp.exe",
-      "resources/fonts/": "./resources/fonts/"
-    },
     "externalBin": [
       "bin/nowen-video-server"
     ],
     "fileAssociations": [
       {
-        "ext": ["mp4", "mkv", "avi", "mov", "wmv", "flv", "webm", "ts", "m2ts", "rmvb", "m4v"],
+        "ext": [
+          "mp4",
+          "mkv",
+          "avi",
+          "mov",
+          "wmv",
+          "flv",
+          "webm",
+          "ts",
+          "m2ts",
+          "rmvb",
+          "m4v"
+        ],
         "name": "Nowen Video",
         "description": "Nowen Video 支持的视频文件",
         "role": "Viewer"
@@ -72,7 +78,10 @@
       "nsis": {
         "installerIcon": "icons/icon.ico",
         "installMode": "perMachine",
-        "languages": ["SimpChinese", "English"],
+        "languages": [
+          "SimpChinese",
+          "English"
+        ],
         "displayLanguageSelector": false
       }
     },
@@ -97,7 +106,9 @@
     },
     "deep-link": {
       "desktop": {
-        "schemes": ["nowen-video"]
+        "schemes": [
+          "nowen-video"
+        ]
       }
     }
   }

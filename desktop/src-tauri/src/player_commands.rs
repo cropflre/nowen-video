@@ -5,15 +5,20 @@
 
 use crate::player::PlayerMediaInfo;
 use crate::AppState;
-use tauri::State;
+use tauri::{AppHandle, Manager};
 
 #[tauri::command]
-pub fn player_media_info(
-    state: State<AppState>,
+pub async fn player_media_info(
+    app: AppHandle,
     session_id: String,
 ) -> Result<PlayerMediaInfo, String> {
-    let player = state.player.lock().map_err(|error| error.to_string())?;
-    player
-        .media_info(&session_id)
-        .map_err(|error| error.to_string())
+    tokio::task::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let player = state.player.lock().map_err(|error| error.to_string())?;
+        player
+            .media_info(&session_id)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }

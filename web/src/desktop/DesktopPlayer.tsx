@@ -73,6 +73,9 @@ function DesktopPlayerInner(
   ref: React.Ref<DesktopPlayerHandle>,
 ) {
   const surfaceRef = useRef<HTMLDivElement>(null)
+  const syncSurfaceRef = useRef<(() => void) | null>(null)
+  const autoEnteredFullscreenRef = useRef(false)
+  const fitModeRef = useRef<'fit' | 'fill' | 'stretch'>('fit')
   const hideTimer = useRef<number | null>(null)
   const mediaInfoTimer = useRef<number | null>(null)
   const [ready, setReady] = useState(false)
@@ -84,8 +87,19 @@ function DesktopPlayerInner(
   const [videoInfo, setVideoInfo] = useState<PlayerVideoInfo | null>(null)
   const [mediaInfo, setMediaInfo] = useState<PlayerMediaInfo>(EMPTY_MEDIA_INFO)
   const [picker, setPicker] = useState<PickerKind | null>(null)
+  const [fitMode, setFitMode] = useState<'fit' | 'fill' | 'stretch'>('fit')
   const [seeking, setSeeking] = useState(false)
   const [seekPreview, setSeekPreview] = useState<number | null>(null)
+  const [isMacOS, setIsMacOS] = useState(() =>
+    typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent),
+  )
+
+  useEffect(() => {
+    if (!desktop.isDesktop) return
+    desktop.platformInfo().then((info) => {
+      if (info?.os) setIsMacOS(info.os === 'macos')
+    }).catch(() => {})
+  }, [])
 
   const command = useCallback(
     (name: string, args?: string[]) => desktop.playerCommand({ sessionId, command: name, args }),
@@ -206,6 +220,49 @@ function DesktopPlayerInner(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl, sessionId])
 
+  const applyFitMode = useCallback(async (mode: 'fit' | 'fill' | 'stretch') => {
+    fitModeRef.current = mode
+    if (mode === 'fit') {
+      await desktop.playerSetProperty({ sessionId, name: 'keepaspect', value: 'yes' })
+      await desktop.playerSetProperty({ sessionId, name: 'panscan', value: '0' })
+    } else if (mode === 'fill') {
+      await desktop.playerSetProperty({ sessionId, name: 'keepaspect', value: 'yes' })
+      await desktop.playerSetProperty({ sessionId, name: 'panscan', value: '1.0' })
+    } else {
+      await desktop.playerSetProperty({ sessionId, name: 'keepaspect', value: 'no' })
+      await desktop.playerSetProperty({ sessionId, name: 'panscan', value: '0' })
+    }
+  }, [sessionId])
+
+  useEffect(() => {
+    if (!desktop.isDesktop) return
+    let active = true
+
+    ;(async () => {
+      const current = await desktop.windowIsFullscreen()
+      if (!active) return
+      if (current) {
+        usePlayerStore.getState().setFullscreen(true)
+        return
+      }
+      const entered = await desktop.windowSetFullscreen(true)
+      if (!active) return
+      if (entered) {
+        autoEnteredFullscreenRef.current = true
+        usePlayerStore.getState().setFullscreen(true)
+      }
+    })().catch(() => {})
+
+    return () => {
+      active = false
+      if (autoEnteredFullscreenRef.current) {
+        autoEnteredFullscreenRef.current = false
+        void desktop.windowSetFullscreen(false).catch(() => {})
+        usePlayerStore.getState().setFullscreen(false)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     if (!ready || !surfaceRef.current || !desktop.isDesktop) return
     const element = surfaceRef.current
@@ -222,6 +279,7 @@ function DesktopPlayerInner(
         visible: rect.width > 0 && rect.height > 0,
       }).catch(() => {})
     }
+    syncSurfaceRef.current = sync
 
     const scheduleSync = () => {
       cancelAnimationFrame(rafId)
@@ -233,9 +291,12 @@ function DesktopPlayerInner(
     window.addEventListener('resize', scheduleSync)
     window.addEventListener('scroll', scheduleSync, true)
     sync()
+    const retryTimers = [60, 200, 500, 900, 1400].map((delay) => window.setTimeout(sync, delay))
 
     return () => {
+      syncSurfaceRef.current = null
       cancelAnimationFrame(rafId)
+      retryTimers.forEach((timer) => window.clearTimeout(timer))
       observer.disconnect()
       window.removeEventListener('resize', scheduleSync)
       window.removeEventListener('scroll', scheduleSync, true)
@@ -253,6 +314,11 @@ function DesktopPlayerInner(
       unlisten = await desktop.onPlayerState((event) => {
         if (!active || event.session_id !== sessionId) return
         applyVideoInfo(event.state, event.event)
+        if (event.event === 'file-loaded' || event.event === 'video-reconfig') {
+          syncSurfaceRef.current?.()
+          window.setTimeout(() => syncSurfaceRef.current?.(), 120)
+          void applyFitMode(fitModeRef.current)
+        }
         if (
           event.event === 'file-loaded'
           || event.event === 'media-info-change'
@@ -283,7 +349,7 @@ function DesktopPlayerInner(
       active = false
       unlisten?.()
     }
-  }, [applyVideoInfo, ready, scheduleMediaInfoRefresh, sessionId])
+  }, [applyFitMode, applyVideoInfo, ready, scheduleMediaInfoRefresh, sessionId])
 
   useEffect(() => () => {
     if (mediaInfoTimer.current) window.clearTimeout(mediaInfoTimer.current)
@@ -295,7 +361,7 @@ function DesktopPlayerInner(
     hideTimer.current = window.setTimeout(() => {
       setControlsVisible(false)
       setPicker(null)
-    }, 3500)
+    }, 2500)
   }, [])
 
   useEffect(() => {
@@ -329,11 +395,40 @@ function DesktopPlayerInner(
     resetHideTimer()
   }, [muted, resetHideTimer, setProperty])
 
+  const cycleFitMode = useCallback(() => {
+    const order: Array<'fit' | 'fill' | 'stretch'> = ['fit', 'fill', 'stretch']
+    const next = order[(order.indexOf(fitMode) + 1) % order.length]
+    setFitMode(next)
+    void applyFitMode(next)
+    resetHideTimer()
+  }, [applyFitMode, fitMode, resetHideTimer])
+
   const toggleFullscreen = useCallback(async () => {
+    autoEnteredFullscreenRef.current = false
     const fullscreen = await desktop.windowToggleFullscreen()
     usePlayerStore.getState().setFullscreen(fullscreen)
+    ;[80, 300, 700, 1100].forEach((delay) => window.setTimeout(() => syncSurfaceRef.current?.(), delay))
     resetHideTimer()
   }, [resetHideTimer])
+
+  useEffect(() => {
+    if (!desktop.isDesktop) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        void (async () => {
+          const isFs = await desktop.windowIsFullscreen()
+          if (isFs) {
+            autoEnteredFullscreenRef.current = false
+            const next = await desktop.windowSetFullscreen(false)
+            usePlayerStore.getState().setFullscreen(next)
+            ;[80, 300, 700, 1100].forEach((delay) => window.setTimeout(() => syncSurfaceRef.current?.(), delay))
+          }
+        })()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const seekAbsolute = useCallback(async (seconds: number) => {
     await command('seek', [String(seconds), 'absolute'])
@@ -378,16 +473,22 @@ function DesktopPlayerInner(
   const currentPosition = seeking && seekPreview !== null ? seekPreview : videoInfo?.position || 0
   const progressPercent = videoInfo && videoInfo.duration > 0 ? (currentPosition / videoInfo.duration) * 100 : 0
 
+  const surfacePositionClass = isMacOS
+    ? (controlsVisible || picker !== null)
+      ? `top-14 bottom-[5.5rem] left-0 ${picker !== null ? 'right-[24.5rem]' : 'right-0'}`
+      : 'inset-0'
+    : 'inset-0'
+
   return (
     <div
-      className={`group/player relative overflow-hidden ${ready ? 'bg-transparent' : 'bg-[var(--nv-player-canvas)]'} ${className}`}
+      className={`group/player relative overflow-hidden bg-[var(--nv-player-canvas)] ${className}`}
       onMouseMove={resetHideTimer}
       onDoubleClick={toggleFullscreen}
     >
-      <div ref={surfaceRef} className="absolute inset-0 bg-transparent" data-desktop-player-surface />
+      <div ref={surfaceRef} className={`absolute bg-transparent ${surfacePositionClass}`} data-desktop-player-surface />
 
       {!ready && (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 text-[var(--nv-player-text-tertiary)]">
+        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[var(--nv-player-canvas)] text-[var(--nv-player-text-tertiary)]">
           <Loader2 className="h-10 w-10 animate-spin text-[var(--nv-player-accent)]" aria-hidden="true" />
           <span className="text-sm">正在启动原生播放器...</span>
         </div>
@@ -395,7 +496,7 @@ function DesktopPlayerInner(
 
       {ready && (
         <div
-          className={`absolute left-0 right-0 top-0 flex items-center gap-3 p-4 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          className={`absolute left-0 right-0 top-0 z-10 flex items-center gap-3 px-4 py-2.5 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--nv-player-canvas) 68%, transparent), transparent)' }}
         >
           {onBack && (
@@ -429,11 +530,11 @@ function DesktopPlayerInner(
 
       {ready && (
         <div
-          className={`absolute bottom-0 left-0 right-0 p-4 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+          className={`absolute bottom-0 left-0 right-0 z-10 px-4 py-2.5 transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
           style={{ background: 'linear-gradient(to top, color-mix(in srgb, var(--nv-player-canvas) 72%, transparent), transparent)' }}
         >
           {videoInfo && videoInfo.duration > 0 && (
-            <div className="mb-3 flex select-none items-center gap-3 font-mono text-xs text-[var(--nv-player-text-secondary)]">
+            <div className="mb-2 flex select-none items-center gap-3 font-mono text-xs text-[var(--nv-player-text-secondary)]">
               <span className="w-14 text-right tabular-nums">{formatTime(currentPosition)}</span>
               <input
                 type="range"
@@ -519,6 +620,15 @@ function DesktopPlayerInner(
             )}
 
             <div className="flex-1" />
+            <button
+              type="button"
+              onClick={cycleFitMode}
+              className="inline-flex h-9 items-center rounded-full border border-[var(--nv-player-border)] bg-[var(--nv-player-surface-soft)] px-3 text-xs font-medium text-[var(--nv-player-text-primary)] backdrop-blur-md transition hover:bg-[var(--nv-player-surface-hover)]"
+              title="切换画面适配模式（适应 / 填充 / 拉伸）"
+              aria-label="切换画面适配模式"
+            >
+              {fitMode === 'fit' ? '适应' : fitMode === 'fill' ? '填充' : '拉伸'}
+            </button>
             <button type="button" onClick={toggleFullscreen} className={CONTROL_CLASS} title="全屏" aria-label="全屏">
               <Maximize className="h-4 w-4" aria-hidden="true" />
             </button>
