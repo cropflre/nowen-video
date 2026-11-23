@@ -120,7 +120,7 @@ jobs:
           pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version $version
 
       - name: 安装 Tauri CLI
-        run: cargo install tauri-cli --version "^2.0" --locked
+        run: npm install -g @tauri-apps/cli@^2
 
       - name: 构建正式 Go Media Core Sidecar
         shell: pwsh
@@ -147,7 +147,7 @@ jobs:
           APP_VERSION: ${{ env.NOWEN_VERSION }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: cargo tauri build --config tauri.windows.conf.json --bundles nsis
+        run: tauri build --config tauri.windows.conf.json --bundles nsis
 
       - name: 严格校验 Windows RC 产物
         shell: pwsh
@@ -215,7 +215,7 @@ jobs:
           pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version "$VERSION"
 
       - name: 安装 Tauri CLI
-        run: cargo install tauri-cli --version "^2.0" --locked
+        run: npm install -g @tauri-apps/cli@^2
 
       - name: 构建 macOS Go Media Core Sidecar
         env:
@@ -246,7 +246,7 @@ jobs:
           NOWEN_VERSION: ${{ env.NOWEN_VERSION }}
         run: |
           cd desktop/src-tauri
-          cargo tauri build --config tauri.macos.conf.json --bundles app
+          tauri build --config tauri.macos.conf.json --bundles app
           APP_BUNDLE="target/release/bundle/macos/Nowen Video.app"
           test -d "$APP_BUNDLE"
           dylibbundler -od -b \

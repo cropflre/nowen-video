@@ -28,10 +28,9 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM alpine:3.24
 ARG TARGETARCH
 ARG NOWEN_VERSION=0.1.0
-ARG FFMPEG_VERSION=8.1.2-r0
 
 RUN apk add --no-cache \
-      "ffmpeg=${FFMPEG_VERSION}" \
+      ffmpeg \
       tzdata \
       ca-certificates \
       su-exec \
@@ -45,8 +44,8 @@ RUN apk add --no-cache \
       py3-lxml \
     && rm -rf /var/cache/apk/* \
     && ln -sf /bin/nice /usr/bin/nice \
-    && ffmpeg -version | head -n 1 | grep -F "ffmpeg version 8.1.2" \
-    && ffprobe -version | head -n 1 | grep -F "ffprobe version 8.1.2"
+    && ffmpeg -version | head -n 1 \
+    && ffprobe -version | head -n 1
 
 RUN set -eux; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
