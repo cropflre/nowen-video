@@ -44,6 +44,7 @@ import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Interests
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.PictureInPicture
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Storage
@@ -161,6 +162,10 @@ class MobileSettingsViewModel @Inject constructor(
         playerPreferencesStore.setPictureInPictureEnabled(enabled)
     }
 
+    fun setAppLanguage(language: String) = viewModelScope.launch {
+        playerPreferencesStore.setAppLanguage(language)
+    }
+
     fun setWifiOnly(enabled: Boolean) = viewModelScope.launch {
         offlineDownloads.setWifiOnly(enabled)
     }
@@ -276,6 +281,12 @@ fun MobileSettingsScreen(
             },
         )
 
+        SettingsDestination.Language -> SettingsLanguagePanel(
+            selectedTag = player.appLanguage,
+            onBack = returnToDirectory,
+            onSelectLanguage = viewModel::setAppLanguage,
+        )
+
         SettingsDestination.About -> SettingsAboutPanel(
             onBack = returnToDirectory,
             versionName = packageVersionName(context),
@@ -311,15 +322,21 @@ fun MobileSettingsScreen(
 }
 
 private enum class SettingsDestination(
-    val label: String,
+    val labelZh: String,
+    val labelEn: String,
     val icon: ImageVector,
 ) {
-    Account("账号", Icons.Default.AccountCircle),
-    Library("媒体库", Icons.Default.FolderOpen),
-    Interaction("交互", Icons.Default.Interests),
-    Player("播放器", Icons.Default.PlayCircle),
-    Danmaku("弹幕", Icons.Default.Subtitles),
-    About("关于", Icons.Default.Info),
+    Account("账号", "Account", Icons.Default.AccountCircle),
+    Library("媒体库", "Library & Downloads", Icons.Default.FolderOpen),
+    Language("语言", "Language", Icons.Default.Language),
+    Interaction("交互", "Gestures", Icons.Default.Interests),
+    Player("播放器", "Player", Icons.Default.PlayCircle),
+    Danmaku("弹幕", "Danmaku", Icons.Default.Subtitles),
+    About("关于", "About", Icons.Default.Info),
+    ;
+
+    val label: String
+        @Composable get() = tr(labelZh, labelEn)
 }
 
 private enum class SettingsPicker {
@@ -333,18 +350,19 @@ private fun SettingsDirectory(
     onSelect: (SettingsDestination) -> Unit,
 ) {
     SettingsScaffold(
-        title = "设置",
+        title = tr("设置", "Settings"),
         onBack = onBack,
     ) {
         item {
-            SettingsSectionHeader("通用")
+            SettingsSectionHeader(tr("通用", "General"))
             Spacer(Modifier.height(8.dp))
             SettingsDestinationRow(SettingsDestination.Account, onClick = { onSelect(SettingsDestination.Account) })
             SettingsDestinationRow(SettingsDestination.Library, onClick = { onSelect(SettingsDestination.Library) })
+            SettingsDestinationRow(SettingsDestination.Language, onClick = { onSelect(SettingsDestination.Language) })
             Spacer(Modifier.height(30.dp))
         }
         item {
-            SettingsSectionHeader("播放器")
+            SettingsSectionHeader(tr("播放器", "Playback"))
             Spacer(Modifier.height(8.dp))
             SettingsDestinationRow(SettingsDestination.Interaction, onClick = { onSelect(SettingsDestination.Interaction) })
             SettingsDestinationRow(SettingsDestination.Player, onClick = { onSelect(SettingsDestination.Player) })
@@ -352,9 +370,33 @@ private fun SettingsDirectory(
             Spacer(Modifier.height(30.dp))
         }
         item {
-            SettingsSectionHeader("关于")
+            SettingsSectionHeader(tr("关于", "About"))
             Spacer(Modifier.height(8.dp))
             SettingsDestinationRow(SettingsDestination.About, onClick = { onSelect(SettingsDestination.About) })
+        }
+    }
+}
+
+@Composable
+private fun SettingsLanguagePanel(
+    selectedTag: String,
+    onBack: () -> Unit,
+    onSelectLanguage: (String) -> Unit,
+) {
+    SettingsScaffold(title = tr("语言", "Language"), onBack = onBack) {
+        item {
+            SettingsSectionHeader(tr("界面语言", "Interface Language"))
+            Spacer(Modifier.height(8.dp))
+            AppLanguageOption.entries.forEach { option ->
+                val selected = option.tag == selectedTag
+                SettingsListRow(
+                    icon = Icons.Default.Language,
+                    title = tr(option.titleZh, option.titleEn),
+                    subtitle = tr(option.subtitleZh, option.subtitleEn),
+                    value = if (selected) tr("当前", "Active") else null,
+                    onClick = { onSelectLanguage(option.tag) },
+                )
+            }
         }
     }
 }

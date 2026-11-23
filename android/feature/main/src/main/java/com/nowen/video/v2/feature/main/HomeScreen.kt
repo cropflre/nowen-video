@@ -762,9 +762,3 @@ private fun formatRuntime(minutes: Int): String = if (minutes >= 60) {
     "${minutes}分钟"
 }
 
-internal fun resolveImage(baseUrl: String?, path: String?): String? {
-    if (path.isNullOrBlank()) return null
-    if (path.startsWith("http://") || path.startsWith("https://")) return path
-    val server = baseUrl?.trimEnd('/') ?: return null
-    return "$server/${path.trimStart('/')}"
-}

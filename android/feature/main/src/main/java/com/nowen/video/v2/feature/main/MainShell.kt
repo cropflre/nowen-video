@@ -511,7 +511,7 @@ private fun WorkspaceMenu(
                 WorkspaceMenuRow(Icons.Default.History, "观看历史", "继续播放或管理记录", onHistory)
                 WorkspaceMenuRow(Icons.Default.CloudDownload, "离线下载", "管理本机媒体与空间", onDownloads)
                 WorkspaceMenuRow(Icons.Default.Collections, "系列合集", "按合集浏览影片", onCollections)
-                WorkspaceMenuRow(Icons.Default.Settings, "设置", "播放、下载和账号", onSettings)
+                WorkspaceMenuRow(Icons.Default.Settings, tr("设置", "Settings"), tr("播放、下载、语言与账号", "Playback, downloads, language & account"), onSettings)
             }
         },
         confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("关闭") } },

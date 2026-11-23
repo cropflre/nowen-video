@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
@@ -20,6 +21,8 @@ private val KEY_LONG_PRESS_BOOST_SPEED = floatPreferencesKey("long_press_boost_s
 private val KEY_RESIZE_MODE = intPreferencesKey("resize_mode")
 private val KEY_AUTO_PLAY_NEXT = booleanPreferencesKey("auto_play_next")
 private val KEY_PICTURE_IN_PICTURE = booleanPreferencesKey("picture_in_picture")
+private val KEY_APP_LANGUAGE = stringPreferencesKey("app_language")
+private val supportedAppLanguages = setOf("system", "zh-CN", "en")
 
 val supportedPlaybackSpeeds = listOf(
     0.5f,
@@ -45,6 +48,7 @@ data class PlayerPreferences(
     val resizeMode: Int = 0,
     val autoPlayNext: Boolean = true,
     val pictureInPictureEnabled: Boolean = true,
+    val appLanguage: String = "system",
 )
 
 @Singleton
@@ -69,6 +73,7 @@ class PlayerPreferencesStore @Inject constructor(
                     ?: 0,
                 autoPlayNext = values[KEY_AUTO_PLAY_NEXT] ?: true,
                 pictureInPictureEnabled = values[KEY_PICTURE_IN_PICTURE] ?: true,
+                appLanguage = values[KEY_APP_LANGUAGE]?.takeIf(supportedAppLanguages::contains) ?: "system",
             )
         }
 
@@ -99,6 +104,12 @@ class PlayerPreferencesStore @Inject constructor(
     suspend fun setPictureInPictureEnabled(enabled: Boolean) {
         context.playerPreferencesDataStore.edit { values ->
             values[KEY_PICTURE_IN_PICTURE] = enabled
+        }
+    }
+
+    suspend fun setAppLanguage(language: String) {
+        context.playerPreferencesDataStore.edit { values ->
+            values[KEY_APP_LANGUAGE] = language.takeIf(supportedAppLanguages::contains) ?: "system"
         }
     }
 }

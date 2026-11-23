@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Film, Loader2, Popcorn, QrCode, Sparkles, Ticket, UserPlus } from 'lucide-react'
+import { Clapperboard, Eye, EyeOff, Film, Loader2, Lock, Popcorn, QrCode, Sparkles, Ticket, UserPlus } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api'
 import { useTranslation } from '@/i18n'
@@ -25,7 +25,7 @@ function getPlayfulGreeting(): { badge: string; headline: string; sub: string } 
   return { badge: '午夜场 · Late Night', headline: '夜深了，独家放映中', sub: '只属于你的安静影院时刻' }
 }
 
-/** 灵动俏皮的电影小精灵徽章：会根据输入焦点、密码遮挡、错误状态做出表情反应 */
+/** 灵动俏皮的影院徽章：用温和的渐变光晕与场记板/爆米花图标随输入状态轻快互动 */
 function PlayfulCinemaMascot({
   focusField,
   showPassword,
@@ -37,64 +37,40 @@ function PlayfulCinemaMascot({
   hasError: boolean
   loading: boolean
 }) {
-  const isPeeking = focusField === 'password' && showPassword
   const isHiding = focusField === 'password' && !showPassword
+  const isPeeking = focusField === 'password' && showPassword
   const isLooking = focusField === 'username' || focusField === 'invite'
 
   return (
     <div
-      className={`relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-[var(--nv-border-default)] bg-[var(--nv-bg-elevated)] shadow-md transition-transform duration-300 ${
+      className={`relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-lg transition-all duration-300 ${
         hasError
-          ? 'animate-[nv-wiggle_0.4s_ease-in-out]'
+          ? 'animate-[nv-wiggle_0.4s_ease-in-out] bg-gradient-to-br from-rose-500 to-orange-500'
           : loading
-            ? '-translate-y-1 scale-105'
-            : isLooking
-              ? 'rotate-[-3deg] scale-105'
-              : 'hover:rotate-3 hover:scale-105'
+            ? '-translate-y-1 scale-105 bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500'
+            : isHiding
+              ? 'scale-95 bg-gradient-to-br from-slate-600 to-slate-700'
+              : isLooking
+                ? '-rotate-6 scale-105 bg-gradient-to-br from-violet-500 to-indigo-500'
+                : 'bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 hover:rotate-6 hover:scale-105'
       }`}
       aria-hidden="true"
     >
-      {/* 俏皮小光点装饰 */}
-      <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-[var(--nv-action-primary)] text-[10px] text-white shadow-sm">
-        {hasError ? '!' : isHiding ? '🙈' : isPeeking ? '👀' : <Sparkles size={11} />}
+      {/* 顶部小角标 */}
+      <span className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full border-2 border-[var(--nv-bg-surface)] bg-amber-400 text-[10px] font-bold text-slate-900 shadow-sm">
+        {hasError ? '!' : isHiding ? <Lock size={10} /> : <Sparkles size={10} />}
       </span>
 
-      {/* 眼睛/表情主体 */}
-      <div className="flex flex-col items-center gap-1.5">
-        <div className="flex items-center gap-2">
-          {isHiding ? (
-            <>
-              <span className="h-0.5 w-2.5 rounded-full bg-[var(--nv-text-primary)]" />
-              <span className="h-0.5 w-2.5 rounded-full bg-[var(--nv-text-primary)]" />
-            </>
-          ) : (
-            <>
-              <span
-                className={`h-2.5 w-2 rounded-full bg-[var(--nv-text-primary)] transition-transform duration-200 ${
-                  isLooking ? 'translate-y-0.5 scale-110' : isPeeking ? '-translate-x-0.5' : ''
-                }`}
-              />
-              <span
-                className={`h-2.5 w-2 rounded-full bg-[var(--nv-text-primary)] transition-transform duration-200 ${
-                  isLooking ? 'translate-y-0.5 scale-110' : isPeeking ? '-translate-x-0.5' : ''
-                }`}
-              />
-            </>
-          )}
-        </div>
-        {/* 嘴巴 */}
-        <div
-          className={`transition-all duration-200 ${
-            hasError
-              ? 'h-1.5 w-3 rounded-t-full border-t-2 border-[var(--nv-status-danger)]'
-              : loading
-                ? 'h-2 w-2.5 rounded-full bg-[var(--nv-action-primary)]'
-                : isHiding
-                  ? 'h-1 w-2 rounded-full bg-[var(--nv-text-tertiary)]'
-                  : 'h-1.5 w-3.5 rounded-b-full border-b-2 border-[var(--nv-action-primary)]'
-          }`}
-        />
-      </div>
+      {/* 主体图标随状态切换 */}
+      {isHiding ? (
+        <Lock size={26} className="transition-transform duration-200" />
+      ) : isPeeking ? (
+        <Eye size={26} className="transition-transform duration-200" />
+      ) : isLooking ? (
+        <Popcorn size={28} className="transition-transform duration-200" />
+      ) : (
+        <Clapperboard size={28} className="transition-transform duration-200" />
+      )}
     </div>
   )
 }

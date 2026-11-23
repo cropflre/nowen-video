@@ -55,7 +55,6 @@ data class ListUiState<T>(
 )
 
 @HiltViewModel
-@HiltViewModel
 class CollectionsViewModel @Inject constructor(
     private val repository: SocialCatalogRepository,
     val sessionStore: ServerSessionStore,
