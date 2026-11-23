@@ -18,7 +18,8 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG NOWEN_VERSION=0.1.0
 WORKDIR /app
-ENV GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+ARG GOPROXY=https://goproxy.cn,https://goproxy.io,direct
+ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
