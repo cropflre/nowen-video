@@ -87,13 +87,12 @@ class PagedFavoritesViewModel @Inject constructor(
     private val _action = MutableStateFlow(PagedSocialAction())
     val action: StateFlow<PagedSocialAction> = _action
 
-    fun remove(mediaId: String, onSuccess: () -> Unit) {
+    fun remove(mediaId: String) {
         viewModelScope.launch {
             _action.value = PagedSocialAction(runningId = mediaId)
             repository.setFavorite(mediaId, false)
                 .onSuccess {
                     _action.value = PagedSocialAction()
-                    onSuccess()
                 }
                 .onFailure { error ->
                     _action.value = PagedSocialAction(error = error.message ?: "取消收藏失败")
@@ -215,7 +214,7 @@ fun PagedFavoritesScreen(
                     imageUrl = resolveImage(session.activeServer?.baseUrl, media.resolvedPoster),
                     removing = action.runningId == mediaId,
                     onClick = { onMediaClick(media) },
-                    onRemove = { viewModel.remove(mediaId, favorites::refresh) },
+                    onRemove = { viewModel.remove(mediaId) },
                 )
             }
 

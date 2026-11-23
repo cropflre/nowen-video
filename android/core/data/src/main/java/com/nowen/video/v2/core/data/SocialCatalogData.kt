@@ -1,5 +1,6 @@
 package com.nowen.video.v2.core.data
 
+import androidx.paging.InvalidatingPagingSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -117,9 +118,13 @@ object SocialCatalogNetworkModule {
 class SocialCatalogRepository @Inject constructor(
     private val api: SocialCatalogApi,
 ) {
+    private val favoriteSourceFactory = InvalidatingPagingSourceFactory<Int, FavoriteRecord> {
+        SocialPagingSource { page, size -> api.favorites(page, size) }
+    }
+
     fun pagedFavorites(): Flow<PagingData<FavoriteRecord>> = Pager(
         config = socialPagingConfig(),
-        pagingSourceFactory = { SocialPagingSource { page, size -> api.favorites(page, size) } },
+        pagingSourceFactory = favoriteSourceFactory,
     ).flow
 
     fun pagedHistory(): Flow<PagingData<WatchHistoryRecord>> = Pager(
@@ -139,6 +144,7 @@ class SocialCatalogRepository @Inject constructor(
             (favorite && response.code() == 409) ||
             (!favorite && response.code() == 404)
         if (!accepted) throw ServerException(response.code(), "收藏状态更新失败")
+        favoriteSourceFactory.invalidate()
     }
 
     suspend fun history(
