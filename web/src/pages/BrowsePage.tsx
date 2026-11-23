@@ -310,21 +310,49 @@ export default function BrowsePage() {
   }, [loading, browseData])
 
   useEffect(() => {
-    const debouncedRefresh = () => {
-      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(() => {
-        invalidatePageCachePrefix('browse:')
-        void refetchProbe(true)
-        void refetch(true)
-      }, 1000)
+    let lastProgressRefreshAt = 0
+    let progressTimer: ReturnType<typeof setTimeout> | null = null
+
+    const doRefresh = () => {
+      invalidatePageCachePrefix('browse:')
+      void refetchProbe(true)
+      void refetch(true)
     }
+
+    const debouncedRefresh = () => {
+      if (progressTimer) {
+        clearTimeout(progressTimer)
+        progressTimer = null
+      }
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(doRefresh, 800)
+    }
+
+    // 两阶段快扫期间按节流窗口实时刷新：首批入库后 300ms 内即可上屏，之后每 2.5s 增量刷新一次
+    const handleScanProgress = () => {
+      const now = Date.now()
+      const elapsed = now - lastProgressRefreshAt
+      if (lastProgressRefreshAt === 0 || elapsed >= 2500) {
+        if (progressTimer) return
+        const delay = lastProgressRefreshAt === 0 ? 300 : 200
+        progressTimer = setTimeout(() => {
+          progressTimer = null
+          lastProgressRefreshAt = Date.now()
+          doRefresh()
+        }, delay)
+      }
+    }
+
+    on(WS_EVENTS.SCAN_PROGRESS, handleScanProgress)
     on(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
     on(WS_EVENTS.SCRAPE_COMPLETED, debouncedRefresh)
     on(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
     return () => {
+      off(WS_EVENTS.SCAN_PROGRESS, handleScanProgress)
       off(WS_EVENTS.SCAN_COMPLETED, debouncedRefresh)
       off(WS_EVENTS.SCRAPE_COMPLETED, debouncedRefresh)
       off(WS_EVENTS.LIBRARY_UPDATED, debouncedRefresh)
+      if (progressTimer) clearTimeout(progressTimer)
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
   }, [on, off, refetch, refetchProbe])

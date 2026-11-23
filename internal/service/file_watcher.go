@@ -80,22 +80,30 @@ func (fw *FileWatcherService) Start() error {
 	}
 	fw.watcher = watcher
 
-	// 获取所有媒体库，为启用了文件监控的媒体库注册监听
-	libs, err := fw.libRepo.List()
-	if err != nil {
-		fw.logger.Errorf("获取媒体库列表失败（文件监听初始化）: %v", err)
-	} else {
-		for _, lib := range libs {
-			if lib.EnableFileWatch {
-				fw.WatchLibrary(&lib)
-			}
-		}
-	}
-
 	// 启动事件处理协程
 	go fw.eventLoop()
 
-	fw.logger.Infof("文件监听服务已启动，监听 %d 个媒体库", fw.GetWatchingCount())
+	// 异步为启用了文件监控的媒体库注册监听，避免大容量 NAS / 网络挂载目录的 filepath.Walk 阻塞服务启动
+	go func() {
+		libs, err := fw.libRepo.List()
+		if err != nil {
+			fw.logger.Errorf("获取媒体库列表失败（文件监听初始化）: %v", err)
+			return
+		}
+		for i := range libs {
+			select {
+			case <-fw.stopCh:
+				return
+			default:
+			}
+			if libs[i].EnableFileWatch {
+				fw.WatchLibrary(&libs[i])
+			}
+		}
+		fw.logger.Infof("文件监听目录注册完成，共监听 %d 个媒体库", fw.GetWatchingCount())
+	}()
+
+	fw.logger.Info("文件监听服务已启动（媒体库目录将在后台异步注册）")
 	return nil
 }
 

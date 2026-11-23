@@ -17,7 +17,7 @@ services:
       - NOWEN_APP_WEB_DIR=/app/web/dist
       - NOWEN_DATABASE_DB_PATH=/data/nowen.db
       - NOWEN_CACHE_CACHE_DIR=/cache
-      - NOWEN_LOGGING_LEVEL=info
+      - NOWEN_LOGGING_LEVEL=error
       - PUID=0
       - PGID=0
       - UMASK=000

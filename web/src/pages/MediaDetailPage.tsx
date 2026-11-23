@@ -21,7 +21,6 @@ import {
   CollectionCarousel,
   HeroSection,
   MediaDetailTechOverview,
-  MediaSynopsisSection,
   MediaTechSpecs,
   RecommendationCarousel,
   TrailerModal,
@@ -510,8 +509,6 @@ export default function MediaDetailPage() {
       <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pb-8 pt-2">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
-            <MediaSynopsisSection media={media} />
-
             <section id="cast" className="nv-detail-content-section">
               <CastGrid persons={persons} />
             </section>

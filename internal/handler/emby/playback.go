@@ -50,6 +50,12 @@ func (h *Handler) PlaybackInfoHandler(c *gin.Context) {
 		return
 	}
 
+	// 按需即探：两阶段快扫下刚入库的媒体可能尚未被后台 Worker 探测，
+	// Emby/Infuse/VidHub 等客户端请求播放前立即单飞探测一次并落库，确保编码与时长准确。
+	if h.stream != nil && m.VideoCodec == "" && m.Duration == 0 && m.FilePath != "" {
+		h.stream.EnsureMediaProbed(m)
+	}
+
 	maxStreamingBitrate := 0
 	startTimeTicks := int64(0)
 	if c.Request.Method == http.MethodPost && c.Request.ContentLength > 0 {

@@ -14,6 +14,23 @@ import (
 // through the PlaySessionId -> PlaybackSession mapping created by master.m3u8.
 
 func (h *Handler) StreamVideoHandler(c *gin.Context) {
+	h.serveVideoStream(c, false)
+}
+
+func (h *Handler) OriginalVideoHandler(c *gin.Context) {
+	h.serveVideoStream(c, true)
+}
+
+func queryStaticFlag(c *gin.Context) (val string, present bool) {
+	for _, key := range []string{"Static", "static"} {
+		if v := strings.TrimSpace(c.Query(key)); v != "" {
+			return strings.ToLower(v), true
+		}
+	}
+	return "", false
+}
+
+func (h *Handler) serveVideoStream(c *gin.Context, forceOriginal bool) {
 	embyID := c.Param("id")
 	uuid := h.idMap.Resolve(embyID)
 	if uuid == "" {
@@ -53,19 +70,28 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 	}
 
 	container := strings.ToLower(containerFromPath(filePath))
-	userAgent := c.Request.Header.Get("User-Agent")
-	wantRemux := c.Query("Static") == "false" || c.Query("TranscodingProtocol") == "hls"
-	legacyRemux := h.stream.ShouldRemux(media, userAgent)
-	_, managedRemux, _ := h.stream.CanManagedRemuxByID(uuid)
+	staticFlag, hasStatic := queryStaticFlag(c)
+	explicitStaticTrue := forceOriginal || (hasStatic && (staticFlag == "true" || staticFlag == "1"))
+	explicitStaticFalse := hasStatic && (staticFlag == "false" || staticFlag == "0")
+	reqExt := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(c.Param("container")), "."))
+	matchesOriginalContainer := reqExt != "" && container != "" && reqExt == container && !explicitStaticFalse
 
-	if wantRemux || legacyRemux || managedRemux {
-		if err := h.stream.ManagedRemuxStream(uuid, c.Writer, c.Request); err != nil {
-			h.logger.Warnf("[emby] managed remux failed media=%s err=%v, fallback to direct serve", uuid, err)
-			if c.Writer.Written() {
+	directStatic := explicitStaticTrue || matchesOriginalContainer
+	if !directStatic && h.stream != nil {
+		userAgent := c.Request.Header.Get("User-Agent")
+		wantRemux := explicitStaticFalse || strings.EqualFold(c.Query("TranscodingProtocol"), "hls")
+		legacyRemux := h.stream.ShouldRemux(media, userAgent)
+		_, managedRemux, _ := h.stream.CanManagedRemuxByID(uuid)
+
+		if wantRemux || legacyRemux || managedRemux {
+			if err := h.stream.ManagedRemuxStream(uuid, c.Writer, c.Request); err != nil {
+				h.logger.Warnf("[emby] managed remux failed media=%s err=%v, fallback to direct serve", uuid, err)
+				if c.Writer.Written() {
+					return
+				}
+			} else {
 				return
 			}
-		} else {
-			return
 		}
 	}
 
@@ -80,10 +106,6 @@ func (h *Handler) StreamVideoHandler(c *gin.Context) {
 	}
 	defer file.Close()
 	http.ServeContent(c.Writer, c.Request, fileInfo.Name(), fileInfo.ModTime(), file)
-}
-
-func (h *Handler) OriginalVideoHandler(c *gin.Context) {
-	h.StreamVideoHandler(c)
 }
 
 func (h *Handler) HLSMasterHandler(c *gin.Context) {

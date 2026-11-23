@@ -78,7 +78,7 @@ services:
       # ---- 缓存配置 ----
       - NOWEN_CACHE_CACHE_DIR=/cache
       # ---- 日志配置 ----
-      - NOWEN_LOGGING_LEVEL=info
+      - NOWEN_LOGGING_LEVEL=error
       # ---- CORS（多个用逗号分隔，留空禁止跨域，*允许所有） ----
       # - NOWEN_APP_CORS_ORIGINS=http://localhost:3000
       - TZ=Asia/Shanghai

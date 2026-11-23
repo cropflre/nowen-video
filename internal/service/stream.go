@@ -92,6 +92,7 @@ type StreamService struct {
 	execution   *MediaExecutionService
 	preprocess  *PreprocessService
 	settingRepo *repository.SystemSettingRepo
+	scanner     *ScannerService // 按需即探（当后台异步探测尚未覆盖该片时）
 	cfg         *config.Config
 	logger      *zap.SugaredLogger
 	vfsMgr      *VFSManager // V2.1: VFS 管理器，支持 webdav:// 路径
@@ -116,6 +117,19 @@ func NewStreamService(
 // SetVFSManager 设置 VFS 管理器（V2.1）
 func (s *StreamService) SetVFSManager(vfsMgr *VFSManager) {
 	s.vfsMgr = vfsMgr
+}
+
+// SetScanner 注入扫描服务以支持播放前的按需技术探测（On-Demand Probe）
+func (s *StreamService) SetScanner(scanner *ScannerService) {
+	s.scanner = scanner
+}
+
+// EnsureMediaProbed 按需探测尚未完成技术信息探测的媒体（供 Emby PlaybackInfo 等入口复用）
+func (s *StreamService) EnsureMediaProbed(media *model.Media) bool {
+	if s == nil || s.scanner == nil || media == nil {
+		return false
+	}
+	return s.scanner.EnsureMediaProbed(media)
 }
 
 // statMediaFile 返回文件判断：同时支持本地路径和 webdav:// 路径
@@ -299,6 +313,12 @@ func (s *StreamService) GetMediaPlayInfo(mediaID string) (*MediaPlayInfo, error)
 	media, err := s.mediaRepo.FindByID(mediaID)
 	if err != nil {
 		return nil, ErrMediaNotFound
+	}
+
+	// 按需即探：两阶段快扫下刚入库的媒体可能尚未被后台 Worker 探测，
+	// 播放前立即单飞探测一次（~30-80ms）并回写数据库，确保直播/Remux/转码决策准确。
+	if s.scanner != nil && media.VideoCodec == "" && media.Duration == 0 && media.FilePath != "" {
+		s.scanner.EnsureMediaProbed(media)
 	}
 
 	// STRM 远程流：始终通过后端代理直接播放

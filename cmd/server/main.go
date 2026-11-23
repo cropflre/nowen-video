@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -38,20 +40,36 @@ func main() {
 	}
 
 	// 初始化日志
-	logger, _ := zap.NewProduction()
+	var zapCfg zap.Config
 	if cfg.App.Debug {
-		logger, _ = zap.NewDevelopment()
+		zapCfg = zap.NewDevelopmentConfig()
+	} else {
+		zapCfg = zap.NewProductionConfig()
+	}
+	if lvl, parseErr := zapcore.ParseLevel(strings.TrimSpace(cfg.Logging.Level)); parseErr == nil {
+		zapCfg.Level = zap.NewAtomicLevelAt(lvl)
+	}
+	logger, err := zapCfg.Build()
+	if err != nil {
+		logger, _ = zap.NewProduction()
 	}
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
 	// 初始化数据库
-	// 配置 GORM Logger：忽略 RecordNotFound 日志噪音，保留慢 SQL 警告
+	// 配置 GORM Logger：忽略 RecordNotFound 日志噪音，在 error 级别下仅输出数据库错误
+	gormLevel := gormlogger.Warn
+	switch strings.ToLower(strings.TrimSpace(cfg.Logging.Level)) {
+	case "error", "dpanic", "panic", "fatal":
+		gormLevel = gormlogger.Error
+	case "silent", "off":
+		gormLevel = gormlogger.Silent
+	}
 	gormLog := gormlogger.New(
 		log.Default(),
 		gormlogger.Config{
 			SlowThreshold:             200 * time.Millisecond,
-			LogLevel:                  gormlogger.Warn,
+			LogLevel:                  gormLevel,
 			IgnoreRecordNotFoundError: true, // 消除正常业务查询的 "record not found" 噪音
 			Colorful:                  false,
 		},
@@ -127,7 +145,7 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestLogger(gin.DefaultWriter), gin.Recovery())
+	r.Use(middleware.RequestLoggerWithLevel(gin.DefaultWriter, cfg.Logging.Level), gin.Recovery())
 
 	// 全局中间件
 	// 默认放行 Tauri 桌面端的两种 webview origin：

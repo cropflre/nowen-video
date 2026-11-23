@@ -21,6 +21,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/service"
 	"github.com/nowen-video/nowen-video/internal/version"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -41,10 +42,7 @@ func main() {
 	}
 	desktopRuntime := isDesktopRuntime()
 
-	logger, _ := zap.NewProduction()
-	if cfg.App.Debug {
-		logger, _ = zap.NewDevelopment()
-	}
+	logger := buildZapLogger(cfg)
 	defer logger.Sync()
 	sugar := logger.Sugar()
 
@@ -185,10 +183,41 @@ func applyRuntimePortOverride(cfg *config.Config) error {
 	return nil
 }
 
+func buildZapLogger(cfg *config.Config) *zap.Logger {
+	var zapCfg zap.Config
+	if cfg != nil && cfg.App.Debug {
+		zapCfg = zap.NewDevelopmentConfig()
+	} else {
+		zapCfg = zap.NewProductionConfig()
+	}
+	if cfg != nil {
+		if lvl, err := zapcore.ParseLevel(strings.TrimSpace(cfg.Logging.Level)); err == nil {
+			zapCfg.Level = zap.NewAtomicLevelAt(lvl)
+		}
+	}
+	logger, err := zapCfg.Build()
+	if err != nil {
+		fallback, _ := zap.NewProduction()
+		return fallback
+	}
+	return logger
+}
+
+func resolveGormLogLevel(level string) gormlogger.LogLevel {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "error", "dpanic", "panic", "fatal":
+		return gormlogger.Error
+	case "silent", "off":
+		return gormlogger.Silent
+	default:
+		return gormlogger.Warn
+	}
+}
+
 func openDatabase(cfg *config.Config, logger *zap.SugaredLogger) *gorm.DB {
 	gormLog := gormlogger.New(log.Default(), gormlogger.Config{
 		SlowThreshold:             200 * time.Millisecond,
-		LogLevel:                  gormlogger.Warn,
+		LogLevel:                  resolveGormLogLevel(cfg.Logging.Level),
 		IgnoreRecordNotFoundError: true,
 		Colorful:                  false,
 	})

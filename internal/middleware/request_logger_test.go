@@ -28,3 +28,32 @@ func TestRequestLoggerDoesNotRecordQueryCredentials(t *testing.T) {
 		}
 	}
 }
+
+func TestRequestLoggerWithLevelErrorOnlyLogsFailures(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var output bytes.Buffer
+	r := gin.New()
+	r.Use(RequestLoggerWithLevel(&output, "error"))
+	r.GET("/ok", func(c *gin.Context) { c.Status(200) })
+	r.GET("/partial", func(c *gin.Context) { c.Status(206) })
+	r.GET("/missing", func(c *gin.Context) { c.Status(404) })
+	r.GET("/boom", func(c *gin.Context) { c.Status(500) })
+
+	for _, path := range []string{"/ok", "/partial", "/missing?token=secret", "/boom"} {
+		r.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", path, nil))
+	}
+
+	logged := output.String()
+	if strings.Contains(logged, "/ok") || strings.Contains(logged, "/partial") {
+		t.Fatalf("expected 2xx requests to be suppressed in error level, got: %q", logged)
+	}
+	if !strings.Contains(logged, "/missing") || !strings.Contains(logged, "404") {
+		t.Fatalf("expected 404 request to be logged, got: %q", logged)
+	}
+	if !strings.Contains(logged, "/boom") || !strings.Contains(logged, "500") {
+		t.Fatalf("expected 500 request to be logged, got: %q", logged)
+	}
+	if strings.Contains(logged, "secret") {
+		t.Fatalf("query secret leaked into error access log: %q", logged)
+	}
+}

@@ -23,6 +23,60 @@ func (r *MediaRepo) Create(media *model.Media) error {
 	return r.db.Create(media).Error
 }
 
+// CreateInBatches 在单个事务中批量写入媒体记录，避免万级入库时的逐条 fsync 开销。
+// SQLite 单条语句参数上限受列数制约（Media 约 55 列），子批次上限取 15 可在任意 SQLite 构建下稳定工作。
+func (r *MediaRepo) CreateInBatches(items []*model.Media, batchSize int) error {
+	if len(items) == 0 {
+		return nil
+	}
+	if batchSize <= 0 || batchSize > 15 {
+		batchSize = 15
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		return tx.CreateInBatches(items, batchSize).Error
+	})
+}
+
+// UpdateTechnicalFields 仅更新 FFprobe/STRM 探测产出的技术字段，
+// 避免后台异步探测覆盖并发进行的元数据刮削或用户手动编辑。
+func (r *MediaRepo) UpdateTechnicalFields(media *model.Media) error {
+	if media == nil || media.ID == "" {
+		return nil
+	}
+	updates := map[string]any{
+		"video_codec": media.VideoCodec,
+		"audio_codec": media.AudioCodec,
+		"resolution":  media.Resolution,
+		"duration":    media.Duration,
+	}
+	if media.FileSize > 0 {
+		updates["file_size"] = media.FileSize
+	}
+	if media.StreamURL != "" {
+		updates["stream_url"] = media.StreamURL
+		updates["stream_ua"] = media.StreamUA
+		updates["stream_referer"] = media.StreamReferer
+		updates["stream_cookie"] = media.StreamCookie
+		updates["stream_headers"] = media.StreamHeaders
+		updates["stream_refresh_url"] = media.StreamRefreshURL
+	}
+	return r.db.Model(&model.Media{}).Where("id = ?", media.ID).Updates(updates).Error
+}
+
+// ListUnprobedByLibrary 分页列出某媒体库中尚未完成技术探测的记录（video_codec 为空且 duration 为 0）。
+func (r *MediaRepo) ListUnprobedByLibrary(libraryID, afterID string, limit int) ([]model.Media, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var media []model.Media
+	q := r.db.Where("library_id = ? AND (video_codec IS NULL OR video_codec = '') AND duration = 0", libraryID)
+	if afterID != "" {
+		q = q.Where("id > ?", afterID)
+	}
+	err := q.Order("id ASC").Limit(limit).Find(&media).Error
+	return media, err
+}
+
 func (r *MediaRepo) FindByID(id string) (*model.Media, error) {
 	var media model.Media
 	err := r.db.First(&media, "id = ?", id).Error

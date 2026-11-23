@@ -98,7 +98,7 @@ services:
       # ⚠️ 不要填示例值或可猜测的字符串，那等于公开签名密钥。
       # - NOWEN_SECRETS_JWT_SECRET=your-own-strong-random-secret
       - NOWEN_CACHE_CACHE_DIR=/cache
-      - NOWEN_LOGGING_LEVEL=info
+      - NOWEN_LOGGING_LEVEL=error
       # ---- 番号刮削（默认关闭）----
       # 改为 true 后 Go 后端会自动拉起 /app/scripts/adult-scraper/app.py 子进程。
       # ⚠️ 这组变量只对「镜像内自带 Python 运行时」的镜像生效：官方 Docker Hub 镜像由

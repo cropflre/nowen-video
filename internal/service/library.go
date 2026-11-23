@@ -199,9 +199,10 @@ func (s *LibraryService) CreateWithPaths(name string, paths []string, libType st
 		s.logger.Infof("创建媒体库: %s -> %s", name, lib.Path)
 	}
 
-	// 如果启用了文件监控，自动注册监听
+	// 如果启用了文件监控，后台异步注册监听（避免大目录遍历阻塞新建媒体库响应）
 	if lib.EnableFileWatch && s.fileWatcher != nil {
-		s.fileWatcher.WatchLibrary(lib)
+		libCopy := *lib
+		go s.fileWatcher.WatchLibrary(&libCopy)
 	}
 
 	return lib, nil

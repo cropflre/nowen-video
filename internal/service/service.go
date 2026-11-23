@@ -436,6 +436,7 @@ func NewServices(repos *repository.Repositories, cfg *config.Config, logger *zap
 	// V2.1 延迟注入：Scanner 与 Stream 都需要 VFSManager（支持 webdav:// 路径）
 	scanner.SetVFSManager(vfsManager)
 	svcs.Stream.SetVFSManager(vfsManager)
+	svcs.Stream.SetScanner(scanner)
 	preprocessService.SetVFSManager(vfsManager)
 	nfoService.SetVFSManager(vfsManager)
 

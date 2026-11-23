@@ -98,26 +98,48 @@ export default function HomePage() {
   const silentRefresh = useCallback(() => refetch(true), [refetch])
 
   useEffect(() => {
+    let lastProgressRefreshAt = 0
+    let progressTimer: ReturnType<typeof setTimeout> | null = null
+
     const debouncedRefresh = () => {
+      if (progressTimer) {
+        clearTimeout(progressTimer)
+        progressTimer = null
+      }
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(silentRefresh, 1000)
+      refreshTimerRef.current = setTimeout(silentRefresh, 800)
     }
     const handleLibraryDeleted = () => {
       invalidate()
       silentRefresh()
     }
     const handleContentChanged = () => debouncedRefresh()
+    const handleScanProgress = () => {
+      const now = Date.now()
+      if (lastProgressRefreshAt === 0 || now - lastProgressRefreshAt >= 2500) {
+        if (progressTimer) return
+        const delay = lastProgressRefreshAt === 0 ? 300 : 200
+        progressTimer = setTimeout(() => {
+          progressTimer = null
+          lastProgressRefreshAt = Date.now()
+          silentRefresh()
+        }, delay)
+      }
+    }
 
     on(WS_EVENTS.LIBRARY_DELETED, handleLibraryDeleted)
     on(WS_EVENTS.LIBRARY_UPDATED, handleContentChanged)
+    on(WS_EVENTS.SCAN_PROGRESS, handleScanProgress)
     on(WS_EVENTS.SCAN_COMPLETED, handleContentChanged)
     on(WS_EVENTS.SCRAPE_COMPLETED, handleContentChanged)
 
     return () => {
       off(WS_EVENTS.LIBRARY_DELETED, handleLibraryDeleted)
       off(WS_EVENTS.LIBRARY_UPDATED, handleContentChanged)
+      off(WS_EVENTS.SCAN_PROGRESS, handleScanProgress)
       off(WS_EVENTS.SCAN_COMPLETED, handleContentChanged)
       off(WS_EVENTS.SCRAPE_COMPLETED, handleContentChanged)
+      if (progressTimer) clearTimeout(progressTimer)
       if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
     }
   }, [on, off, invalidate, silentRefresh])

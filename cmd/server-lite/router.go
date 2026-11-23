@@ -31,7 +31,7 @@ func buildRouter(
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	r.Use(middleware.RequestLogger(gin.DefaultWriter), gin.Recovery())
+	r.Use(middleware.RequestLoggerWithLevel(gin.DefaultWriter, cfg.Logging.Level), gin.Recovery())
 	corsOrigins := append([]string{
 		"tauri://localhost",
 		"http://tauri.localhost",

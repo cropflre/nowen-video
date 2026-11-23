@@ -21,6 +21,7 @@ import (
 	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
+	"golang.org/x/sync/singleflight"
 )
 
 // 支持的视频文件扩展名
@@ -491,6 +492,18 @@ type ScannerService struct {
 	onScanComplete func(libraryID string) // 扫描完成回调（用于触发预处理）
 	vfsMgr         *VFSManager            // V2.1: VFS 管理器（支持 webdav:// 路径）
 	castImporter   func(*model.Media)     // 入库后从 NFO 导入演职人员（可选）
+
+	// 两阶段流式快扫：后台异步技术探测 + NFO 演职人员补全 + 按需单飞探测
+	enrichOnce     sync.Once
+	enrichMu       sync.Mutex
+	enrichQueue    chan *model.Media
+	enrichPending  map[string]struct{}
+	enrichInFlight sync.WaitGroup
+	enrichWorkerWg sync.WaitGroup
+	enrichCtx      context.Context
+	enrichCancel   context.CancelFunc
+	enrichClosed   bool
+	probeFlights   singleflight.Group
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -832,16 +845,33 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		s.logger.Infof("预加载 %d 个已有文件路径到内存", len(existingPaths))
 	}
 
-	// P2: 收集新发现的媒体文件，用于后续批量处理 FFprobe 和堆叠检测
-	var pendingList []pendingMedia
-	// 【火力全开 A】收集"已存在但需要更新"的文件，后续统一走 parallelProbe 并行探测
-	// 避免 walkFn 内同步调用 FFprobe 拖慢整个遍历过程。
-	var updateList []pendingMedia
-	// 【火力全开 B】细粒度锁：walkFn 原先整体加锁串行，现在仅对共享容器写入加锁，
-	// 把磁盘 IO（readdir）和 CPU 操作（标题解析/正则匹配）放在锁外并行。
-	var collectMu sync.Mutex
-	// existingPaths 并发读写也需要保护（来自多路径并行遍历场景）
-	var existingMu sync.Mutex
+	// 两阶段流式快扫：
+	// Phase 1 — 目录快照缓存 + 每 200 条流式批量落库 + 节流进度推送（零 FFprobe 阻塞，秒级可见）
+	// Phase 2 — 后台异步 Worker Pool 补全 FFprobe 技术信息、演职人员与静态伪视频清理
+	dirCache := newScanDirCache(s)
+	throttler := newScanProgressThrottler()
+	var (
+		pendingList       []pendingMedia
+		updateList        []pendingMedia
+		collectMu         sync.Mutex
+		flushMu           sync.Mutex // 保证批量落库顺序与 count 计数串行一致
+		existingMu        sync.Mutex
+		flushedFirstBatch bool
+		enrichOverflowed  bool
+	)
+
+	flushPending := func(batch []pendingMedia) {
+		if len(batch) == 0 {
+			return
+		}
+		flushMu.Lock()
+		isFirst := !flushedFirstBatch
+		flushedFirstBatch = true
+		if s.flushMovieBatch(library, batch, dirCache, throttler, &count, isFirst) {
+			enrichOverflowed = true
+		}
+		flushMu.Unlock()
+	}
 
 	walkFn := func(path string, info os.FileInfo, err error) error {
 		if err != nil {
@@ -1016,12 +1046,21 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			s.logger.Debugf("检测到版本标识: %s -> %s", filename, versionTag)
 		}
 
-		// 收集到待处理列表（FFprobe 后续并行处理）
+		// 收集到流式缓冲，凑满 fastIndexBatchSize 即在锁外批量落库，让首屏在 1~2 秒内可见
+		var batchToFlush []pendingMedia
 		collectMu.Lock()
 		totalFiles++
 		videoFiles++
 		pendingList = append(pendingList, pendingMedia{media: media, path: path, info: info})
+		if len(pendingList) >= fastIndexBatchSize {
+			batchToFlush = pendingList
+			pendingList = make([]pendingMedia, 0, fastIndexBatchSize)
+		}
 		collectMu.Unlock()
+
+		if len(batchToFlush) > 0 {
+			flushPending(batchToFlush)
+		}
 		return nil
 	}
 
@@ -1065,101 +1104,42 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 		}
 	}
 
-	// P2: 并行 FFprobe 探测 + 批量入库
-	// 【火力全开 A】已存在但需更新的文件(updateList) 也一并走并行 probe，
-	// 与 pendingList 合并后只跑一次 Worker Pool，把 CPU 全部吃满。
-	if len(pendingList) > 0 || len(updateList) > 0 {
-		combined := make([]pendingMedia, 0, len(pendingList)+len(updateList))
-		combined = append(combined, pendingList...)
-		combined = append(combined, updateList...)
-		s.logger.Infof("开始并行 FFprobe 探测 %d 个文件 (新增: %d, 更新: %d)",
-			len(combined), len(pendingList), len(updateList))
-		s.parallelProbe(combined)
+	// 刷新遍历结束后残留的不足一批的新增影片
+	if len(pendingList) > 0 {
+		flushPending(pendingList)
+		pendingList = nil
 	}
 
-	// 【火力全开 A】处理已更新文件：probe 已在上面并行完成，这里只做字幕扫描 + DB 更新
+	// 处理已更新文件：先快速更新文件大小/外挂字幕，再投递到后台异步探测队列刷新技术信息
 	if len(updateList) > 0 {
+		updatedMedia := make([]*model.Media, 0, len(updateList))
 		for _, pm := range updateList {
-			// Never overwrite a valid indexed record with a disguised still image; manual cleanup of previously indexed ghosts remains separate.
-			if isStillImageMedia(pm.media) {
-				s.logger.Warnf("跳过疑似静态图片的已有媒体更新，保留原记录待人工核查: %s", pm.path)
-				continue
+			if isSTRMFile(pm.path) {
+				s.prepareSTRMFastMeta(pm.media)
 			}
-			s.scanExternalSubtitles(pm.media)
+			if subs := dirCache.findExternalSubtitles(pm.path); subs != "" {
+				pm.media.SubtitlePaths = subs
+			}
+			// 重置技术字段以便后台重新探测变更后的文件
+			pm.media.VideoCodec = ""
+			pm.media.AudioCodec = ""
+			pm.media.Resolution = ""
+			pm.media.Duration = 0
 			if err := s.mediaRepo.Update(pm.media); err != nil {
 				s.logger.Warnf("更新媒体失败: %s, 错误: %v", pm.path, err)
 				continue
 			}
+			updatedMedia = append(updatedMedia, pm.media)
 			s.logger.Debugf("更新已有媒体: %s", pm.path)
+		}
+		if len(updatedMedia) > 0 && !s.enqueueAsyncEnrich(updatedMedia...) {
+			enrichOverflowed = true
 		}
 	}
 
-	if len(pendingList) > 0 {
-		// P2: 堆叠分组 — 为同一 StackGroup 的文件分配相同的 VersionGroup
-		stackGroups := make(map[string][]*pendingMedia)
-		for i := range pendingList {
-			if pendingList[i].media.StackGroup != "" {
-				stackGroups[pendingList[i].media.StackGroup] = append(stackGroups[pendingList[i].media.StackGroup], &pendingList[i])
-			}
-		}
-		for _, group := range stackGroups {
-			if len(group) > 1 {
-				// 使用第一个文件的标题作为组标识
-				groupID := group[0].media.Title
-				for _, pm := range group {
-					pm.media.VersionGroup = groupID
-				}
-			}
-		}
-
-		// 逐个入库（保留 NFO/图片扫描逻辑 + 事件广播）
-		for _, pm := range pendingList {
-			s.scanExternalSubtitles(pm.media)
-
-			// 识别本地 NFO 信息文件并解析元数据
-			if nfoPath := s.nfoService.FindNFOForMedia(pm.path); nfoPath != "" {
-				if err := s.nfoService.ParseMovieNFO(nfoPath, pm.media); err != nil {
-					s.logger.Debugf("解析NFO失败: %s, 错误: %v", nfoPath, err)
-				} else {
-					s.logger.Debugf("从NFO读取元数据: %s -> %s", nfoPath, pm.media.Title)
-				}
-			}
-
-			// 识别本地海报封面图片（使用按文件名匹配的方法，避免同目录多视频共用封面）
-			if poster, backdrop := s.nfoService.FindLocalImagesForMedia(pm.path); poster != "" || backdrop != "" {
-				if poster != "" && pm.media.PosterPath == "" {
-					pm.media.PosterPath = poster
-					s.logger.Debugf("发现本地海报: %s", poster)
-				}
-				if backdrop != "" && pm.media.BackdropPath == "" {
-					pm.media.BackdropPath = backdrop
-					s.logger.Debugf("发现本地背景图: %s", backdrop)
-				}
-			}
-
-			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-			if isStillImageMedia(pm.media) {
-				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", pm.media.FilePath, pm.media.VideoCodec)
-				continue
-			}
-
-			if err := s.mediaRepo.Create(pm.media); err != nil {
-				s.logger.Warnf("保存媒体失败: %s, 错误: %v", pm.path, err)
-				continue
-			}
-			if s.castImporter != nil {
-				s.castImporter(pm.media)
-			}
-			count++
-			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)
-			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-				LibraryID:   library.ID,
-				LibraryName: library.Name,
-				Phase:       "scanning",
-				NewFound:    count,
-				Message:     fmt.Sprintf("发现: %s [%s]", pm.media.Title, pm.media.Resolution),
-			})
-		}
+	// 若本次扫描超过内存异步探测队列容量（如数万部影片首次入库），启动库级后台补扫确保全部探测完成
+	if enrichOverflowed {
+		s.scheduleLibraryUnprobedSweep(library.ID)
 	}
 
 	// 清理失效记录：walk 正常完成后，existingPaths 里剩余的路径可能是磁盘已不存在的记录，
@@ -1470,7 +1450,25 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 		}
 	}
 
-	// === 阶段三：处理电影目录（扫描目录内的视频文件作为电影） ===
+	// === 阶段三：处理电影目录（流式批量快扫，零 FFprobe 阻塞） ===
+	mixedDirCache := newScanDirCache(s)
+	mixedThrottler := newScanProgressThrottler()
+	var (
+		mixedBatch       []pendingMedia
+		mixedFirstFlush  = true
+		mixedOverflowed  = false
+		flushMixedMovies = func() {
+			if len(mixedBatch) == 0 {
+				return
+			}
+			if s.flushMovieBatch(library, mixedBatch, mixedDirCache, mixedThrottler, &totalCount, mixedFirstFlush) {
+				mixedOverflowed = true
+			}
+			mixedFirstFlush = false
+			mixedBatch = mixedBatch[:0]
+		}
+	)
+
 	for _, entry := range movieDirs {
 		folderPath := vfsJoin(entry.rootPath, entry.entry.Name())
 		err := s.walkLibraryPath(folderPath, func(path string, info os.FileInfo, err error) error {
@@ -1502,26 +1500,10 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 				FileSize:  info.Size(),
 				MediaType: "movie",
 			}
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
-			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-			if isStillImageMedia(media) {
-				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-				return nil
+			mixedBatch = append(mixedBatch, pendingMedia{media: media, path: path, info: info})
+			if len(mixedBatch) >= fastIndexBatchSize {
+				flushMixedMovies()
 			}
-			if err := s.mediaRepo.Create(media); err != nil {
-				s.logger.Warnf("保存媒体失败: %s, 错误: %v", path, err)
-				return nil
-			}
-			totalCount++
-			s.logger.Debugf("发现电影(混合库): %s [%s | %s | %s]", title, media.Resolution, media.VideoCodec, media.AudioCodec)
-			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-				LibraryID:   library.ID,
-				LibraryName: library.Name,
-				Phase:       "scanning",
-				NewFound:    totalCount,
-				Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
-			})
 			return nil
 		})
 		if err != nil {
@@ -1551,26 +1533,14 @@ func (s *ScannerService) scanMixedLibrary(library *model.Library) (int, error) {
 			FileSize:  info.Size(),
 			MediaType: "movie",
 		}
-		s.probeMediaInfo(media)
-		s.scanExternalSubtitles(media)
-		// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-		if isStillImageMedia(media) {
-			s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-			continue
+		mixedBatch = append(mixedBatch, pendingMedia{media: media, path: filePath, info: info})
+		if len(mixedBatch) >= fastIndexBatchSize {
+			flushMixedMovies()
 		}
-		if err := s.mediaRepo.Create(media); err != nil {
-			s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
-			continue
-		}
-		totalCount++
-		s.logger.Debugf("发现电影(散落): %s [%s]", title, media.Resolution)
-		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-			LibraryID:   library.ID,
-			LibraryName: library.Name,
-			Phase:       "scanning",
-			NewFound:    totalCount,
-			Message:     fmt.Sprintf("发现电影: %s [%s]", title, media.Resolution),
-		})
+	}
+	flushMixedMovies()
+	if mixedOverflowed {
+		s.scheduleLibraryUnprobedSweep(library.ID)
 	}
 
 	// 收尾清理：遍历该库 DB 中所有文件路径，用 os.Stat 检查磁盘是否真的存在，
@@ -1926,10 +1896,14 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		}
 	}
 
-	// 处理根目录散落文件的智能归类
+	// 处理根目录散落文件的智能归类（两阶段快扫：批量入库 + 后台异步探测）
+	looseDirCache := newScanDirCache(s)
+	looseThrottler := newScanProgressThrottler()
+	looseOverflowed := false
 	for seriesName, files := range seriesGroups {
 		if seriesName == "__ungrouped__" {
-			// 彻底无法识别系列名的文件，独立入库（保底）
+			// 彻底无法识别系列名的文件，批量独立入库（保底）
+			batch := make([]*model.Media, 0, len(files))
 			for _, f := range files {
 				filePath := vfsJoin(f.rootPath, f.entry.Name())
 				title := s.extractTitle(f.entry.Name())
@@ -1940,21 +1914,22 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 					FileSize:  f.info.Size(),
 					MediaType: "episode",
 				}
-				s.probeMediaInfo(media)
-				s.scanExternalSubtitles(media)
+				if isSTRMFile(filePath) {
+					s.prepareSTRMFastMeta(media)
+				}
+				if subs := looseDirCache.findExternalSubtitles(filePath); subs != "" {
+					media.SubtitlePaths = subs
+				}
 				ep := s.parseEpisodeInfo(f.entry.Name())
 				media.SeasonNum = ep.SeasonNum
 				media.EpisodeNum = ep.EpisodeNum
 				media.EpisodeTitle = ep.EpisodeTitle
-				// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-				if isStillImageMedia(media) {
-					s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-					continue
-				}
-				if err := s.mediaRepo.Create(media); err != nil {
-					s.logger.Warnf("保存媒体失败: %s, 错误: %v", filePath, err)
-				}
-				totalNewEpisodes++
+				batch = append(batch, media)
+			}
+			created := s.createMediaBatchInDB(batch)
+			totalNewEpisodes += len(created)
+			if len(created) > 0 && !s.enqueueAsyncEnrich(created...) {
+				looseOverflowed = true
 			}
 			continue
 		}
@@ -1981,7 +1956,7 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 		}
 
 		seasonSet := make(map[int]bool)
-		var newCount int
+		batch := make([]*model.Media, 0, len(files))
 
 		for _, f := range files {
 			filePath := vfsJoin(f.rootPath, f.entry.Name())
@@ -2001,30 +1976,28 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 				EpisodeNum:   ep.EpisodeNum,
 				EpisodeTitle: ep.EpisodeTitle,
 			}
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
-
-			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-			if isStillImageMedia(media) {
-				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-				continue
+			if isSTRMFile(filePath) {
+				s.prepareSTRMFastMeta(media)
 			}
-
-			if err := s.mediaRepo.Create(media); err != nil {
-				s.logger.Warnf("保存剧集失败: %s, 错误: %v", filePath, err)
-				continue
+			if subs := looseDirCache.findExternalSubtitles(filePath); subs != "" {
+				media.SubtitlePaths = subs
 			}
-
+			batch = append(batch, media)
 			seasonSet[ep.SeasonNum] = true
-			newCount++
+		}
 
-			s.logger.Debugf("发现散落剧集: %s S%02dE%02d [%s]", actualSeriesName, ep.SeasonNum, ep.EpisodeNum, media.Resolution)
-			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+		created := s.createMediaBatchInDB(batch)
+		newCount := len(created)
+		if newCount > 0 {
+			if !s.enqueueAsyncEnrich(created...) {
+				looseOverflowed = true
+			}
+			looseThrottler.Emit(s, totalNewEpisodes == 0, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
 				Phase:       "scanning",
-				NewFound:    newCount,
-				Message:     fmt.Sprintf("发现: %s S%02dE%02d", actualSeriesName, ep.SeasonNum, ep.EpisodeNum),
+				NewFound:    totalNewEpisodes + newCount,
+				Message:     fmt.Sprintf("已快速索引剧集: %s (+%d 集)", actualSeriesName, newCount),
 			})
 		}
 
@@ -2038,6 +2011,9 @@ func (s *ScannerService) scanTVShowLibrary(library *model.Library) (int, error) 
 			actualSeriesName, newCount, series.SeasonCount, series.EpisodeCount)
 
 		totalNewEpisodes += newCount
+	}
+	if looseOverflowed {
+		s.scheduleLibraryUnprobedSweep(library.ID)
 	}
 
 	// 收尾清理：检查该库 DB 中所有文件路径，磁盘上不存在的视为失效记录删除
@@ -2222,6 +2198,8 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 
 	var totalNewCount int
 	seasonSet := make(map[int]bool)
+	multiDirCache := newScanDirCache(s)
+	var multiBatch []*model.Media
 
 	// 扫描每个季目录
 	for _, f := range folders {
@@ -2350,31 +2328,30 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 				EpisodeTitle: ep.EpisodeTitle,
 			}
 
-			s.probeMediaInfo(media)
-			s.scanExternalSubtitles(media)
-
-			// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-			if isStillImageMedia(media) {
-				s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-				continue
+			if isSTRMFile(ep.FilePath) {
+				s.prepareSTRMFastMeta(media)
 			}
-
-			if err := s.mediaRepo.Create(media); err != nil {
-				s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
-				continue
+			if subs := multiDirCache.findExternalSubtitles(ep.FilePath); subs != "" {
+				media.SubtitlePaths = subs
 			}
-
 			seasonSet[seasonNum] = true
-			totalNewCount++
+			multiBatch = append(multiBatch, media)
+		}
+	}
 
-			s.logger.Debugf("发现剧集(多季): %s S%02dE%02d [%s | %s]",
-				seriesTitle, seasonNum, ep.EpisodeNum, media.Resolution, media.VideoCodec)
+	if len(multiBatch) > 0 {
+		created := s.createMediaBatchInDB(multiBatch)
+		totalNewCount = len(created)
+		if totalNewCount > 0 {
+			if !s.enqueueAsyncEnrich(created...) {
+				s.scheduleLibraryUnprobedSweep(library.ID)
+			}
 			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
 				LibraryID:   library.ID,
 				LibraryName: library.Name,
 				Phase:       "scanning",
 				NewFound:    totalNewCount,
-				Message:     fmt.Sprintf("发现: %s S%02dE%02d", seriesTitle, seasonNum, ep.EpisodeNum),
+				Message:     fmt.Sprintf("已快速索引剧集: %s (+%d 集)", seriesTitle, totalNewCount),
 			})
 		}
 	}
@@ -2454,9 +2431,11 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 		return 0, nil
 	}
 
-	// 导入剧集
+	// 导入剧集（两阶段快扫：批量入库 + 后台异步探测）
 	var newCount int
 	seasonSet := make(map[int]bool)
+	seriesDirCache := newScanDirCache(s)
+	episodeBatch := make([]*model.Media, 0, len(episodes))
 
 	for _, ep := range episodes {
 		// 检查是否已存在，如果存在则修正可能的脏数据
@@ -2501,31 +2480,31 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 			EpisodeTitle: ep.EpisodeTitle,
 		}
 
-		s.probeMediaInfo(media)
-		s.scanExternalSubtitles(media)
-
-		// 防御：ffprobe 判定为静态图片的文件（如 NAS 缩略图缓存伪 .mp4）不入库
-		if isStillImageMedia(media) {
-			s.logger.Warnf("跳过静态图片文件（疑似缩略图缓存）: %s [%s]", media.FilePath, media.VideoCodec)
-			continue
+		if isSTRMFile(ep.FilePath) {
+			s.prepareSTRMFastMeta(media)
 		}
-
-		if err := s.mediaRepo.Create(media); err != nil {
-			s.logger.Warnf("保存剧集失败: %s, 错误: %v", ep.FilePath, err)
-			continue
+		if subs := seriesDirCache.findExternalSubtitles(ep.FilePath); subs != "" {
+			media.SubtitlePaths = subs
 		}
-
 		seasonSet[ep.SeasonNum] = true
-		newCount++
+		episodeBatch = append(episodeBatch, media)
+	}
 
-		s.logger.Debugf("发现剧集: %s S%02dE%02d [%s | %s]", seriesTitle, ep.SeasonNum, ep.EpisodeNum, media.Resolution, media.VideoCodec)
-		s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
-			LibraryID:   library.ID,
-			LibraryName: library.Name,
-			Phase:       "scanning",
-			NewFound:    newCount,
-			Message:     fmt.Sprintf("发现: %s S%02dE%02d", seriesTitle, ep.SeasonNum, ep.EpisodeNum),
-		})
+	if len(episodeBatch) > 0 {
+		created := s.createMediaBatchInDB(episodeBatch)
+		newCount = len(created)
+		if newCount > 0 {
+			if !s.enqueueAsyncEnrich(created...) {
+				s.scheduleLibraryUnprobedSweep(library.ID)
+			}
+			s.broadcastScanEvent(EventScanProgress, &ScanProgressData{
+				LibraryID:   library.ID,
+				LibraryName: library.Name,
+				Phase:       "scanning",
+				NewFound:    newCount,
+				Message:     fmt.Sprintf("已快速索引剧集: %s (+%d 集)", seriesTitle, newCount),
+			})
+		}
 	}
 
 	// 更新合集统计信息
