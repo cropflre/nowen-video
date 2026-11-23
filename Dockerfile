@@ -22,8 +22,8 @@ ARG GOPROXY=https://goproxy.cn,https://goproxy.io,direct
 ENV GOPROXY=${GOPROXY}
 COPY go.mod go.sum ./
 RUN go mod download
-COPY . .
-COPY --from=frontend /app/web/dist ./web/dist
+COPY cmd/ ./cmd/
+COPY internal/ ./internal/
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
     go build -trimpath \
       -ldflags="-s -w -X github.com/nowen-video/nowen-video/internal/version.Version=${NOWEN_VERSION}" \
@@ -32,37 +32,34 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
 FROM alpine:3.24
 ARG TARGETARCH
 ARG NOWEN_VERSION=0.1.0
+# AMD/Mesa VA-API pulls in libLLVM + libgallium (~215-240 MiB). Keep it opt-in so
+# default NAS/self-hosted images stay lean while amd64 retains full Intel QSV/VA-API.
+ARG INSTALL_MESA_VA=false
 
-# Keep the runtime dependency surface minimal. Alpine's BusyBox already
-# provides the health-check client and standard process utilities we need.
-RUN apk add --no-cache \
-      ffmpeg \
-      tzdata \
-      ca-certificates \
-      su-exec \
-    && ffmpeg -version | head -n 1 \
-    && ffprobe -version | head -n 1
-
-# Hardware acceleration drivers are part of the official image because direct
-# play, remux and on-demand fallback transcoding are core playback capabilities.
-# libva-utils is intentionally omitted: it only provides diagnostics such as
-# vainfo and is not required by FFmpeg for VA-API/QSV runtime acceleration.
+# Install minimal runtime dependencies in a single layer.
+# - amd64: install Intel VA-API drivers (iHD + legacy i965, ~45 MiB, zero LLVM).
+# - arm64: skip Mesa Gallium/LLVM (~214 MiB dead weight on ARM NAS/SBCs).
+# - BusyBox already provides wget/health-check and standard utilities.
 RUN set -eux; \
+    PKGS="ffmpeg tzdata ca-certificates su-exec"; \
     if [ "${TARGETARCH}" = "amd64" ]; then \
-      apk add --no-cache intel-media-driver libva-intel-driver mesa-va-gallium; \
-    else \
-      apk add --no-cache mesa-va-gallium; \
-    fi
+      PKGS="${PKGS} intel-media-driver libva-intel-driver"; \
+    fi; \
+    if [ "${INSTALL_MESA_VA}" = "true" ]; then \
+      PKGS="${PKGS} mesa-va-gallium"; \
+    fi; \
+    apk add --no-cache ${PKGS}; \
+    rm -rf /usr/share/doc/* /usr/share/man/* /usr/share/info/* /tmp/*; \
+    addgroup -S nowen && adduser -S nowen -G nowen; \
+    mkdir -p /data /cache /media; \
+    chown -R nowen:nowen /data /cache /media; \
+    ffmpeg -version | head -n 1; \
+    ffprobe -version | head -n 1
 
-RUN addgroup -S nowen && adduser -S nowen -G nowen
 WORKDIR /app
 COPY --from=backend /app/nowen-video /usr/local/bin/nowen-video
 COPY --from=frontend /app/web/dist /app/web/dist
-COPY scripts/docker-entrypoint.sh /entrypoint.sh
-
-RUN mkdir -p /data /cache /media \
-    && chown -R nowen:nowen /data /cache /media \
-    && chmod +x /entrypoint.sh
+COPY --chmod=755 scripts/docker-entrypoint.sh /entrypoint.sh
 
 ENV NOWEN_APP_PORT=8080
 ENV NOWEN_APP_DATA_DIR=/data
