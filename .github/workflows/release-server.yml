@@ -100,7 +100,21 @@ jobs:
           build_target darwin arm64
           build_target windows amd64
 
-          (cd dist/server && sha256sum * > SHA256SUMS.txt)
+          (cd dist/server && sha256sum ./* > SHA256SUMS.txt)
+          ls -lh dist/server
+
+      - name: Build fnOS package (.fpk)
+        if: ${{ !contains(steps.meta.outputs.version, '-') }}
+        continue-on-error: true
+        env:
+          FPK_VERSION: ${{ steps.meta.outputs.version }}
+          FPK_IMAGE_TAG: ${{ steps.meta.outputs.version }}
+          FPK_OUT_DIR: dist/server
+          DOCKERHUB_REPO: ghcr.io/${{ github.repository }}
+        run: |
+          REPO_LOWER="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
+          export DOCKERHUB_REPO="ghcr.io/${REPO_LOWER}"
+          node scripts/fpk/build-fpk.mjs
           ls -lh dist/server
 
       - name: Upload server archives
@@ -132,8 +146,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Login to Docker Hub (optional)
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' && secrets.DOCKERHUB_TOKEN != '' }}
+        if: steps.dockerhub.outputs.enabled == 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -141,16 +167,18 @@ jobs:
 
       - name: Prepare image tags
         id: tags
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           VERSION="${{ needs.build-binaries.outputs.version }}"
           REPO_LOWER="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          TAGS="ghcr.io/${REPO_LOWER}:${VERSION}"
+          TAGS="ghcr.io/${REPO_LOWER}:${VERSION},ghcr.io/${REPO_LOWER}:v${VERSION}"
           if [[ "${VERSION}" != *-* ]]; then
             TAGS="${TAGS},ghcr.io/${REPO_LOWER}:latest"
           fi
-          if [ -n "${{ secrets.DOCKERHUB_USERNAME }}" ] && [ -n "${{ secrets.DOCKERHUB_TOKEN }}" ]; then
-            DH_REPO="${{ secrets.DOCKERHUB_USERNAME }}/nowen-video"
-            TAGS="${TAGS},${DH_REPO}:${VERSION}"
+          if [ "${{ steps.dockerhub.outputs.enabled }}" = "true" ]; then
+            DH_REPO="${DOCKERHUB_USERNAME}/nowen-video"
+            TAGS="${TAGS},${DH_REPO}:${VERSION},${DH_REPO}:v${VERSION}"
             if [[ "${VERSION}" != *-* ]]; then
               TAGS="${TAGS},${DH_REPO}:latest"
             fi
@@ -185,6 +213,16 @@ jobs:
         with:
           name: nowen-video-server-release
           path: artifacts
+
+      - name: Ensure Draft Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.build-binaries.outputs.tag }}"
+          VERSION="${{ needs.build-binaries.outputs.version }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "Nowen Video ${VERSION}" --notes "Automated release ${TAG}" || true
+          fi
 
       - name: Attach artifacts to GitHub Draft Release
         uses: softprops/action-gh-release@v2

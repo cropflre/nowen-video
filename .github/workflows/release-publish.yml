@@ -1,0 +1,149 @@
+name: release-publish
+
+on:
+  workflow_run:
+    workflows:
+      - release-server
+      - release-desktop
+      - release-android
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to verify and publish (e.g. v1.3.5)'
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: release-publish-${{ github.event.workflow_run.head_sha || inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify all channels and publish GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve target tag and commit SHA
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          TAG=""
+          SHA=""
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            TAG="$INPUT_TAG"
+            SHA="$(gh api "repos/${REPO}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)"
+            if [ -z "$SHA" ]; then
+              echo "Tag ${TAG} not found" >&2
+              exit 1
+            fi
+          else
+            if [[ "$RUN_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              TAG="$RUN_BRANCH"
+            else
+              TAG="$(gh api "repos/${REPO}/tags?per_page=100" --jq ".[] | select(.commit.sha == \"${RUN_SHA}\" and (.name | test(\"^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+\"))) | .name" | head -n 1 || true)"
+            fi
+            SHA="$RUN_SHA"
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "Not a version tag run (branch=${RUN_BRANCH}); skipping auto-publish."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "skip=false"
+            echo "tag=${TAG}"
+            echo "version=${TAG#v}"
+            echo "sha=${SHA}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Resolved release tag=${TAG} sha=${SHA}"
+
+      - name: Wait/check all three release workflows
+        if: steps.target.outputs.skip != 'true'
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.target.outputs.sha }}
+          TAG: ${{ steps.target.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ALL_DONE=true
+          ANY_FAIL=false
+
+          for wf in release-server.yml release-desktop.yml release-android.yml; do
+            INFO="$(gh api "repos/${REPO}/actions/workflows/${wf}/runs?per_page=20" \
+              --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" or .head_branch == \"${TAG}\")] | sort_by(.created_at) | last | {status: (.status // \"missing\"), conclusion: (.conclusion // \"none\"), url: (.html_url // \"\")}")"
+            STATUS="$(printf '%s' "$INFO" | jq -r '.status')"
+            CONCLUSION="$(printf '%s' "$INFO" | jq -r '.conclusion')"
+            URL="$(printf '%s' "$INFO" | jq -r '.url')"
+            echo "${wf}: status=${STATUS} conclusion=${CONCLUSION} ${URL}"
+
+            if [ "$STATUS" != "completed" ]; then
+              ALL_DONE=false
+            elif [ "$CONCLUSION" != "success" ]; then
+              ANY_FAIL=true
+            fi
+          done
+
+          if [ "$ANY_FAIL" = "true" ]; then
+            echo "One or more release workflows failed; keeping ${TAG} as Draft." >&2
+            exit 1
+          fi
+
+          if [ "$ALL_DONE" != "true" ]; then
+            echo "Waiting for remaining release workflows to complete."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify uploaded release assets and publish Release
+        if: steps.target.outputs.skip != 'true' && steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.target.outputs.tag }}
+          VERSION: ${{ steps.target.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
+          echo "Uploaded assets on ${TAG}:"
+          printf '%s\n' "$ASSETS"
+
+          for pattern in \
+            "nowen-video-${VERSION}-linux-amd64.tar.gz" \
+            "Nowen.Video_${VERSION}_x64-setup.exe" \
+            "Nowen.Video_${VERSION}_aarch64.dmg" \
+            "nowen-video-android-${VERSION}.apk" \
+            "nowen-video-android-${VERSION}.aab"; do
+            if ! printf '%s\n' "$ASSETS" | grep -Fxq "$pattern"; then
+              echo "Missing expected asset: $pattern" >&2
+              exit 1
+            fi
+          done
+
+          IS_DRAFT="$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq '.isDraft')"
+          if [ "$IS_DRAFT" = "true" ]; then
+            if [[ "$VERSION" == *-* ]]; then
+              gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease
+            else
+              gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+            fi
+            echo "Published GitHub Release ${TAG}."
+          else
+            echo "GitHub Release ${TAG} is already published."
+          fi

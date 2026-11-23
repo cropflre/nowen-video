@@ -247,6 +247,15 @@ jobs:
         with:
           name: nowen-video-android-release
           path: artifacts
+      - name: Ensure Draft Release exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${{ needs.build.outputs.version_name }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "Nowen Video ${VERSION}" --notes "Automated release ${TAG}" || true
+          fi
       - name: Upload Android release assets
         uses: softprops/action-gh-release@v2
         with:

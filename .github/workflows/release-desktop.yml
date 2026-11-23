@@ -1,11 +1,8 @@
-# Nowen Video Desktop 2.0 — Windows release / RC build
+# Nowen Video Desktop 2.0 — Windows & macOS release / RC build
 #
 # Trigger:
-#  1. push tag v*.*.*   -> build Windows NSIS + attach to draft Release
-#  2. workflow_dispatch -> build Windows RC artifact only
-#
-# Desktop 2.0 首发只保证 Windows x64。macOS/Linux 在各自 Render Surface
-# 完成前不进入正式发布矩阵。
+#  1. push tag v*.*.*   -> build Windows NSIS + macOS Apple Silicon DMG -> attach to Draft Release
+#  2. workflow_dispatch -> build selected target RC artifact
 name: release-desktop
 run-name: >-
   release-desktop
@@ -21,10 +18,20 @@ on:
         description: 'Product version, for example 2.0.0-rc.1'
         required: false
         default: '2.0.0-rc.1'
+      target:
+        description: 'Build target'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - windows
+          - macos
 
 jobs:
   fetch-assets:
     name: 准备 Windows Desktop 运行资源
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'windows'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,7 +147,7 @@ jobs:
           APP_VERSION: ${{ env.NOWEN_VERSION }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: cargo tauri build --bundles nsis
+        run: cargo tauri build --config tauri.windows.conf.json --bundles nsis
 
       - name: 严格校验 Windows RC 产物
         shell: pwsh
@@ -160,10 +167,113 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  build-macos:
+    name: 构建 macOS Apple Silicon DMG
+    if: github.event_name != 'workflow_dispatch' || inputs.target == 'all' || inputs.target == 'macos'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri -> target
+
+      - name: Setup Go 1.25
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - name: 安装 macOS 依赖 (mpv / dylibbundler)
+        run: brew install mpv dylibbundler
+
+      - name: 解析并同步产品版本
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="${{ inputs.version_name }}"
+          fi
+          VERSION="${VERSION#v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid product version: $VERSION" >&2
+            exit 1
+          fi
+          echo "NOWEN_VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+          pwsh -ExecutionPolicy Bypass -File ./scripts/sync-version.ps1 -Version "$VERSION"
+
+      - name: 安装 Tauri CLI
+        run: cargo install tauri-cli --version "^2.0" --locked
+
+      - name: 构建 macOS Go Media Core Sidecar
+        env:
+          NOWEN_VERSION: ${{ env.NOWEN_VERSION }}
+        run: |
+          mkdir -p desktop/src-tauri/bin
+          CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build \
+            -trimpath \
+            -ldflags "-s -w -X github.com/nowen-video/nowen-video/internal/version.Version=${NOWEN_VERSION}" \
+            -o desktop/src-tauri/bin/nowen-video-server-aarch64-apple-darwin \
+            ./cmd/server-lite
+          cp desktop/src-tauri/bin/nowen-video-server-aarch64-apple-darwin desktop/src-tauri/bin/nowen-video-server
+
+      - name: 安装 Web 依赖并构建界面
+        working-directory: web
+        env:
+          VITE_APP_VERSION: ${{ env.NOWEN_VERSION }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: 检查 Rust / macOS 编译
+        working-directory: desktop/src-tauri
+        run: cargo check --all-targets
+
+      - name: 构建 macOS App 并打包 libmpv
+        env:
+          NOWEN_VERSION: ${{ env.NOWEN_VERSION }}
+        run: |
+          cd desktop/src-tauri
+          cargo tauri build --config tauri.macos.conf.json --bundles app
+          APP_BUNDLE="target/release/bundle/macos/Nowen Video.app"
+          test -d "$APP_BUNDLE"
+          dylibbundler -od -b \
+            -x "${APP_BUNDLE}/Contents/MacOS/nowen-video-desktop" \
+            -d "${APP_BUNDLE}/Contents/Frameworks" \
+            -p "@executable_path/../Frameworks" \
+            -s /opt/homebrew/lib \
+            -s /opt/homebrew/opt/mpv/lib
+          codesign --force --deep --sign - "$APP_BUNDLE"
+          mkdir -p target/release/bundle/dmg
+          DMG_PATH="target/release/bundle/dmg/Nowen.Video_${NOWEN_VERSION}_aarch64.dmg"
+          hdiutil create -volname "Nowen Video" -srcfolder "$APP_BUNDLE" -ov -format UDZO "$DMG_PATH"
+          test -s "$DMG_PATH"
+          ls -lh "$DMG_PATH"
+
+      - name: 上传 macOS DMG 安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-desktop2-macos-rc
+          path: desktop/src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    name: 创建 Draft Release
-    needs: build-windows
-    if: startsWith(github.ref, 'refs/tags/')
+    name: 创建或更新 Draft Release
+    needs: [build-windows, build-macos]
+    if: startsWith(github.ref, 'refs/tags/') && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -173,14 +283,32 @@ jobs:
           name: nowen-video-desktop2-windows-rc
           path: dist
 
-      - name: 校验 Release 文件
+      - uses: actions/download-artifact@v4
+        with:
+          name: nowen-video-desktop2-macos-rc
+          path: dist
+
+      - name: 校验 Desktop Release 文件并生成校验和
         run: |
           test -n "$(find dist -maxdepth 1 -type f -name '*.exe' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          (cd dist && sha256sum ./*.exe ./*.dmg > SHA256SUMS-desktop.txt)
           ls -lah dist
 
-      - name: 创建 GitHub Draft Release
+      - name: 确保 Draft Release 已存在
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --draft --title "Nowen Video ${VERSION}" --notes "Automated release ${TAG}" || true
+          fi
+
+      - name: 上传 Desktop 安装包到 Draft Release
         uses: softprops/action-gh-release@v2
         with:
           draft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
           generate_release_notes: true
-          files: dist/*.exe
+          files: dist/*
