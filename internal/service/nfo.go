@@ -143,10 +143,12 @@ type NFOTVShow struct {
 	Actors    []NFOActor `xml:"actor"`
 }
 
-// NFOActor NFO 演员信息
+// NFOActor NFO 演员/演职人员信息（兼容 Kodi / Emby / Jellyfin NFO）
 type NFOActor struct {
 	Name      string `xml:"name"`
 	Role      string `xml:"role"`
+	Type      string `xml:"type"`
+	TMDbID    int    `xml:"tmdbid"`
 	Thumb     string `xml:"thumb"`
 	SortOrder int    `xml:"sortorder"`
 }
@@ -201,13 +203,13 @@ func (s *NFOService) GetActorsFromNFO(nfoPath string) ([]NFOActor, []string, err
 
 	// 先尝试 movie
 	var movie NFOMovie
-	if err := xml.Unmarshal(data, &movie); err == nil && movie.Title != "" {
+	if err := xml.Unmarshal(data, &movie); err == nil && (movie.Title != "" || len(movie.Actors) > 0 || len(movie.Directors) > 0) {
 		return movie.Actors, movie.Directors, nil
 	}
 
 	// 再尝试 tvshow
 	var tvshow NFOTVShow
-	if err := xml.Unmarshal(data, &tvshow); err == nil && tvshow.Title != "" {
+	if err := xml.Unmarshal(data, &tvshow); err == nil && (tvshow.Title != "" || len(tvshow.Actors) > 0 || len(tvshow.Directors) > 0) {
 		return tvshow.Actors, tvshow.Directors, nil
 	}
 

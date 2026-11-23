@@ -491,7 +491,8 @@ type ScannerService struct {
 	nfoService     *NFOService            // NFO 本地元数据解析服务
 	onScanComplete func(libraryID string) // 扫描完成回调（用于触发预处理）
 	vfsMgr         *VFSManager            // V2.1: VFS 管理器（支持 webdav:// 路径）
-	castImporter   func(*model.Media)     // 入库后从 NFO 导入演职人员（可选）
+	castImporter       func(*model.Media)  // 入库后从 NFO 导入电影演职人员（可选）
+	seriesCastImporter func(*model.Series) // 入库后从 tvshow.nfo 导入剧集演职人员（可选）
 
 	// 两阶段流式快扫：后台异步技术探测 + NFO 演职人员补全 + 按需单飞探测
 	enrichOnce     sync.Once
@@ -524,6 +525,11 @@ func (s *ScannerService) SetWSHub(hub *WSHub) {
 // SetCastImporter 设置入库后的 NFO 演职人员导入回调
 func (s *ScannerService) SetCastImporter(fn func(*model.Media)) {
 	s.castImporter = fn
+}
+
+// SetSeriesCastImporter 设置入库后的剧集 tvshow.nfo 演职人员导入回调
+func (s *ScannerService) SetSeriesCastImporter(fn func(*model.Series)) {
+	s.seriesCastImporter = fn
 }
 
 // SetVFSManager 设置 VFS 管理器（V2.1: 用于 webdav:// 路径支持）
@@ -2195,6 +2201,10 @@ func (s *ScannerService) scanMultiSeasonSeries(library *model.Library, seriesTit
 
 	// 保存NFO和图片更新
 	s.seriesRepo.Update(series)
+	if s.seriesCastImporter != nil {
+		seriesSnap := *series
+		go s.seriesCastImporter(&seriesSnap)
+	}
 
 	var totalNewCount int
 	seasonSet := make(map[int]bool)
@@ -2416,6 +2426,10 @@ func (s *ScannerService) scanSeriesFolder(library *model.Library, folderPath, se
 
 	// 保存NFO和图片更新
 	s.seriesRepo.Update(series)
+	if s.seriesCastImporter != nil {
+		seriesSnap := *series
+		go s.seriesCastImporter(&seriesSnap)
+	}
 
 	// 收集所有剧集文件
 	episodes := s.collectEpisodes(folderPath)

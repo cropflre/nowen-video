@@ -59,6 +59,7 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 	nfoService := NewNFOService(logger)
 	metadata.SetNFOService(nfoService)
 	scanner.SetCastImporter(func(m *model.Media) { metadata.ImportCastFromNFO(m) })
+	scanner.SetSeriesCastImporter(func(ser *model.Series) { metadata.ImportSeriesCastFromNFO(ser) })
 	go metadata.BackfillCastFromNFO()
 
 	vfsManager := NewVFSManager(logger)
