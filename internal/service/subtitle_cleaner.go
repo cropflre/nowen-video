@@ -806,4 +806,4 @@ func writeVTTToFile(vttPath string, cues []vttCue) error {
 
 // ==================== 辅助：确保 math 包被使用 ====================
 
-var _ = math.MaxInt64
+var _ int64 = math.MaxInt64
