@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, FolderOpen, HardDrive, MonitorPlay, Settings, ShieldAlert, Sparkles, Stethoscope, Users } from 'lucide-react'
+import { ChevronLeft, ChevronRight, FolderOpen, HardDrive, MonitorPlay, Settings, Sparkles, Stethoscope, Users } from 'lucide-react'
 import AdminLibraries from '@/components/admin/AdminLibraries'
 import AdvancedSystemSettings from '@/components/admin/AdvancedSystemSettings'
 import AITab from '@/components/admin/AITab'
@@ -17,7 +17,6 @@ const advancedSections = [
   { id: 'playback', label: 'admin.simple.playback', icon: MonitorPlay },
   { id: 'ai', label: 'admin.simple.metadata', icon: Sparkles },
   { id: 'diagnostics', label: 'admin.simple.diagnostics', icon: Stethoscope },
-  { id: 'maintenance', label: 'admin.simple.maintenance', icon: ShieldAlert },
 ] as const
 
 function resolveView(hash: string) {
@@ -91,7 +90,7 @@ export default function AdminPage() {
           </>
         )}
         {view === 'storage' && <StorageTab />}
-        {(view === 'storage' || view === 'playback' || view === 'diagnostics' || view === 'maintenance') && (
+        {(view === 'storage' || view === 'playback' || view === 'diagnostics') && (
           <AdvancedSystemSettings section={view} />
         )}
       </div>

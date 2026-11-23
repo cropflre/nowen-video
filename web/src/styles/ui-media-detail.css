@@ -109,7 +109,7 @@
 
 .nv-media-detail-page .nv-detail-hero {
   width: 100%;
-  min-height: var(--nv-detail-hero-height);
+  min-height: 0;
   margin: 0;
   overflow: hidden;
   border-bottom: 0;
@@ -128,17 +128,17 @@
 }
 
 .nv-media-detail-page .nv-detail-hero-inner {
-  min-height: var(--nv-detail-hero-height);
+  min-height: 0;
   max-width: none;
   grid-template-columns: clamp(130px, 12vw, 190px) minmax(0, 1fr);
-  align-items: end;
+  align-items: start;
   gap: clamp(18px, 2vw, 32px);
-  padding: clamp(150px, 20vh, 230px) var(--nv-page-gutter) 28px;
+  padding: clamp(88px, 10vh, 124px) var(--nv-page-gutter) 20px;
 }
 
 .nv-media-detail-page .nv-detail-poster-slot {
   min-width: 0;
-  align-self: end;
+  align-self: start;
 }
 
 .nv-media-detail-page .nv-detail-poster {
@@ -155,19 +155,11 @@
   color: var(--nv-text-primary);
 }
 
-/* 视觉顺序与 DOM 顺序一致：标题在上、操作按钮在下，播放按钮不再被裁到画面外。 */
+/* 严格按 DOM 顺序排列：标题 -> 元信息 -> 简介 -> 操作按钮 */
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions {
   gap: 8px;
-  margin: 16px 0 0;
+  margin: 18px 0 0;
 }
-.nv-media-detail-page .nv-detail-hero .nv-hero-content-eyebrow { order: 2; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-title { order: 3; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle { order: 4; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-meta { order: 5; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-badges { order: 6; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-overview { order: 7; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-overview-toggle { order: 7; }
-.nv-media-detail-page .nv-detail-hero .nv-media-hero-supplemental { order: 8; }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-title {
   max-width: 22ch;
@@ -251,16 +243,24 @@
   background: var(--nv-action-primary);
 }
 
+/* 日间模式：背景用浅色渐变遮罩承托氛围色，确保深色文字与胶囊标签高对比度可读 */
+[data-theme="light"] .nv-media-detail-page .nv-detail-hero {
+  --nv-hero-scrim: linear-gradient(90deg, rgba(247, 247, 247, .94) 0%, rgba(247, 247, 247, .82) 44%, rgba(247, 247, 247, .42) 100%);
+  --nv-hero-bottom-scrim: linear-gradient(0deg, #f7f7f7 0%, rgba(247, 247, 247, .88) 22%, rgba(247, 247, 247, .24) 52%, transparent 80%);
+}
+
 [data-theme="light"] .nv-media-detail-page .nv-detail-hero .nv-media-hero-title {
-  text-shadow: 0 1px 14px rgba(255, 255, 255, .82), 0 1px 2px rgba(255, 255, 255, .94);
+  color: #18181b;
+  text-shadow: none;
 }
 
 [data-theme="light"] .nv-media-detail-page .nv-detail-hero .nv-media-hero-subtitle,
 [data-theme="light"] .nv-media-detail-page .nv-detail-hero .nv-media-hero-meta,
 [data-theme="light"] .nv-media-detail-page .nv-detail-hero .nv-media-hero-overview,
+[data-theme="light"] .nv-media-detail-page .nv-media-hero-overview-toggle,
 [data-theme="light"] .nv-media-detail-page .nv-detail-hero-watch-progress-label {
-  color: rgba(33, 28, 35, .82);
-  text-shadow: 0 1px 10px rgba(255, 255, 255, .78);
+  color: rgba(24, 24, 27, .78);
+  text-shadow: none;
 }
 
 .nv-media-detail-page .nv-detail-hero .nv-media-hero-actions .nv-button,

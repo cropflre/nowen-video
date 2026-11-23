@@ -11,9 +11,12 @@ import DetailSectionTitle from '@/components/media/DetailSectionTitle'
 
 interface CommentSectionProps {
   mediaId: string
+  /** 嵌入弹层模式：不渲染折叠标题条，内容常开 */
+  embedded?: boolean
+  onSummaryChange?: (summary: { total: number; avgRating: number; ratingCount: number }) => void
 }
 
-export default function CommentSection({ mediaId }: CommentSectionProps) {
+export default function CommentSection({ mediaId, embedded = false, onSummaryChange }: CommentSectionProps) {
   const user = useAuthStore((state) => state.user)
   const { t } = useTranslation()
   const [comments, setComments] = useState<Comment[]>([])
@@ -46,6 +49,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       setTotal(res.data.total)
       setAvgRating(res.data.avg_rating)
       setRatingCount(res.data.rating_count)
+      onSummaryChange?.({ total: res.data.total, avgRating: res.data.avg_rating, ratingCount: res.data.rating_count })
     } catch {
       toast.error(t('comment.loadFailed'))
     } finally {
@@ -90,6 +94,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
     return date.toLocaleDateString(locale, { year: 'numeric', month: 'short', day: 'numeric' })
   }
 
+  const isOpen = embedded || expanded
   const totalPages = Math.ceil(total / 10)
   const activeRating = hoverRating || rating
   const summaryText = loading
@@ -104,7 +109,7 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
       aria-labelledby="comment-section-title"
       data-expanded={expanded ? 'true' : 'false'}
     >
-      <button
+      {!embedded && <button
         type="button"
         className="nv-comment-summary"
         aria-expanded={expanded}
@@ -130,10 +135,10 @@ export default function CommentSection({ mediaId }: CommentSectionProps) {
           <span className="nv-comment-summary-toggle-label">{expanded ? '收起' : '查看评价'}</span>
           {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
         </span>
-      </button>
+      </button>}
 
-      {expanded && (
-        <div id="comment-expanded-content" className="nv-comment-expanded">
+      {isOpen && (
+        <div id="comment-expanded-content" className="nv-comment-expanded" data-embedded={embedded || undefined}>
           <Surface className="nv-comment-composer space-y-4 p-4 sm:p-5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-[var(--nv-text-secondary)]">{t('media.rating')}：</span>

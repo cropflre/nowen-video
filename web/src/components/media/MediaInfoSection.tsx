@@ -2,17 +2,18 @@ import { useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import type { Media, MediaPerson } from '@/types'
 import { Button, EmptyState, Tag } from '@/components/design-system'
-import { ChevronDown, ChevronUp, ExternalLink, FileText, Info, Shapes, Tags } from 'lucide-react'
+import { ChevronDown, ChevronUp, ExternalLink, FileText, Info, Tags } from 'lucide-react'
 import clsx from 'clsx'
 import { useTranslation } from '@/i18n'
 import { formatDuration, getDisplayDurationSeconds } from '@/utils/format'
 import DetailSectionTitle from './DetailSectionTitle'
 
-function DetailItem({ label, children, wide = false }: { label: ReactNode; children: ReactNode; wide?: boolean }) {
+function DetailItem({ label, children }: { label: string; children: ReactNode }) {
+  const cleanLabel = label.replace(/[:：]\s*$/, '')
   return (
-    <div className={clsx('min-w-0 border-b border-[var(--nv-border-subtle)] py-2.5', wide && 'sm:col-span-2')}>
-      <div className="text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{label}</div>
-      <div className="mt-1 min-w-0 text-[13px] leading-5 text-[var(--nv-text-secondary)]">{children}</div>
+    <div className="inline-flex min-w-0 items-baseline gap-1.5 text-[13px]">
+      <span className="shrink-0 text-[var(--nv-text-tertiary)]">{cleanLabel}</span>
+      <span className="min-w-0 truncate text-[var(--nv-text-primary)]">{children}</span>
     </div>
   )
 }
@@ -58,7 +59,10 @@ export function MediaSynopsisSection({ media }: { media: Media }) {
   const { t } = useTranslation()
   const [origPlotExpanded, setOrigPlotExpanded] = useState(false)
   const isLongOrigPlot = (media.original_plot?.length || 0) > 120
-  const hasIntroExtras = !!(media.tagline || media.outline || media.original_plot)
+  // 标语已在 Hero 副标题展示、梗概常与简介重复，这里只算真正有增量的内容；全为空白/重复时整段不渲染。
+  const outlineExtra = media.outline?.trim() && media.outline.trim() !== media.overview?.trim() ? media.outline.trim() : ''
+  const originalPlot = media.original_plot?.trim() || ''
+  const hasIntroExtras = !!(outlineExtra || originalPlot)
 
   if (!hasIntroExtras) {
     if (media.overview) return null
@@ -85,20 +89,15 @@ export function MediaSynopsisSection({ media }: { media: Media }) {
         </div>
 
         <div className="max-w-4xl space-y-4">
-          {media.tagline && (
-            <blockquote className="border-l border-[var(--nv-border-default)] pl-3 text-sm italic leading-6 text-[var(--nv-text-secondary)]">
-              “{media.tagline}”
-            </blockquote>
-          )}
 
-          {media.outline && media.outline !== media.overview && (
+          {outlineExtra && (
             <div>
               <SectionLabel>{t('mediaInfo.outline')}</SectionLabel>
-              <p className="text-sm leading-7 text-[var(--nv-text-secondary)]">{media.outline}</p>
+              <p className="text-sm leading-7 text-[var(--nv-text-secondary)]">{outlineExtra}</p>
             </div>
           )}
 
-          {media.original_plot && (
+          {originalPlot && (
             <div className="border-t border-[var(--nv-border-subtle)] pt-4">
               <SectionLabel>{t('mediaInfo.originalPlot')}</SectionLabel>
               <p className={clsx('text-sm italic leading-7 text-[var(--nv-text-tertiary)]', !origPlotExpanded && isLongOrigPlot && 'line-clamp-2')}>
@@ -119,7 +118,7 @@ export function MediaSynopsisSection({ media }: { media: Media }) {
 }
 
 /**
- * 影片详情段：分类 chips 与紧凑定义列表。分类只在这里出现一次（Hero 已去掉类型 chips）；
+ * 影片详情段：分类 chips 与紧凑定义列表。类型（genres）已移到 Hero 元信息行；
  * 演员卡片只在演职人员段出现一次，这里不再重复演员 rail。
  */
 export function MediaDetailsSection({ media, persons }: { media: Media; persons: MediaPerson[] }) {
@@ -143,7 +142,7 @@ export function MediaDetailsSection({ media, persons }: { media: Media; persons:
     media.premiered || media.mpaa || media.country || media.language || displaySeconds > 0 || media.website ||
     directors.length > 0
   )
-  const hasClassifications = genreList.length > 0 || (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
+  const hasClassifications = (tagList.length > 0 && tagList.join(',') !== genreList.join(','))
 
   if (!(extractedNum || media.mpaa) && !hasClassifications && !hasMetaTable) return null
 
@@ -158,20 +157,7 @@ export function MediaDetailsSection({ media, persons }: { media: Media; persons:
         )}
 
         {hasClassifications && (
-          <section className="nv-media-info-classifications grid gap-5 py-5 sm:grid-cols-2 sm:py-6">
-            {genreList.length > 0 && (
-              <div>
-                <DetailSectionTitle as="h3" icon={<Shapes size={17} />} className="mb-2">
-                  {t('mediaInfo.genres').replace(/[:：]\s*$/, '')}
-                </DetailSectionTitle>
-                <div className="flex flex-wrap gap-1.5">
-                  {genreList.map((genre) => (
-                    <MetadataLink key={`g-${genre}`} to={`/search?q=${encodeURIComponent(genre)}`}>{genre}</MetadataLink>
-                  ))}
-                </div>
-              </div>
-            )}
-
+          <section className="nv-media-info-classifications grid gap-5 py-5 sm:py-6">
             {tagList.length > 0 && tagList.join(',') !== genreList.join(',') && (
               <div>
                 <DetailSectionTitle as="h3" icon={<Tags size={17} />} className="mb-2">
@@ -188,13 +174,13 @@ export function MediaDetailsSection({ media, persons }: { media: Media; persons:
         )}
 
         {hasMetaTable && (
-          <section className="nv-media-info-metadata py-5 sm:py-6">
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <section className="nv-media-info-metadata py-4">
+            <div className="mb-2.5 flex items-center justify-between gap-3">
               <DetailSectionTitle icon={<Info size={17} />}>影片详情</DetailSectionTitle>
             </div>
 
-            {/* 扁平流式网格：不再分固定左右两栏，某项缺失时后面的项自动补位，不留空栏。 */}
-            <div className="nv-media-info-grid grid gap-x-8 text-sm sm:grid-cols-2">
+            {/* 单行流式展示，紧凑排列不占垂直高度 */}
+            <div className="nv-media-info-grid flex flex-wrap items-center gap-x-6 gap-y-2">
               {extractedNum && <DetailItem label={t('mediaInfo.num')}><span className="font-mono tracking-wide">{extractedNum}</span></DetailItem>}
               {directors.length > 0 && <DetailItem label={t('mediaInfo.director')}>{directors.map((director) => director.person?.name || '').filter(Boolean).join(' / ')}</DetailItem>}
               {displaySeconds > 0 && <DetailItem label={t('mediaInfo.runtime')}>{formatDuration(displaySeconds)}</DetailItem>}
@@ -215,13 +201,10 @@ export function MediaDetailsSection({ media, persons }: { media: Media; persons:
               )}
 
               {(media.tmdb_id > 0 || media.douban_id || media.bangumi_id > 0) && (
-                <div className="py-3 sm:col-span-2">
-                  <div className="mb-2 text-[11px] font-medium uppercase tracking-[0.07em] text-[var(--nv-text-tertiary)]">{t('mediaInfo.dataSource')}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {media.tmdb_id > 0 && <SourceLink href={`https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}`}>TMDb #{media.tmdb_id}</SourceLink>}
-                    {media.douban_id && <SourceLink href={`https://movie.douban.com/subject/${media.douban_id}/`}>豆瓣 #{media.douban_id}</SourceLink>}
-                    {media.bangumi_id > 0 && <SourceLink href={`https://bgm.tv/subject/${media.bangumi_id}`}>Bangumi #{media.bangumi_id}</SourceLink>}
-                  </div>
+                <div className="inline-flex flex-wrap items-center gap-1.5">
+                  {media.tmdb_id > 0 && <SourceLink href={`https://www.themoviedb.org/${media.media_type === 'episode' ? 'tv' : 'movie'}/${media.tmdb_id}`}>TMDb #{media.tmdb_id}</SourceLink>}
+                  {media.douban_id && <SourceLink href={`https://movie.douban.com/subject/${media.douban_id}/`}>豆瓣 #{media.douban_id}</SourceLink>}
+                  {media.bangumi_id > 0 && <SourceLink href={`https://bgm.tv/subject/${media.bangumi_id}`}>Bangumi #{media.bangumi_id}</SourceLink>}
                 </div>
               )}
             </div>

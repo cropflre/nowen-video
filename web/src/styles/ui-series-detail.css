@@ -6,8 +6,8 @@
 .nv-series-detail-page .nv-series-hero { isolation: isolate; z-index: 1; min-height: var(--nv-detail-hero-height); overflow: visible; }
 .nv-series-detail-page .nv-series-backdrop { z-index: 0; overflow: hidden; pointer-events: none; }
 .nv-series-detail-page .nv-series-backdrop > img { filter: saturate(.92) contrast(1.02); }
-.nv-series-detail-page .nv-series-hero-reading-scrim { background: var(--nv-hero-scrim); }
-.nv-series-detail-page .nv-series-hero-edge-scrim { background: var(--nv-hero-bottom-scrim); }
+.nv-series-detail-page .nv-series-hero-reading-scrim { background: linear-gradient(90deg, rgba(10, 11, 13, .84) 0%, rgba(10, 11, 13, .56) 36%, rgba(10, 11, 13, .14) 72%, transparent 100%); }
+.nv-series-detail-page .nv-series-hero-edge-scrim { background: linear-gradient(0deg, var(--nv-bg-canvas) 0%, rgba(17, 18, 20, .56) 24%, transparent 66%); }
 .nv-series-detail-page .nv-series-hero-inner { z-index: 2; min-height: var(--nv-detail-hero-height); grid-template-columns: minmax(128px, 156px) minmax(0, 1fr); align-items: end; gap: clamp(18px, 2vw, 28px); padding: 90px var(--nv-page-gutter) 30px; }
 .nv-series-detail-page .nv-series-poster { width: 100%; max-width: 156px; border-radius: var(--nv-radius-card); box-shadow: var(--nv-shadow-card); }
 .nv-series-detail-page .nv-series-hero-content { max-width: min(760px, 68vw); }

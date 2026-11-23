@@ -117,8 +117,8 @@
   --nv-shadow-focus: 0 0 0 3px rgba(33, 28, 35, .08);
   --nv-ambient-cyan: rgba(0, 168, 204, .10);
   --nv-ambient-purple-soft: rgba(147, 51, 234, .08);
-  --nv-hero-scrim: linear-gradient(90deg, rgba(16, 16, 16, .74) 0%, rgba(16, 16, 16, .44) 32%, rgba(16, 16, 16, .07) 70%, transparent 100%);
-  --nv-hero-bottom-scrim: linear-gradient(0deg, #f7f7f7 0%, rgba(247, 247, 247, .88) 17%, rgba(247, 247, 247, .18) 43%, transparent 72%);
+  --nv-hero-scrim: linear-gradient(90deg, rgba(247, 247, 247, .94) 0%, rgba(247, 247, 247, .82) 44%, rgba(247, 247, 247, .42) 100%);
+  --nv-hero-bottom-scrim: linear-gradient(0deg, #f7f7f7 0%, rgba(247, 247, 247, .88) 22%, rgba(247, 247, 247, .24) 52%, transparent 80%);
 }
 
 .nv-app-shell,

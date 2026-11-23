@@ -490,6 +490,7 @@ type ScannerService struct {
 	nfoService     *NFOService            // NFO 本地元数据解析服务
 	onScanComplete func(libraryID string) // 扫描完成回调（用于触发预处理）
 	vfsMgr         *VFSManager            // V2.1: VFS 管理器（支持 webdav:// 路径）
+	castImporter   func(*model.Media)     // 入库后从 NFO 导入演职人员（可选）
 }
 
 func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.SeriesRepo, cfg *config.Config, logger *zap.SugaredLogger) *ScannerService {
@@ -505,6 +506,11 @@ func NewScannerService(mediaRepo *repository.MediaRepo, seriesRepo *repository.S
 // SetWSHub 设置WebSocket Hub（延迟注入，避免循环依赖）
 func (s *ScannerService) SetWSHub(hub *WSHub) {
 	s.wsHub = hub
+}
+
+// SetCastImporter 设置入库后的 NFO 演职人员导入回调
+func (s *ScannerService) SetCastImporter(fn func(*model.Media)) {
+	s.castImporter = fn
 }
 
 // SetVFSManager 设置 VFS 管理器（V2.1: 用于 webdav:// 路径支持）
@@ -1140,6 +1146,9 @@ func (s *ScannerService) scanMovieLibrary(library *model.Library) (int, error) {
 			if err := s.mediaRepo.Create(pm.media); err != nil {
 				s.logger.Warnf("保存媒体失败: %s, 错误: %v", pm.path, err)
 				continue
+			}
+			if s.castImporter != nil {
+				s.castImporter(pm.media)
 			}
 			count++
 			s.logger.Infof("发现电影: %s [%s | %s | %s]", pm.media.Title, pm.media.Resolution, pm.media.VideoCodec, pm.media.AudioCodec)

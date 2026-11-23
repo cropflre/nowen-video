@@ -38,3 +38,11 @@
   .nv-comment-list::-webkit-scrollbar { display: none; }
   .nv-comment-list > article { scroll-snap-align: start; }
 }
+
+/* 弹层内嵌模式：单栏纵向排布，评分与输入框占满宽度 */
+.nv-comment-expanded[data-embedded] { grid-template-columns: 1fr; border-top: 0; padding-top: 0; }
+.nv-comment-expanded[data-embedded] .nv-comment-composer,
+.nv-comment-expanded[data-embedded] .nv-comment-list,
+.nv-comment-expanded[data-embedded] .nv-comment-loading,
+.nv-comment-expanded[data-embedded] .nv-comment-empty { grid-column: 1; }
+.nv-comment-expanded[data-embedded] .nv-comment-list { grid-template-columns: 1fr; }

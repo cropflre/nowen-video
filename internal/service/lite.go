@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"github.com/nowen-video/nowen-video/internal/config"
+	"github.com/nowen-video/nowen-video/internal/model"
 	"github.com/nowen-video/nowen-video/internal/repository"
 	"go.uber.org/zap"
 )
@@ -57,6 +58,8 @@ func NewLiteServices(repos *repository.Repositories, cfg *config.Config, logger 
 
 	nfoService := NewNFOService(logger)
 	metadata.SetNFOService(nfoService)
+	scanner.SetCastImporter(func(m *model.Media) { metadata.ImportCastFromNFO(m) })
+	go metadata.BackfillCastFromNFO()
 
 	vfsManager := NewVFSManager(logger)
 	scanner.SetVFSManager(vfsManager)

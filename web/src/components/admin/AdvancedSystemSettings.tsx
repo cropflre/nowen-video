@@ -10,7 +10,6 @@ import {
   HardDrive,
   Link,
   Loader2,
-  Merge,
   MonitorPlay,
   Play,
   Save,
@@ -28,14 +27,8 @@ import { Button, Input, Modal, ModalBody, ModalFooter, ModalHeader, Tag } from '
 
 const webAppVersion = import.meta.env.VITE_APP_VERSION || '0.1.0'
 
-type SystemSection = 'playback' | 'storage' | 'diagnostics' | 'maintenance'
+type SystemSection = 'playback' | 'storage' | 'diagnostics'
 
-type MergeResult = {
-  type: 'success' | 'error' | 'info'
-  message: string
-  groups_processed?: number
-  total_merged?: number
-}
 
 type ClearResult = {
   status: string
@@ -58,14 +51,6 @@ export default function AdvancedSystemSettings({ section }: { section: SystemSec
   const [clearConfirmText, setClearConfirmText] = useState('')
   const [clearLoading, setClearLoading] = useState(false)
   const [clearResult, setClearResult] = useState<ClearResult | null>(null)
-  const [mergeLoading, setMergeLoading] = useState(false)
-  const [mergeCandidatesLoading, setMergeCandidatesLoading] = useState(false)
-  const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
-  const [mergeCandidates, setMergeCandidates] = useState<{
-    normalized_title: string
-    count: number
-    series: { id: string; title: string; season_count: number; episode_count: number }[]
-  }[] | null>(null)
 
   const hasSettings = section === 'playback' || section === 'storage'
   useEffect(() => {
@@ -140,48 +125,6 @@ export default function AdvancedSystemSettings({ section }: { section: SystemSec
     }
   }
 
-  const handleCheckMergeCandidates = async () => {
-    setMergeCandidatesLoading(true)
-    setMergeCandidates(null)
-    setMergeResult(null)
-    try {
-      const res = await adminApi.mergeCandidates()
-      const data = res.data.data
-      if (data && data.length > 0) {
-        setMergeCandidates(data)
-        setMergeResult({ type: 'info', message: `发现 ${data.length} 组可合并的重复剧集` })
-      } else {
-        setMergeCandidates([])
-        setMergeResult({ type: 'success', message: '没有发现需要合并的重复剧集，数据已是最佳状态' })
-      }
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '检测失败，请稍后重试'
-      setMergeResult({ type: 'error', message: msg })
-    } finally {
-      setMergeCandidatesLoading(false)
-    }
-  }
-
-  const handleAutoMerge = async () => {
-    setMergeLoading(true)
-    setMergeResult(null)
-    try {
-      const res = await adminApi.autoMergeSeries()
-      const data = res.data.data
-      setMergeResult({
-        type: 'success',
-        message: res.data.message,
-        groups_processed: data.groups_processed,
-        total_merged: data.total_merged,
-      })
-      setMergeCandidates(null)
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : '自动合并失败，请稍后重试'
-      setMergeResult({ type: 'error', message: msg })
-    } finally {
-      setMergeLoading(false)
-    }
-  }
 
   return (
     <div className="space-y-6">
@@ -349,73 +292,8 @@ export default function AdvancedSystemSettings({ section }: { section: SystemSec
         </AdminPanel>
       )}
 
-      {section === 'maintenance' && (
-        <>
-          <AdminPanel
-            title="剧集合并管理"
-            description="检测并合并同名但分季的剧集记录，让多季内容统一展示。"
-            icon={<Merge size={18} />}
-            actions={(
-              <>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleCheckMergeCandidates}
-                  disabled={mergeCandidatesLoading || mergeLoading}
-                >
-                  {mergeCandidatesLoading && <Loader2 size={14} className="animate-spin" />}
-                  {mergeCandidatesLoading ? '检测中...' : '检测可合并剧集'}
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleAutoMerge}
-                  disabled={mergeLoading || mergeCandidatesLoading}
-                >
-                  {mergeLoading ? <Loader2 size={14} className="animate-spin" /> : <Merge size={14} />}
-                  {mergeLoading ? '合并中...' : '一键自动合并'}
-                </Button>
-              </>
-            )}
-            bodyClassName="space-y-4"
-          >
-            {mergeResult && (
-              <AdminStatus tone={mergeResult.type === 'success' ? 'success' : mergeResult.type === 'error' ? 'danger' : 'active'}>
-                {mergeResult.type === 'success' ? <Check size={13} /> : mergeResult.type === 'error' ? <X size={13} /> : <Merge size={13} />}
-                {mergeResult.message}
-                {mergeResult.groups_processed !== undefined && (
-                  <span>· {mergeResult.groups_processed} 组 / {mergeResult.total_merged} 条</span>
-                )}
-              </AdminStatus>
-            )}
-
-            {mergeCandidates && mergeCandidates.length > 0 && (
-              <div className="overflow-hidden rounded-[var(--nv-radius-control)] border border-[var(--nv-border-subtle)]">
-                <div className="overflow-x-auto">
-                  <table className="w-full min-w-[640px] text-sm">
-                    <thead className="bg-[var(--nv-bg-surface-soft)] text-left text-xs text-[var(--nv-text-tertiary)]">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">系列名</th>
-                        <th className="px-4 py-3 text-center font-semibold">重复条数</th>
-                        <th className="px-4 py-3 font-semibold">包含的标题</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {mergeCandidates.map((group) => (
-                        <tr key={group.normalized_title} className="border-t border-[var(--nv-border-subtle)]">
-                          <td className="px-4 py-3 font-medium text-[var(--nv-text-primary)]">{group.normalized_title}</td>
-                          <td className="px-4 py-3 text-center"><Tag tone="brand">{group.count}</Tag></td>
-                          <td className="px-4 py-3 text-[var(--nv-text-tertiary)]">{group.series.map((series) => series.title).join('、')}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-          </AdminPanel>
-
-          <details>
+      {section === 'diagnostics' && (
+        <>          <details>
             <summary className="flex min-h-12 cursor-pointer list-none items-center gap-2 text-sm font-medium text-[var(--nv-status-danger)]">
               <ShieldAlert size={16} aria-hidden="true" />危险操作
             </summary>

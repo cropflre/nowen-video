@@ -19,9 +19,7 @@ import type {
 import {
   CastGrid,
   CollectionCarousel,
-  DetailSectionTitle,
   HeroSection,
-  MediaDetailsSection,
   MediaDetailTechOverview,
   MediaSynopsisSection,
   MediaTechSpecs,
@@ -31,18 +29,17 @@ import {
 import MediaHighlightsPanel from '@/components/media/MediaHighlightsPanel'
 import MetadataMatchModal, { type MetadataMatchSource } from '@/components/media/MetadataMatchModal'
 import ScrapeModeDialog, { type ScrapeMode } from '@/components/media/ScrapeModeDialog'
-import CommentSection from '@/components/CommentSection'
 import EditMetadataModal from '@/components/EditMetadataModal'
 import SubtitleManager from '@/components/SubtitleManager'
 import SubtitleSearchPanel from '@/components/SubtitleSearchPanel'
 import ConfirmDialog from '@/components/design-system/ConfirmDialog'
-import { Button, EmptyState } from '@/components/design-system'
+import { Button, Modal, ModalBody, ModalHeader } from '@/components/design-system'
 import { bumpPosterVersion } from '@/stores/mediaRefresh'
 import { useTranslation } from '@/i18n'
 import { formatErrMsg } from '@/utils/error'
 import { parseDirectMatchId } from '@/utils/parseDirectMatchId'
 import { invalidateMediaListCaches } from '@/utils/invalidateMediaCaches'
-import { ArrowLeft, Captions } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 
 export default function MediaDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -79,6 +76,7 @@ export default function MediaDetailPage() {
   const [showScrapeModeDialog, setShowScrapeModeDialog] = useState(false)
   const [showSubtitleManager, setShowSubtitleManager] = useState(false)
   const [showSubtitleSearch, setShowSubtitleSearch] = useState(false)
+  const [showTech, setShowTech] = useState(false)
   const [matchQuery, setMatchQuery] = useState('')
   const [matchResults, setMatchResults] = useState<any[]>([])
   const [matchSearching, setMatchSearching] = useState(false)
@@ -491,6 +489,10 @@ export default function MediaDetailPage() {
         playlists={playlists}
         scraping={scraping}
         isAdmin={isAdmin}
+        subtitleCount={hasSubtitleData ? embeddedSubtitleCount + externalSubtitleCount : enhancedLoading ? null : 0}
+        onSubtitleClick={hasSubtitleData ? (isAdmin ? () => setShowSubtitleManager(true) : undefined) : () => setShowSubtitleSearch(true)}
+        techLabel={[media.resolution, media.video_codec && String(media.video_codec).toUpperCase()].filter(Boolean).join(' · ') || undefined}
+        onShowTech={() => setShowTech(true)}
         posterVersion={posterVersion}
         onFavorite={handleFavorite}
         onScrape={handleScrape}
@@ -505,43 +507,13 @@ export default function MediaDetailPage() {
 
       <DetailStatusStrip media={media} watchProgress={watchProgress} isAdmin={isAdmin} />
 
-      <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] py-6">
+      <div className="nv-detail-content-shell mx-auto w-full max-w-[var(--nv-content-max)] px-[var(--nv-page-gutter)] pb-8 pt-2">
         <div className="nv-detail-body-grid">
           <main className="nv-detail-main-column min-w-0">
             <MediaSynopsisSection media={media} />
 
             <section id="cast" className="nv-detail-content-section">
               <CastGrid persons={persons} />
-            </section>
-
-            <MediaDetailsSection media={media} persons={persons} />
-
-            <section id="subtitles" className="nv-detail-content-section">
-              {enhancedLoading && !hasSubtitleData ? (
-                <div className="skeleton h-[220px] rounded-[var(--nv-radius-container)]" role="status" aria-label="正在加载字幕信息" />
-              ) : hasSubtitleData ? (
-                <div className="nv-detail-subtitle-tab">
-                  <div className="nv-detail-subtitle-tab-copy">
-
-                    <DetailSectionTitle icon={<Captions size={17} />}>字幕</DetailSectionTitle>
-                    <p>已检测到 {embeddedSubtitleCount + externalSubtitleCount} 个字幕来源，播放时可以选择或关闭字幕。</p>
-                  </div>
-                  {isAdmin && <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>}
-                </div>
-              ) : (
-                <EmptyState
-                  className="nv-detail-tab-empty-state"
-                  icon={<Captions size={23} aria-hidden="true" />}
-                  title="暂无字幕"
-                  description="当前媒体暂未检测到内嵌字幕轨道或外挂字幕文件。"
-                  action={(
-                    <div className="flex flex-wrap items-center justify-center gap-2">
-                      <Button type="button" variant="primary" size="sm" onClick={() => setShowSubtitleSearch(true)}>{t('subtitle.search')}</Button>
-                      {isAdmin && <Button type="button" variant="secondary" size="sm" onClick={() => setShowSubtitleManager(true)}>管理字幕</Button>}
-                    </div>
-                  )}
-                />
-              )}
             </section>
 
             <section id="recommendations" className="nv-detail-content-section space-y-6">
@@ -551,28 +523,26 @@ export default function MediaDetailPage() {
               <RecommendationCarousel recommendations={recommendations} />
             </section>
 
-            {id && (
-              <section id="reviews" className="nv-detail-content-section">
-                <CommentSection mediaId={id} />
-              </section>
-            )}
             <details className="nv-detail-tech-details mt-6">
               <summary>更多信息与片段</summary>
               <div className="nv-detail-tech-details-body space-y-6">
                 <MediaHighlightsPanel mediaId={media.id} isAdmin={isAdmin} />
-                <details className="nv-detail-tech-details">
-                  <summary>技术信息</summary>
-                  <div className="nv-detail-tech-details-body">
-                    <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
-                    <MediaTechSpecs media={media} techSpecs={techSpecs} fileInfo={fileInfo} library={libraryInfo} playbackStats={playbackStats} loading={enhancedLoading} isAdmin={isAdmin} />
-                  </div>
-                </details>
               </div>
             </details>
           </main>
 
         </div>
       </div>
+
+      <Modal open={showTech} onClose={() => setShowTech(false)} size="xl" ariaLabel="技术信息">
+        <ModalHeader title="技术信息" description={media.title} onClose={() => setShowTech(false)} />
+        <ModalBody>
+          <div className="nv-detail-tech-details-body space-y-6">
+            <MediaDetailTechOverview media={media} techSpecs={techSpecs} fileInfo={fileInfo} />
+            <MediaTechSpecs media={media} techSpecs={techSpecs} fileInfo={fileInfo} library={libraryInfo} playbackStats={playbackStats} loading={enhancedLoading} isAdmin={isAdmin} />
+          </div>
+        </ModalBody>
+      </Modal>
 
       {showTrailer && media.trailer_url && <TrailerModal trailerUrl={media.trailer_url} onClose={() => setShowTrailer(false)} />}
 
