@@ -1,7 +1,7 @@
 
 # 应用图标
 
-Tauri 打包时需要以下文件，**全部必需**：
+Tauri 打包图标与源图
 
 ```
 icons/
@@ -10,21 +10,16 @@ icons/
 ├── 128x128@2x.png     # 256×256 PNG（视网膜）
 ├── icon.icns          # macOS 图标包
 ├── icon.ico           # Windows 图标包
-└── icon.png           # 通用回退（1024×1024）
+├── icon.png           # 托盘与通用图标（512×512）
+└── source-1024.png    # 1024×1024 导出图
 ```
 
-## 快速生成
+## 更新图标
 
-推荐使用 Tauri 官方图标生成工具：
+图标源文件是 `web/public/assets/nowen-video.svg`。可以在 `desktop/src-tauri` 目录运行以下命令。
 
 ```bash
-# 准备一张 1024×1024 的 PNG 源图
-cargo install tauri-cli --locked
-cargo tauri icon path/to/your/logo.png
+npx --yes @tauri-apps/cli@^2 icon ../../web/public/assets/nowen-video.svg --ios-color '#0D1D33' --output icons
 ```
 
-该命令会自动生成上述所有规格的图标到 `icons/` 目录。
-
-## 临时占位
-
-开发阶段可以先从主项目 `web/public/` 中找到 logo 图片，用上面命令生成一套基础图标。
+`source-1024.png` 从同一 SVG 以 1024×1024 单独导出。修改源图时同步更新飞牛、网页应用及原生 Android 的图标资源。

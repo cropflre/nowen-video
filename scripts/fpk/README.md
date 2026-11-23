@@ -64,7 +64,7 @@ dist-fpk/SHA256SUMS-fpk.txt
 fnpack build --directory <path>
 ```
 
-模板同时保留官方打包检查要求的 `manifest`、`config/privilege`、`config/resource`、`ICON.PNG`、`ICON_256.PNG`、`app/`、`cmd/`、`wizard/` 和桌面 UI 目录。
+模板同时保留官方打包检查要求的 `manifest`、`config/privilege`、`config/resource`、`ICON.PNG`、`ICON_256.PNG`、`app/`、`cmd/`、`wizard/` 和桌面 UI 目录。应用中心读取 `manifest` 中的 `desc`。两个 PNG 由 `web/public/assets/nowen-video.svg` 分别以 64 和 256 像素导出，打包时也用于飞牛桌面入口。
 
 ## 正式发版
 

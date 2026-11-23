@@ -1,7 +1,7 @@
 appname               = nowen-video
 version               = {{VERSION}}
 display_name          = Nowen Video
-desc                  = 轻量级家庭媒体服务器，支持电影与剧集管理、元数据刮削、字幕、播放进度与 HLS 转码。
+desc                  = 把飞牛 NAS 变成全家的私人影院。Nowen Video 自动扫描电影和剧集，匹配海报与影片资料，支持字幕和按需转码。电脑、手机换着看，进度跟着账号走。每位家人都有自己的收藏和观看记录。
 arch                  = x86_64
 source                = thirdparty
 maintainer            = Nowen

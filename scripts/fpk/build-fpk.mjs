@@ -15,7 +15,6 @@ import {
 import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { deflateSync } from 'node:zlib'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(__dirname, '..', '..')
@@ -41,52 +40,6 @@ function replaceTokens(path, replacements) {
   for (const [key, value] of Object.entries(replacements)) content = content.replaceAll(`{{${key}}}`, value)
   if (/\{\{[^}]+\}\}/.test(content)) throw new Error(`[fpk] ${path} 仍有未解析模板变量`)
   writeFileSync(path, content)
-}
-
-const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
-  let c = n
-  for (let k = 0; k < 8; k += 1) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1)
-  return c >>> 0
-})
-function crc32(buffer) {
-  let c = 0xffffffff
-  for (const byte of buffer) c = CRC_TABLE[(c ^ byte) & 0xff] ^ (c >>> 8)
-  return (c ^ 0xffffffff) >>> 0
-}
-function pngChunk(type, data) {
-  const typeBuffer = Buffer.from(type)
-  const length = Buffer.alloc(4); length.writeUInt32BE(data.length)
-  const checksum = Buffer.alloc(4); checksum.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])))
-  return Buffer.concat([length, typeBuffer, data, checksum])
-}
-function writeBrandIcon(path, size) {
-  const stride = 1 + size * 4
-  const raw = Buffer.alloc(stride * size)
-  const left = Math.floor(size * 0.25)
-  const right = Math.floor(size * 0.75)
-  const bar = Math.max(3, Math.floor(size * 0.09))
-  for (let y = 0; y < size; y += 1) {
-    raw[y * stride] = 0
-    for (let x = 0; x < size; x += 1) {
-      const p = y * stride + 1 + x * 4
-      const diagonal = left + ((right - left) * y) / Math.max(1, size - 1)
-      const isN = Math.abs(x - left) <= bar || Math.abs(x - right) <= bar || Math.abs(x - diagonal) <= bar
-      raw[p] = isN ? 255 : 132
-      raw[p + 1] = isN ? 255 : 111
-      raw[p + 2] = isN ? 255 : 238
-      raw[p + 3] = 255
-    }
-  }
-  const ihdr = Buffer.alloc(13)
-  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4)
-  ihdr[8] = 8; ihdr[9] = 6
-  const png = Buffer.concat([
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    pngChunk('IHDR', ihdr),
-    pngChunk('IDAT', deflateSync(raw, { level: 9 })),
-    pngChunk('IEND', Buffer.alloc(0)),
-  ])
-  writeFileSync(path, png)
 }
 
 function currentFnpackTarget() {
@@ -241,10 +194,8 @@ replaceTokens(join(work, 'app', 'docker', 'docker-compose.yaml'), { DOCKERHUB_RE
 
 const uiImages = join(work, 'app', 'ui', 'images')
 mkdirSync(uiImages, { recursive: true })
-writeBrandIcon(join(work, 'ICON.PNG'), 64)
-writeBrandIcon(join(work, 'ICON_256.PNG'), 256)
-writeBrandIcon(join(uiImages, 'icon_64.png'), 64)
-writeBrandIcon(join(uiImages, 'icon_256.png'), 256)
+cpSync(join(work, 'ICON.PNG'), join(uiImages, 'icon_64.png'))
+cpSync(join(work, 'ICON_256.PNG'), join(uiImages, 'icon_256.png'))
 for (const file of readdirSync(join(work, 'cmd'))) chmodSync(join(work, 'cmd', file), 0o755)
 
 const fnpack = await resolveFnpack()
