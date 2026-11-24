@@ -30,21 +30,10 @@ services:
     # 如需在混合架构主机强制指定，取消注释：
     # platform: linux/arm64
     container_name: nowen-video
-    # ================= 超级管理员权限（容器侧）=================
-    # 容器内以 root 运行，规避 NAS 挂载目录 UID 不一致导致的权限问题。
-    # 飞牛 OS / 绿联 / 威联通等 NAS 的 /vol01 /volume1 往往是 root:root 或
-    # 自定义 UID，以 root 跑是最省心的方案。
+    # 以最小权限运行（无需 privileged 特权模式）。
+    # 默认使用 root(0:0) 避免部分 NAS 挂载目录 UID 不一致导致的权限问题；
+    # 如需 Intel 核显 QSV / VA-API 硬解，按需挂载 /dev/dri:/dev/dri 即可。
     user: "0:0"
-    privileged: true
-    cap_add:
-      - SYS_ADMIN        # WebDAV/Alist/S3 等远程挂载（FUSE）需要
-      - NET_ADMIN
-      - SYS_PTRACE
-      - DAC_READ_SEARCH  # 跨属主读媒体文件
-    security_opt:
-      - apparmor:unconfined
-      - seccomp:unconfined
-    # =========================================================
     ports:
       - "8080:8080"
       # Emby 局域网发现需要 UDP 7359 和可达的广播网络；bridge 模式下可手动填写服务器地址。

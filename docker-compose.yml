@@ -13,26 +13,13 @@ services:
     # 如果在 x86 主机上拉取 ARM 镜像（或反之），可通过 platform 显式指定
     # platform: linux/arm64
     container_name: nowen-video
-    # ================= 超级管理员权限（容器侧）=================
-    # 以 root(UID=0) 运行容器内进程，拥有对挂载卷的完全读写权。
-    # 注：飞牛 OS / 绿联 NAS / Synology 等部分 NAS 挂载目录 UID/GID 非 1000，
-    # 以 root 跑可避免 "permission denied" 的问题。
+    # 以最小权限运行（无需 privileged 特权模式）。
+    # 注：部分 NAS 挂载目录 UID/GID 非 1000，默认使用 root(0:0) 避免读写权限问题；
+    # 如需以指定宿主机用户运行，可删除 user: "0:0" 并设置环境变量 PUID/PGID。
     user: "0:0"
-    # 授予容器对主机设备的完整访问权（已启用 privileged 时可同时搭配 cap_add）
-    privileged: true
-    # 细粒度能力（privileged 已覆盖，保留便于关闭 privileged 时使用）
-    cap_add:
-      - SYS_ADMIN        # 挂载/解挂（WebDAV/Alist 远程挂载需要）
-      - NET_ADMIN        # 设置路由/代理
-      - SYS_PTRACE       # 诊断排查
-      - DAC_READ_SEARCH  # 跨属主读文件
-    # AppArmor / SELinux 放开，避免飞牛 OS 等系统默认 profile 阻挡 /dev/* 访问
-    security_opt:
-      - apparmor:unconfined
-      - seccomp:unconfined
-    # FUSE 挂载（若应用内接入 rclone/davfs 等）需要
-    # 需要宿主机加载 fuse 内核模块：`modprobe fuse`
-    # =========================================================
+    # 如需 Intel 核显 QSV / VA-API 硬件加速，按需取消下方 devices 注释即可（无需 privileged）：
+    # devices:
+    #   - /dev/dri:/dev/dri
     ports:
       - "8080:8080"
     volumes:
