@@ -3,6 +3,7 @@ module github.com/nowen-video/nowen-video
 go 1.25.0
 
 require (
+	github.com/Mattbusel/llm-prices/go v0.1.0
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/gin-gonic/gin v1.9.1
 	github.com/glebarez/sqlite v1.11.0
