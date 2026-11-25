@@ -6,10 +6,11 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -30,8 +31,8 @@ const OUT = resolve(ROOT, process.env.FPK_OUT_DIR || 'dist-fpk')
 const FNPACK_TOOL_VERSION = process.env.FNPACK_TOOL_VERSION || '1.2.3'
 const FNPACK_OFFICIAL_BASE_URL = 'https://static2.fnnas.com/fnpack'
 
-if (!/^\d+\.\d+\.\d+$/.test(VERSION)) {
-  console.error(`[fpk] FPK_VERSION 必须是纯 X.Y.Z，当前: ${VERSION}`)
+if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(VERSION)) {
+  console.error(`[fpk] FPK_VERSION 必须为 X.Y.Z 或 X.Y.Z-预发布标识，当前: ${VERSION}`)
   process.exit(1)
 }
 
@@ -179,43 +180,35 @@ async function resolveFnpack() {
   return downloadOfficialFnpack(target)
 }
 
-function fpkFiles(dir) {
-  if (!existsSync(dir)) return []
-  return readdirSync(dir).filter((name) => name.toLowerCase().endsWith('.fpk')).map((name) => join(dir, name))
-}
-
 mkdirSync(OUT, { recursive: true })
-const work = join(OUT, `nowen-video-${VERSION}-work`)
-rmSync(work, { recursive: true, force: true })
-mkdirSync(work, { recursive: true })
-cpSync(TEMPLATE, work, { recursive: true })
-replaceTokens(join(work, 'manifest'), { VERSION })
-replaceTokens(join(work, 'app', 'docker', 'docker-compose.yaml'), { DOCKERHUB_REPO, IMAGE_TAG })
-
-const uiImages = join(work, 'app', 'ui', 'images')
-mkdirSync(uiImages, { recursive: true })
-cpSync(join(work, 'ICON.PNG'), join(uiImages, 'icon_64.png'))
-cpSync(join(work, 'ICON_256.PNG'), join(uiImages, 'icon_256.png'))
-for (const file of readdirSync(join(work, 'cmd'))) chmodSync(join(work, 'cmd', file), 0o755)
-
 const fnpack = await resolveFnpack()
-console.log(`[fpk] version: ${VERSION}`)
-console.log(`[fpk] image:   ${DOCKERHUB_REPO}:${IMAGE_TAG}`)
-console.log(`[fpk] fnpack:  ${fnpack}`)
+const staging = mkdtempSync(join(OUT, '.fnpack-'))
 
-const startedAt = Date.now() - 3000
-// Official fnpack documentation uses: fnpack build --directory <path>
-execFileSync(fnpack, ['build', '--directory', work], { cwd: OUT, stdio: 'inherit' })
+try {
+  const work = join(staging, 'package')
+  cpSync(TEMPLATE, work, { recursive: true })
+  replaceTokens(join(work, 'manifest'), { VERSION })
+  replaceTokens(join(work, 'app', 'docker', 'docker-compose.yaml'), { DOCKERHUB_REPO, IMAGE_TAG })
 
-const candidates = [...fpkFiles(OUT), ...fpkFiles(work), ...fpkFiles(ROOT)]
-  .filter((path) => statSync(path).mtimeMs >= startedAt)
-  .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)
-if (candidates.length === 0) throw new Error('[fpk] fnpack 返回成功，但没有找到新生成的 .fpk')
+  const uiImages = join(work, 'app', 'ui', 'images')
+  mkdirSync(uiImages, { recursive: true })
+  cpSync(join(work, 'ICON.PNG'), join(uiImages, 'icon_64.png'))
+  cpSync(join(work, 'ICON_256.PNG'), join(uiImages, 'icon_256.png'))
+  for (const file of readdirSync(join(work, 'cmd'))) chmodSync(join(work, 'cmd', file), 0o755)
 
-const target = join(OUT, `nowen-video-${VERSION}.fpk`)
-if (resolve(candidates[0]) !== resolve(target)) cpSync(candidates[0], target)
-const sha256 = createHash('sha256').update(readFileSync(target)).digest('hex')
-writeFileSync(join(OUT, 'SHA256SUMS-fpk.txt'), `${sha256}  nowen-video-${VERSION}.fpk\n`)
-rmSync(work, { recursive: true, force: true })
-console.log(`[fpk] 完成: ${target}`)
-console.log(`[fpk] SHA256: ${sha256}`)
+  console.log(`[fpk] version: ${VERSION}`)
+  console.log(`[fpk] image:   ${DOCKERHUB_REPO}:${IMAGE_TAG}`)
+  console.log(`[fpk] fnpack:  ${fnpack}`)
+  execFileSync(fnpack, ['build', '--directory', work], { cwd: staging, stdio: 'inherit' })
+
+  const packed = join(staging, 'nowen-video.fpk')
+  const filename = `弄文影视-${VERSION}.fpk`
+  const target = join(OUT, filename)
+  const sha256 = createHash('sha256').update(readFileSync(packed)).digest('hex')
+  renameSync(packed, target)
+  writeFileSync(join(OUT, 'SHA256SUMS-fpk.txt'), `${sha256}  ${filename}\n`)
+  console.log(`[fpk] 完成: ${target}`)
+  console.log(`[fpk] SHA256: ${sha256}`)
+} finally {
+  rmSync(staging, { recursive: true, force: true })
+}

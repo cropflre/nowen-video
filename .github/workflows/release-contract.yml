@@ -12,6 +12,8 @@ on:
       - 'scripts/fpk/**'
       - '.gitignore'
       - '.github/workflows/release-contract.yml'
+      - '.github/workflows/release-server.yml'
+      - '.github/workflows/release-publish.yml'
 
 permissions:
   contents: read
@@ -39,9 +41,9 @@ jobs:
           node scripts/generate-release-notes.mjs \
             --version 9.9.9 \
             --no-android \
-            --no-fpk \
             --output /tmp/nowen-video-release-notes.md
           grep -Fq 'Nowen Video v9.9.9 发布公告' /tmp/nowen-video-release-notes.md
+          grep -Fq '弄文影视-9.9.9.fpk' /tmp/nowen-video-release-notes.md
           grep -Fq '发布完整性' /tmp/nowen-video-release-notes.md
 
       - name: Validate fnOS JSON templates
@@ -79,17 +81,32 @@ jobs:
 
       - name: Smoke build fnOS package with official fnpack
         env:
-          FPK_VERSION: 9.9.9
-          FPK_IMAGE_TAG: v9.9.9
+          FPK_VERSION: 9.9.9-rc.1
+          FPK_IMAGE_TAG: 9.9.9-rc.1
           FPK_OUT_DIR: /tmp/nowen-video-fpk-smoke
-          DOCKERHUB_REPO: cropflre/nowen-video
+          DOCKERHUB_REPO: ghcr.io/cropflre/nowen-video
         run: |
           set -euo pipefail
           node scripts/fpk/build-fpk.mjs
-          test -s /tmp/nowen-video-fpk-smoke/nowen-video-9.9.9.fpk
-          test -s /tmp/nowen-video-fpk-smoke/SHA256SUMS-fpk.txt
-          cd /tmp/nowen-video-fpk-smoke
+          cd "$FPK_OUT_DIR"
+          PACKAGE="弄文影视-${FPK_VERSION}.fpk"
+          test -s "$PACKAGE"
+          packages=(*.fpk)
+          test "${#packages[@]}" -eq 1
           sha256sum -c SHA256SUMS-fpk.txt
+          tar -xOf "$PACKAGE" manifest > package.manifest
+          grep -Fx 'appname               = nowen-video' package.manifest
+          grep -Fx "version               = $FPK_VERSION" package.manifest
+          grep -Fx 'display_name          = 弄文影视' package.manifest
+          grep -Fx 'platform              = all' package.manifest
+          tar -xOf "$PACKAGE" app.tgz > app-payload.tgz
+          tar -xOzf app-payload.tgz ui/config | jq -e '.[".url"]["nowen-video.Application"].title == "弄文影视"'
+          tar -xOzf app-payload.tgz docker/docker-compose.yaml > compose.yaml
+          grep -Fx "    image: ${DOCKERHUB_REPO}:${FPK_IMAGE_TAG}" compose.yaml
+          if grep -Eq '^[[:space:]]*platform:' compose.yaml; then
+            echo 'Compose must let Docker select the host architecture.' >&2
+            exit 1
+          fi
 
       - name: Validate strict release gating invariants
         shell: bash
@@ -101,14 +118,15 @@ jobs:
           grep -Fq 'check_required_workflow "release-contract.yml" "Release Contract"' scripts/release.sh
           grep -Fq 'Android production signing Secrets: 4/4' scripts/release.sh
           grep -Fq '任一渠道/门禁失败，整次发版均判定失败' scripts/release.sh
+          # shellcheck disable=SC2016
           grep -Fq 'Nowen Video v${VERSION} 全渠道发版成功' scripts/release.sh
           grep -Fq 'auth.docker.io/token' scripts/dockerhub-auth-preflight.mjs
           grep -Fq "actions.includes('push')" scripts/dockerhub-auth-preflight.mjs
           grep -Fq 'if length == 0 then empty' scripts/release-advanced.sh
           grep -Fq '当前提交未触发，SKIP（后续正式候选门禁仍会执行）' scripts/release-advanced.sh
           grep -Fq 'run_id" =~ ^[0-9]+$' scripts/release-advanced.sh
-          grep -Fq 'FPK_IMAGE_TAG="v${VERSION}"' scripts/release.sh
+          grep -Fq 'wait_tag_workflow "release-server.yml" "Server / fnOS"' scripts/release-advanced.sh
+          # shellcheck disable=SC2016
           grep -Fq 'nowen-video-android-${VERSION}.apk' scripts/release.sh
-          grep -Fq 'nowen-video-${VERSION}.fpk' scripts/release.sh
           grep -Fq 'dist-fpk/' .gitignore
           grep -Fq 'dist-release/' .gitignore

@@ -1,13 +1,13 @@
-# Nowen Video 飞牛 fnOS `.fpk` 发布
+# 弄文影视飞牛 fnOS 安装包
 
-该目录参考 `nowen-note` 已验证的 FPK 发布契约，并对齐飞牛官方 `fnpack` 文档，用同一个正式 Docker 镜像生成飞牛安装包。
+应用中心和桌面入口显示「弄文影视」。同一份 `.fpk` 支持 AMD64（x86_64）与 ARM64 设备，安装时由 Docker 按 NAS 架构选择镜像。
 
 官方文档：<https://developer.fnnas.com/docs/cli/fnpack/>
 
 ## 前置条件
 
 - Node.js 20+
-- 正式发布时 Docker 镜像为 `cropflre/nowen-video:vX.Y.Z`
+- 本地单独打包默认使用 `cropflre/nowen-video:vX.Y.Z`
 - **无需预先手动安装 `fnpack`**：脚本找不到可用工具时会自动从飞牛官方 CDN 下载当前固定版本
 
 当前自动下载的官方 `fnpack` 版本：`1.2.3`。
@@ -38,7 +38,7 @@
 - macOS: `~/Library/Caches/nowen-video/fnpack`
 - Windows: `%LOCALAPPDATA%\NowenVideo\fnpack`
 
-也可以用 `FNPACK_CACHE_DIR` 自定义缓存目录；用 `FNPACK_TOOL_VERSION` 临时覆盖工具版本。正式发布默认固定使用文档当前版本 `1.2.3`，避免发版当天自动漂移到未知 CLI 版本。
+通过 `FNPACK_CACHE_DIR` 可自定义缓存目录，通过 `FNPACK_TOOL_VERSION` 可临时覆盖工具版本。发版流水线固定使用 `1.2.3`，以便复现构建。
 
 下载后脚本会先执行 `fnpack --help` 做可执行性检查，再进入正式打包；下载失败或平台未被官方文档支持时会立即终止，并提示使用 `FNPACK_BIN`。
 
@@ -54,7 +54,7 @@ node scripts/fpk/build-fpk.mjs
 产物：
 
 ```text
-dist-fpk/nowen-video-1.2.6.fpk
+dist-fpk/弄文影视-1.2.6.fpk
 dist-fpk/SHA256SUMS-fpk.txt
 ```
 
@@ -66,7 +66,11 @@ fnpack build --directory <path>
 
 模板同时保留官方打包检查要求的 `manifest`、`config/privilege`、`config/resource`、`ICON.PNG`、`ICON_256.PNG`、`app/`、`cmd/`、`wizard/` 和桌面 UI 目录。应用中心读取 `manifest` 中的 `desc`。两个 PNG 由 `web/public/assets/nowen-video.svg` 分别以 64 和 256 像素导出，打包时也用于飞牛桌面入口。
 
-## 正式发版
+## GitHub 发版
+
+推送 `vX.Y.Z` 或 `vX.Y.Z-rc.N` 版本标签后，`release-server` 自动构建 Linux AMD64 和 ARM64 服务端归档及飞牛通用包，发布同版本的多架构 GHCR 镜像。飞牛包使用 `ghcr.io/cropflre/nowen-video:X.Y.Z` 这类固定版本镜像。流水线验证镜像包含 AMD64 和 ARM64，随后才上传安装包和校验文件。
+
+GitHub Release 以「弄文影视-X.Y.Z.fpk」作为下载项的显示标签，下载文件使用稳定的 `nowen-video-X.Y.Z.fpk` 文件名。对应 Actions 产物 `nowen-video-fnos-release` 内含中文文件名的原始 `.fpk`。两处均附带适用于各自文件名的 `SHA256SUMS-fpk.txt`。
 
 推荐从 `main` 执行：
 
@@ -74,14 +78,7 @@ fnpack build --directory <path>
 ./scripts/release.sh
 ```
 
-默认正式发布目标为：
-
-- Docker `linux/amd64 + linux/arm64`
-- Android APK + AAB
-- 飞牛 fnOS `.fpk`
-- Git tag + GitHub Release
-
-FPK 的 manifest 使用纯 `X.Y.Z`；包内 compose 镜像使用 `vX.Y.Z`，与 Docker Hub 实际 tag 保持严格一致。Android 和 FPK 使用不同 checksum 文件，避免 Release 资产互相覆盖。
+脚本等待 GitHub Actions 打包并核对下载的 FPK 的 SHA256。`--no-fpk` 跳过本地脚本的 FPK 核验，版本标签仍会触发 GitHub Actions 打包。
 
 ## fnOS 数据目录
 
@@ -91,6 +88,4 @@ FPK 的 manifest 使用纯 `X.Y.Z`；包内 compose 镜像使用 `vX.Y.Z`，与 
 - `nowen-video/cache` → `/cache`
 - `nowen-video/media` → `/media`
 
-首次启动后可在 Nowen Video 中把 `/media` 添加为媒体库目录。
-
-> 当前 FPK manifest 为 `x86_64`，与 nowen-note 的 fnOS 第三方应用基线保持一致。Docker 正式镜像本身仍同时发布 amd64/arm64。
+首次启动后可在弄文影视中把 `/media` 添加为媒体库目录。

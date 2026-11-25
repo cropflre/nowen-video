@@ -17,14 +17,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ADVANCED_SCRIPT="$SCRIPT_DIR/release-advanced.sh"
-FPK_SCRIPT="$SCRIPT_DIR/fpk/build-fpk.mjs"
 DOCKER_AUTH_SCRIPT="$SCRIPT_DIR/dockerhub-auth-preflight.mjs"
 NOTES_SCRIPT="$SCRIPT_DIR/generate-release-notes.mjs"
 DEFAULT_BRANCH="main"
 GITHUB_REPO="cropflre/nowen-video"
 IMAGE_NAME="cropflre/nowen-video"
 
-for required in "$ADVANCED_SCRIPT" "$FPK_SCRIPT" "$DOCKER_AUTH_SCRIPT" "$NOTES_SCRIPT"; do
+for required in "$ADVANCED_SCRIPT" "$DOCKER_AUTH_SCRIPT" "$NOTES_SCRIPT"; do
   [ -f "$required" ] || { echo "[release] 缺少 $required" >&2; exit 1; }
 done
 
@@ -64,7 +63,7 @@ usage() {
   ./scripts/release.sh -v 1.2.6 -y --no-desktop --dry-run
 
 Wrapper 选项:
-  --no-fpk       不构建/上传飞牛 fnOS .fpk
+  --no-fpk       跳过本脚本的飞牛 FPK 远端核验
   --draft        全资产核验后仍保留 GitHub Draft Release
 
 其它参数原样透传给 scripts/release-advanced.sh。
@@ -84,7 +83,7 @@ suggest_next_patch() {
 }
 require_cmd() { command -v "$1" >/dev/null 2>&1 || die "缺少命令: $1"; }
 
-PUBLISH_FPK=1
+VERIFY_FPK=1
 KEEP_DRAFT=0
 DRY_RUN=0
 DO_PULL=1
@@ -94,12 +93,9 @@ VERSION=""
 HAS_ANDROID=1
 HAS_DESKTOP=1
 HAS_GIT_TAG=1
-WAIT_ACTIONS=1
 VERIFY_PLATFORMS=1
 EXPECTED_PLATFORMS="linux/amd64,linux/arm64"
 RELEASE_SOURCE_SHA=""
-FPK_FILE=""
-FPK_SUM=""
 RELEASE_NOTES_FILE=""
 PASSTHROUGH=()
 
@@ -109,20 +105,19 @@ parse_args() {
     arg="${args[$i]}"
     case "$arg" in
       -h|--help) usage; exit 0 ;;
-      --no-fpk) PUBLISH_FPK=0 ;;
+      --no-fpk) VERIFY_FPK=0 ;;
       --draft) KEEP_DRAFT=1 ;;
       --dry-run) DRY_RUN=1; PASSTHROUGH+=("$arg") ;;
       --no-pull) DO_PULL=0; PASSTHROUGH+=("$arg") ;;
       --latest) DO_LATEST=1; LATEST_EXPLICIT=1; PASSTHROUGH+=("$arg") ;;
       --no-latest) DO_LATEST=0; LATEST_EXPLICIT=1; PASSTHROUGH+=("$arg") ;;
       --server-only)
-        HAS_ANDROID=0; HAS_DESKTOP=0; HAS_GIT_TAG=0; PUBLISH_FPK=0; WAIT_ACTIONS=0
+        HAS_ANDROID=0; HAS_DESKTOP=0; HAS_GIT_TAG=0; VERIFY_FPK=0
         PASSTHROUGH+=("$arg")
         ;;
       --no-android) HAS_ANDROID=0; PASSTHROUGH+=("$arg") ;;
       --no-desktop) HAS_DESKTOP=0; PASSTHROUGH+=("$arg") ;;
       --no-git-tag) HAS_GIT_TAG=0; PASSTHROUGH+=("$arg") ;;
-      --no-wait-actions) WAIT_ACTIONS=0; PASSTHROUGH+=("$arg") ;;
       --amd64-only) EXPECTED_PLATFORMS="linux/amd64"; PASSTHROUGH+=("$arg") ;;
       --arm64-only) EXPECTED_PLATFORMS="linux/arm64"; PASSTHROUGH+=("$arg") ;;
       --no-multiarch) VERIFY_PLATFORMS=0; PASSTHROUGH+=("$arg") ;;
@@ -218,7 +213,7 @@ preflight_release_environment() {
   node "$DOCKER_AUTH_SCRIPT" "$IMAGE_NAME"
   ok "Docker Hub 登录与 ${IMAGE_NAME} push 权限: PASS"
 
-  if [ "$HAS_GIT_TAG" = "1" ] || [ "$HAS_ANDROID" = "1" ] || [ "$PUBLISH_FPK" = "1" ] || [ "$HAS_DESKTOP" = "1" ]; then
+  if [ "$HAS_GIT_TAG" = "1" ] || [ "$HAS_ANDROID" = "1" ] || [ "$VERIFY_FPK" = "1" ] || [ "$HAS_DESKTOP" = "1" ]; then
     require_cmd gh
     gh auth status >/dev/null 2>&1 || die "GitHub CLI 未登录，请先执行 gh auth login"
     local permission
@@ -237,7 +232,7 @@ preflight_release_environment() {
 
   check_android_secrets
 
-  if [ "$HAS_GIT_TAG" = "1" ] || [ "$HAS_ANDROID" = "1" ] || [ "$PUBLISH_FPK" = "1" ]; then
+  if [ "$HAS_GIT_TAG" = "1" ] || [ "$HAS_ANDROID" = "1" ] || [ "$VERIFY_FPK" = "1" ]; then
     check_required_workflow "server-ci.yml" "Server CI"
     check_required_workflow "release-contract.yml" "Release Contract"
   fi
@@ -251,28 +246,11 @@ generate_release_announcement() {
   RELEASE_NOTES_FILE="$REPO_ROOT/dist-release/RELEASE_NOTES-v${VERSION}.md"
   local args=(--version "$VERSION" --output "$RELEASE_NOTES_FILE")
   [ "$HAS_ANDROID" = "1" ] || args+=(--no-android)
-  [ "$PUBLISH_FPK" = "1" ] || args+=(--no-fpk)
+  [ "$HAS_GIT_TAG" = "1" ] || args+=(--no-fpk)
   [ "$HAS_DESKTOP" = "1" ] && args+=(--desktop)
   node "$NOTES_SCRIPT" "${args[@]}"
   [ -s "$RELEASE_NOTES_FILE" ] || die "发版公告生成失败"
   ok "发版公告: $RELEASE_NOTES_FILE"
-}
-
-prepare_fpk() {
-  [ "$PUBLISH_FPK" = "1" ] || return 0
-  [ "$DRY_RUN" = "0" ] || { info "DRY-RUN：跳过 fnOS 实际打包"; return 0; }
-  CURRENT_PHASE="构建飞牛 fnOS FPK"
-  [[ "$VERSION" != *-* ]] || die "fnOS manifest 要求纯 X.Y.Z；预发布 ${VERSION} 请加 --no-fpk"
-  step "飞牛 fnOS FPK 发布前打包"
-  rm -rf "$REPO_ROOT/dist-fpk"
-  FPK_VERSION="$VERSION" FPK_IMAGE_TAG="v${VERSION}" DOCKERHUB_REPO="$IMAGE_NAME" node "$FPK_SCRIPT"
-  FPK_FILE="$REPO_ROOT/dist-fpk/nowen-video-${VERSION}.fpk"
-  FPK_SUM="$REPO_ROOT/dist-fpk/SHA256SUMS-fpk.txt"
-  [ -s "$FPK_FILE" ] || die "FPK 产物不存在: $FPK_FILE"
-  [ -s "$FPK_SUM" ] || die "FPK checksum 不存在: $FPK_SUM"
-  [ "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA" ] || die "FPK 打包期间源码 commit 已变化"
-  [ -z "$(git status --porcelain)" ] || die "FPK 构建污染了 Git 工作区"
-  ok "fnOS 候选产物: $(basename "$FPK_FILE")"
 }
 
 run_advanced_stage() {
@@ -281,7 +259,8 @@ run_advanced_stage() {
   local log_file status
   log_file="$(mktemp "${TMPDIR:-/tmp}/nowen-video-release-core.XXXXXX.log")"
   set +e
-  NOWEN_RELEASE_ORCHESTRATED=1 bash "$ADVANCED_SCRIPT" "${PASSTHROUGH[@]}" 2>&1 \
+  NOWEN_RELEASE_ORCHESTRATED=1 NOWEN_RELEASE_KEEP_DRAFT="$KEEP_DRAFT" \
+    bash "$ADVANCED_SCRIPT" "${PASSTHROUGH[@]}" 2>&1 \
     | sed -E 's/Nowen Video (v[^ ]+) 同步发版流程完成 🎉/Nowen Video \1 核心发布阶段完成，等待统一发布守卫最终核验/' \
     | tee "$log_file"
   status=${PIPESTATUS[0]}
@@ -294,18 +273,15 @@ run_advanced_stage() {
   [ "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA" ] || die "核心发布阶段源码 commit 发生变化"
 }
 
-publish_and_verify_fpk() {
-  [ "$PUBLISH_FPK" = "1" ] || return 0
+verify_fpk() {
+  [ "$VERIFY_FPK" = "1" ] || return 0
   [ "$DRY_RUN" = "0" ] || return 0
-  CURRENT_PHASE="上传并远端校验飞牛 FPK"
+  CURRENT_PHASE="远端校验飞牛 FPK"
   [ "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA" ] || die "产品发布 commit 与 FPK commit 不一致"
-  local tag="v${VERSION}" fpk="nowen-video-${VERSION}.fpk" checksum="SHA256SUMS-fpk.txt" tmp names
-  step "上传并核验飞牛 fnOS Release 资产"
-  gh release view "$tag" --repo "$GITHUB_REPO" >/dev/null 2>&1 || die "未找到 ${tag} GitHub Release"
-  gh release upload "$tag" "$FPK_FILE" "$FPK_SUM" --repo "$GITHUB_REPO" --clobber
-  names="$(gh release view "$tag" --repo "$GITHUB_REPO" --json assets --jq '.assets[].name')"
-  printf '%s\n' "$names" | grep -Fxq "$fpk" || die "GitHub Release 缺少 $fpk"
-  printf '%s\n' "$names" | grep -Fxq "$checksum" || die "GitHub Release 缺少 $checksum"
+  local tag="v${VERSION}" fpk="nowen-video-${VERSION}.fpk" label="弄文影视-${VERSION}.fpk" checksum="SHA256SUMS-fpk.txt" tmp
+  step "核验 GitHub Actions 上传的飞牛 fnOS 安装包"
+  gh release view "$tag" --repo "$GITHUB_REPO" --json assets --jq '.assets[] | [.name, .label] | @tsv' \
+    | grep -Fx "${fpk}"$'\t'"${label}" >/dev/null || die "GitHub Release 缺少 $label"
 
   tmp="$(mktemp -d "${TMPDIR:-/tmp}/nowen-video-fpk.XXXXXX")"
   gh release download "$tag" --repo "$GITHUB_REPO" --pattern "$fpk" --pattern "$checksum" --dir "$tmp"
@@ -369,10 +345,6 @@ verify_and_publish_release() {
       printf '%s\n' "$names" | grep -Fxq "$asset" || die "Release 缺少 Android 资产: $asset"
     done
   fi
-  if [ "$PUBLISH_FPK" = "1" ]; then
-    printf '%s\n' "$names" | grep -Fxq "nowen-video-${VERSION}.fpk" || die "Release 缺少 fnOS FPK"
-    printf '%s\n' "$names" | grep -Fxq "SHA256SUMS-fpk.txt" || die "Release 缺少 fnOS checksum"
-  fi
 
   [ -s "$RELEASE_NOTES_FILE" ] || die "统一发版公告不存在"
   gh release edit "$tag" --repo "$GITHUB_REPO" --notes-file "$RELEASE_NOTES_FILE" >/dev/null
@@ -411,16 +383,11 @@ run_product_release() {
   RELEASE_STARTED=1
 
   if [ "$LATEST_EXPLICIT" = "0" ] && [[ "$VERSION" == *-* ]]; then DO_LATEST=0; fi
-  if [ "$PUBLISH_FPK" = "1" ]; then
-    [ "$HAS_ANDROID" = "1" ] || die "FPK 默认依赖 Android workflow 创建产品 Release；--no-android 时请同时加 --no-fpk"
-    [ "$HAS_GIT_TAG" = "1" ] || die "FPK 发布需要产品 git tag"
-    [ "$WAIT_ACTIONS" = "1" ] || die "FPK 发布需要等待 GitHub Release；请移除 --no-wait-actions 或加 --no-fpk"
-  fi
+  [ "$VERIFY_FPK" = "0" ] || [ "$HAS_GIT_TAG" = "1" ] || die "FPK 核验需要产品 git tag；请启用 tag 或加 --no-fpk"
 
   lock_release_source
   preflight_release_environment
   generate_release_announcement
-  prepare_fpk
 
   if [ "$DRY_RUN" = "1" ]; then
     CURRENT_PHASE="DRY-RUN"
@@ -432,7 +399,7 @@ run_product_release() {
   fi
 
   run_advanced_stage
-  publish_and_verify_fpk
+  verify_fpk
 
   step "最终全渠道验收"
   verify_docker_release
@@ -447,7 +414,7 @@ run_product_release() {
   echo "  Docker        : ${IMAGE_NAME}:v${VERSION}"
   [ "$DO_LATEST" = "1" ] && echo "  Docker latest : ${IMAGE_NAME}:latest"
   [ "$HAS_ANDROID" = "1" ] && echo "  Android       : APK + AAB + release manifest/checksums"
-  [ "$PUBLISH_FPK" = "1" ] && echo "  飞牛 fnOS     : nowen-video-${VERSION}.fpk + SHA256"
+  [ "$HAS_GIT_TAG" = "1" ] && echo "  飞牛 fnOS     : 弄文影视-${VERSION}.fpk + SHA256"
   [ "$HAS_GIT_TAG" = "1" ] && echo "  GitHub        : v${VERSION} Release"
   echo "  发版公告      : ${RELEASE_NOTES_FILE}"
   if [ "$KEEP_DRAFT" = "1" ]; then
@@ -460,7 +427,7 @@ run_product_release() {
 cd "$REPO_ROOT"
 if [ "$#" -gt 0 ]; then
   parse_args "$@"
-  [ "$PUBLISH_FPK" = "0" ] || [ -n "$VERSION" ] || die "带参数发布 FPK 时请显式提供 -v X.Y.Z；或使用 --no-fpk"
+  [ "$VERIFY_FPK" = "0" ] || [ -n "$VERSION" ] || die "带参数核验 FPK 时请显式提供 -v X.Y.Z；或使用 --no-fpk"
   run_product_release
   exit 0
 fi
@@ -493,7 +460,7 @@ PASSTHROUGH=(-v "$VERSION" -y)
 case "$choice" in
   1) HAS_DESKTOP=0; PASSTHROUGH+=(--no-desktop) ;;
   2) HAS_DESKTOP=1 ;;
-  3) PUBLISH_FPK=0; HAS_ANDROID=0; HAS_DESKTOP=0; HAS_GIT_TAG=0; WAIT_ACTIONS=0; PASSTHROUGH+=(--server-only) ;;
+  3) VERIFY_FPK=0; HAS_ANDROID=0; HAS_DESKTOP=0; HAS_GIT_TAG=0; PASSTHROUGH+=(--server-only) ;;
   *) die "无效选择: $choice" ;;
 esac
 
@@ -502,7 +469,7 @@ echo "源码      : main @ $(git rev-parse --short=12 HEAD)"
 echo "预检      : GitHub 登录/写权限 + Docker Hub 登录/push 权限 + CI + Release Contract"
 echo "Docker    : linux/amd64 + linux/arm64"
 [ "$HAS_ANDROID" = "1" ] && echo "Android   : APK + AAB（production signing）"
-[ "$PUBLISH_FPK" = "1" ] && echo "飞牛      : nowen-video-${VERSION}.fpk"
+[ "$HAS_GIT_TAG" = "1" ] && echo "飞牛      : 弄文影视-${VERSION}.fpk（由 GitHub Actions 打包）"
 [ "$HAS_GIT_TAG" = "1" ] && echo "GitHub    : v${VERSION}（全资产验证后自动公开）"
 echo "公告      : 自动参考 nowen-note 风格按提交分类生成"
 read -r -p "确认开始？[Y/n] " answer

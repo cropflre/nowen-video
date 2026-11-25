@@ -120,7 +120,7 @@ if (hasAndroid) {
   lines.push(`- Android APK：\`nowen-video-android-${version}.apk\``)
   lines.push(`- Android AAB：\`nowen-video-android-${version}.aab\``)
 }
-if (hasFpk) lines.push(`- 飞牛 fnOS：\`nowen-video-${version}.fpk\``)
+if (hasFpk) lines.push(`- 飞牛 fnOS 安装包 **弄文影视-${version}.fpk**，适配 AMD64 与 ARM64`)
 if (hasDesktop) lines.push('- Windows Desktop：GitHub Release 中对应安装包')
 lines.push('', '## ⬆️ 升级说明', '')
 lines.push('- Docker 用户建议固定版本标签升级，确认运行正常后再跟随 `latest`。')

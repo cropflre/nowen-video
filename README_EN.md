@@ -304,9 +304,7 @@ See [android/README.md](./android/README.md).
 
 ### 🐮 fnOS
 
-Nowen Video（弄文影视） has an official fnOS `.fpk` build and release flow covering package resources, Docker Project integration, desktop entry, install / upgrade / uninstall lifecycle hooks, permissions, and fnpack validation.
-
-Official releases provide the corresponding `.fpk` asset through GitHub Release.
+Download the universal `.fpk` labeled “弄文影视” from GitHub Releases and install it through the fnOS App Center. The same installer works on AMD64 (x86_64) and ARM64, with Docker selecting the matching image. [fnOS packaging and release details](./scripts/fpk/README.md)
 
 ## 📦 Release Channels
 

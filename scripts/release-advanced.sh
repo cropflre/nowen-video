@@ -408,6 +408,7 @@ if [ "$DRY_RUN" = "1" ]; then
     [ "$PUBLISH_ANDROID" = "1" ] && echo "  6. tag 自动触发 Android APK/AAB 正式构建并上传 Release"
     [ "$PUBLISH_DESKTOP" = "1" ] && echo "  7. tag 自动触发 Desktop 正式构建并上传 Release"
     [ "$PUBLISH_ANDROID" = "1" ] && [ "$WAIT_RELEASE_ACTIONS" = "1" ] && echo "  8. 强制核验 Release 中 APK + AAB"
+    [ "$DO_GIT_TAG" = "1" ] && echo "  9. tag 自动触发飞牛通用 FPK 构建并上传 Release"
     ok "DRY-RUN 完成"
     exit 0
 fi
@@ -485,7 +486,11 @@ DIGEST="$(docker buildx imagetools inspect "${IMAGE_NAME}:${VERSION_TAG}" 2>/dev
 
 if [ "$DO_GIT_TAG" = "1" ]; then
     step "创建产品 git tag"
-    git tag -a "$VERSION_TAG" -m "Nowen Video ${VERSION_TAG}"
+    tag_message=(-m "Nowen Video ${VERSION_TAG}")
+    if [ "${NOWEN_RELEASE_KEEP_DRAFT:-0}" = "1" ]; then
+        tag_message+=(-m 'GitHub Release: draft')
+    fi
+    git tag -a "$VERSION_TAG" "${tag_message[@]}"
     if git push origin "$VERSION_TAG"; then
         ok "git tag ${VERSION_TAG} 已推送"
     else
@@ -511,6 +516,9 @@ EOF_RELEASE
         fi
 
         verify_android_release_assets
+    fi
+    if [ "${NOWEN_RELEASE_ORCHESTRATED:-0}" = "1" ]; then
+        wait_tag_workflow "release-server.yml" "Server / fnOS"
     fi
 fi
 

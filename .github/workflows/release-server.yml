@@ -37,14 +37,21 @@ jobs:
 
       - name: Resolve version
         id: meta
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            TAG="${{ github.ref_name }}"
+          if [ "$REF_TYPE" = "tag" ]; then
+            TAG="$REF_NAME"
             VERSION="${TAG#v}"
           else
-            VERSION="${{ inputs.version }}"
-            VERSION="${VERSION#v}"
+            VERSION="${INPUT_VERSION#v}"
             TAG="v${VERSION}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release version: $VERSION" >&2
+            exit 1
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -103,19 +110,23 @@ jobs:
           (cd dist/server && sha256sum ./* > SHA256SUMS.txt)
           ls -lh dist/server
 
-      - name: Build fnOS package (.fpk)
-        if: ${{ !contains(steps.meta.outputs.version, '-') }}
-        continue-on-error: true
+      - name: Build universal fnOS package (.fpk)
         env:
           FPK_VERSION: ${{ steps.meta.outputs.version }}
           FPK_IMAGE_TAG: ${{ steps.meta.outputs.version }}
-          FPK_OUT_DIR: dist/server
-          DOCKERHUB_REPO: ghcr.io/${{ github.repository }}
+          FPK_OUT_DIR: dist/fpk
+          REPOSITORY: ${{ github.repository }}
         run: |
-          REPO_LOWER="$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')"
-          export DOCKERHUB_REPO="ghcr.io/${REPO_LOWER}"
-          node scripts/fpk/build-fpk.mjs
-          ls -lh dist/server
+          DOCKERHUB_REPO="ghcr.io/${REPOSITORY,,}" node scripts/fpk/build-fpk.mjs
+          (cd "$FPK_OUT_DIR" && sha256sum -c SHA256SUMS-fpk.txt)
+
+      - name: Upload fnOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: nowen-video-fnos-release
+          path: dist/fpk/*
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload server archives
         uses: actions/upload-artifact@v4
@@ -199,24 +210,38 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Verify fnOS image supports both architectures
+        env:
+          REPOSITORY: ${{ github.repository }}
+          VERSION: ${{ needs.build-binaries.outputs.version }}
+        run: |
+          set -o pipefail
+          docker buildx imagetools inspect --raw "ghcr.io/${REPOSITORY,,}:${VERSION}" |
+            jq -e '[.manifests[].platform | select(.os == "linux") | .architecture] |
+              contains(["amd64", "arm64"])'
+
   release:
-    name: Attach Server binaries to Draft Release
+    name: Attach Server and fnOS packages to Draft Release
     needs: [build-binaries, build-docker]
-    if: always() && startsWith(github.ref, 'refs/tags/v') && needs.build-binaries.result == 'success'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           name: nowen-video-server-release
           path: artifacts
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: nowen-video-fnos-release
+          path: fnos
+
       - name: Ensure Draft Release exists
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           TAG="${{ needs.build-binaries.outputs.tag }}"
           VERSION="${{ needs.build-binaries.outputs.version }}"
@@ -232,3 +257,21 @@ jobs:
           generate_release_notes: true
           name: Nowen Video ${{ needs.build-binaries.outputs.version }}
           files: artifacts/*
+          fail_on_unmatched_files: true
+
+      - name: Attach fnOS package with Chinese release label
+        working-directory: fnos
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.build-binaries.outputs.tag }}
+          VERSION: ${{ needs.build-binaries.outputs.version }}
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS-fpk.txt
+          # GitHub may normalize non-ASCII asset filenames. Keep a stable download URL.
+          PACKAGE="nowen-video-${VERSION}.fpk"
+          LABEL="弄文影视-${VERSION}.fpk"
+          mv "$LABEL" "$PACKAGE"
+          sha256sum "$PACKAGE" > SHA256SUMS-fpk.txt
+          gh release upload "$TAG" "${PACKAGE}#${LABEL}" SHA256SUMS-fpk.txt --clobber

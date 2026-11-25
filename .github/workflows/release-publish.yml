@@ -32,34 +32,48 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
           RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
           INPUT_TAG: ${{ inputs.tag }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          TAG=""
-          SHA=""
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             TAG="$INPUT_TAG"
-            SHA="$(gh api "repos/${REPO}/git/ref/tags/${TAG}" --jq '.object.sha' 2>/dev/null || true)"
-            if [ -z "$SHA" ]; then
-              echo "Tag ${TAG} not found" >&2
-              exit 1
-            fi
+          elif [ "$RUN_EVENT" = "push" ]; then
+            TAG="$RUN_BRANCH"
           else
-            if [[ "$RUN_BRANCH" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-              TAG="$RUN_BRANCH"
-            else
-              TAG="$(gh api "repos/${REPO}/tags?per_page=100" --jq ".[] | select(.commit.sha == \"${RUN_SHA}\" and (.name | test(\"^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+\"))) | .name" | head -n 1 || true)"
-            fi
-            SHA="$RUN_SHA"
+            TAG=""
           fi
 
-          if [ -z "$TAG" ]; then
-            echo "Not a version tag run (branch=${RUN_BRANCH}); skipping auto-publish."
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+              echo "Invalid release tag: ${TAG}" >&2
+              exit 1
+            fi
+            echo "Not a version tag run; skipping auto-publish."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          SHA="$(gh api "repos/${REPO}/commits/refs/tags/${TAG}" --jq '.sha')"
+          if [ "$EVENT_NAME" = "workflow_run" ]; then
+            if [ "$RUN_SHA" != "$SHA" ]; then
+              echo "Run commit does not match ${TAG}."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            TAG_REF="$(gh api "repos/${REPO}/git/ref/tags/${TAG}")"
+            if [ "$(jq -r '.object.type' <<< "$TAG_REF")" = "tag" ]; then
+              TAG_OBJECT="$(jq -r '.object.sha' <<< "$TAG_REF")"
+              TAG_MESSAGE="$(gh api "repos/${REPO}/git/tags/${TAG_OBJECT}" --jq '.message')"
+              if grep -Fxq 'GitHub Release: draft' <<< "$TAG_MESSAGE"; then
+                echo "Release ${TAG} was requested as a draft."
+                echo "skip=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
           fi
 
           {
@@ -84,8 +98,9 @@ jobs:
           ANY_FAIL=false
 
           for wf in release-server.yml release-desktop.yml release-android.yml; do
-            INFO="$(gh api "repos/${REPO}/actions/workflows/${wf}/runs?per_page=20" \
-              --jq "[.workflow_runs[] | select(.head_sha == \"${SHA}\" or .head_branch == \"${TAG}\")] | sort_by(.created_at) | last | {status: (.status // \"missing\"), conclusion: (.conclusion // \"none\"), url: (.html_url // \"\")}")"
+            INFO="$(gh api "repos/${REPO}/actions/workflows/${wf}/runs" -X GET \
+              -f event=push -f "head_sha=${SHA}" -f "branch=${TAG}" -f per_page=1 \
+              --jq '.workflow_runs[0] | {status: (.status // "missing"), conclusion: (.conclusion // "none"), url: (.html_url // "")}')"
             STATUS="$(printf '%s' "$INFO" | jq -r '.status')"
             CONCLUSION="$(printf '%s' "$INFO" | jq -r '.conclusion')"
             URL="$(printf '%s' "$INFO" | jq -r '.url')"
@@ -120,12 +135,21 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          ASSETS="$(gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name')"
+          RELEASE="$(gh release view "$TAG" --repo "$REPO" --json assets,isDraft)"
+          if [ "$(jq -r '.isDraft' <<< "$RELEASE")" = "false" ]; then
+            echo "GitHub Release ${TAG} is already published."
+            exit 0
+          fi
+
+          ASSETS="$(jq -r '.assets[].name' <<< "$RELEASE")"
           echo "Uploaded assets on ${TAG}:"
           printf '%s\n' "$ASSETS"
 
           for pattern in \
             "nowen-video-${VERSION}-linux-amd64.tar.gz" \
+            "nowen-video-${VERSION}-linux-arm64.tar.gz" \
+            "nowen-video-${VERSION}.fpk" \
+            "SHA256SUMS-fpk.txt" \
             "Nowen.Video_${VERSION}_x64-setup.exe" \
             "Nowen.Video_${VERSION}_aarch64.dmg" \
             "nowen-video-android-${VERSION}.apk" \
@@ -136,14 +160,15 @@ jobs:
             fi
           done
 
-          IS_DRAFT="$(gh release view "$TAG" --repo "$REPO" --json isDraft --jq '.isDraft')"
-          if [ "$IS_DRAFT" = "true" ]; then
-            if [[ "$VERSION" == *-* ]]; then
-              gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease
-            else
-              gh release edit "$TAG" --repo "$REPO" --draft=false --latest
-            fi
-            echo "Published GitHub Release ${TAG}."
-          else
-            echo "GitHub Release ${TAG} is already published."
+          if ! jq -e --arg name "nowen-video-${VERSION}.fpk" --arg label "弄文影视-${VERSION}.fpk" \
+            'any(.assets[]; .name == $name and .label == $label)' <<< "$RELEASE" >/dev/null; then
+            echo "Missing Chinese label for the fnOS package." >&2
+            exit 1
           fi
+
+          if [[ "$VERSION" == *-* ]]; then
+            gh release edit "$TAG" --repo "$REPO" --draft=false --prerelease
+          else
+            gh release edit "$TAG" --repo "$REPO" --draft=false --latest
+          fi
+          echo "Published GitHub Release ${TAG}."

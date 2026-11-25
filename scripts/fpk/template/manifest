@@ -1,8 +1,8 @@
 appname               = nowen-video
 version               = {{VERSION}}
-display_name          = Nowen Video
-desc                  = 把飞牛 NAS 变成全家的私人影院。Nowen Video 自动扫描电影和剧集，匹配海报与影片资料，支持字幕和按需转码。电脑、手机换着看，进度跟着账号走。每位家人都有自己的收藏和观看记录。
-arch                  = x86_64
+display_name          = 弄文影视
+desc                  = 把飞牛 NAS 变成全家的私人影院。弄文影视自动扫描电影和剧集，匹配海报与影片资料，支持字幕和按需转码。电脑、手机换着看，进度跟着账号走。每位家人都有自己的收藏和观看记录。
+platform              = all
 source                = thirdparty
 maintainer            = Nowen
 distributor           = Nowen

@@ -303,9 +303,7 @@ Web 是 Nowen Video（弄文影视）的主要管理与观影入口，提供媒�
 
 ### 🐮 飞牛 fnOS
 
-Nowen Video（弄文影视）已具备正式 fnOS `.fpk` 构建与发布链路，包括应用资源、Docker Project、桌面入口、安装 / 升级 / 卸载生命周期、权限声明与 fnpack 校验。
-
-正式发布版本可从 GitHub Release 获取对应 `.fpk` 安装包。
+在 GitHub Release 下载「弄文影视」通用 `.fpk`，从飞牛应用中心手动安装。AMD64（x86_64）和 ARM64 设备使用同一份安装包，Docker 自动选择适配镜像。[飞牛打包与发布说明](./scripts/fpk/README.md)
 
 ## 📦 发布渠道
 
